@@ -263,7 +263,7 @@ def patch_html(project: Path) -> None:
             raise RuntimeError("Could not update the Genesis controller markup.")
     if "/* Genesis controller + live Gamepad API mapping */" in html:
         html, n = re.subn(
-            r'/\* Genesis controller \+ live Gamepad API mapping \*/.*?initControllerSettings\(\);',
+            r'/\* Genesis controller \+ live Gamepad API mapping \*/.*?(?:initControllerSettings\(\);|renderBindings\(\);)',
             GAMEPAD_JS,
             html,
             count=1,
