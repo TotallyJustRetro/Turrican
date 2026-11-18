@@ -81,14 +81,6 @@ if (-not $html.Contains($oldButton)) {
     throw 'Could not locate the Play button in launcher/index.html.'
 }
 $html = $html.Replace($oldButton, $newButton)
-$oldHandler = @'
-$("launch").onclick=async()=>{
- if(!window.GenesisCore){alert("Open the packaged Windows launcher to start the native game core.");return}
- if(!rom){alert("Load a Mega Drive ROM first.");return}
- const result=await window.GenesisCore.run(rom,S);
- if(!result?.ok) alert(result?.error||"Mega Turrican could not be started.");
-};
-'@
 $newHandler = @'
 $("launch").onclick=async()=>{
  const button=$("launch"),status=$("launchStatus");
@@ -111,10 +103,12 @@ $("launch").onclick=async()=>{
  }
 };
 '@
-if (-not $html.Contains($oldHandler)) {
-    throw 'Could not locate the expected Play button handler in launcher/index.html.'
+$handlerPattern = '(?s)\$\("launch"\)\.onclick=async\(\)=>\{.*?\};(?=\s*/\* tile decode \*/)'
+$handlerMatch = [regex]::Match($html, $handlerPattern)
+if (-not $handlerMatch.Success) {
+    throw 'Could not locate the Play button handler in launcher/index.html.'
 }
-$html = $html.Replace($oldHandler, $newHandler)
+$html = $html.Remove($handlerMatch.Index, $handlerMatch.Length).Insert($handlerMatch.Index, $newHandler.TrimEnd())
 Set-Content -LiteralPath $htmlPath -Value $html -Encoding utf8
 
 Write-Host 'Applied sandbox-safe ROM IPC and visible Play-button error handling.'
