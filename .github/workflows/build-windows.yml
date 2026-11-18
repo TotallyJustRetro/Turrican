@@ -69,6 +69,17 @@ jobs:
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 
+      - name: Set up Python for build patches
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply Genesis controller UI and native mappings
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-controller-menu.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Applying Genesis controller changes failed.' }
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
