@@ -27,6 +27,12 @@ Extract the ZIP, run the portable `MegaTurricanLauncher` executable, and select 
 - Anyone who gets both the encrypted source package and the key can decrypt the source. Treat the key like a password.
 - Keep write access limited to trusted collaborators, since anyone who can change workflows could alter what the build does.
 
+## Controller controls
+
+The Windows launcher has a live three-button Mega Drive pad preview. It reads controller input through the standard Gamepad API, lets you select a connected pad, and provides per-action dropdowns for Up, Down, Left, Right, A, B, C, and Start. The selected mappings are saved in the launcher and written to the native SDL controller configuration when the game starts.
+
+Default DualSense profile: D-pad for directions, Square = Genesis A, Cross = Genesis B, Circle = Genesis C, Options = Start. Left-stick directions are also available in the dropdowns. The native game core consumes the saved mapping rather than a separate hard-coded layout.
+
 ## Build inputs
 
 The encrypted source bundle contains the generated C game code, C runtime, SDL2 SDK files, launcher, and build scripts. The workflow installs MinGW-w64, SDL2, and Node.js on a Windows runner; compiles the native game core; packages the Electron launcher; checks that both executable files are present; and publishes the ready-to-run ZIP.
