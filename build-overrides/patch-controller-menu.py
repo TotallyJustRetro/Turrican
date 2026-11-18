@@ -45,8 +45,10 @@ MARKUP = '''<section class="tab" id="t-ctl"><div class="controller-layout">
    <circle class="genesis-outline" cx="255" cy="330" r="102"/>
    <circle class="genesis-outline" cx="255" cy="330" r="72"/>
    <g transform="translate(255 330)">
-    <rect class="genesis-dpad" data-action="up" x="-18" y="-59" width="36" height="118" rx="7"/>
-    <rect class="genesis-dpad" data-action="left" x="-59" y="-18" width="118" height="36" rx="7"/>
+    <rect class="genesis-dpad" data-action="up" x="-18" y="-59" width="36" height="51" rx="7"/>
+    <rect class="genesis-dpad" data-action="down" x="-18" y="8" width="36" height="51" rx="7"/>
+    <rect class="genesis-dpad" data-action="left" x="-59" y="-18" width="51" height="36" rx="7"/>
+    <rect class="genesis-dpad" data-action="right" x="8" y="-18" width="51" height="36" rx="7"/>
     <circle cx="0" cy="0" r="22" fill="#f7fbfc" stroke="#08b5c6" stroke-width="3"/>
    </g>
    <g transform="translate(605 345) rotate(-24)">
