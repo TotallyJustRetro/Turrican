@@ -200,6 +200,12 @@ $html = $html.Substring(0,$romStart) + $romBlock + [Environment]::NewLine + $htm
 Set-Content -LiteralPath $htmlPath -Value $html -Encoding utf8
 
 $harness = Get-Content -LiteralPath $harnessPath -Raw
+$windowsFrameLimit = 'static long frame = 0, max_frames = 0x7fffffffffffffffL;'
+if (-not $harness.Contains($windowsFrameLimit)) {
+  throw 'Could not locate the SDL frame-limit constant in runtime/harness.c.'
+}
+$harness = $harness.Replace($windowsFrameLimit, 'static long frame = 0, max_frames = 0x7fffffffL;')
+Set-Content -LiteralPath $harnessPath -Value $harness -Encoding utf8
 $oldLoader = 'int md_load_rom(const char *p){ FILE *f = fopen(p, "rb"); if(!f) return 0; rom = malloc(0x400000); romlen = fread(rom, 1, 0x400000, f); fclose(f); return romlen > 0x200; }'
 $newLoader = @'
 int md_load_rom(const char *p){
