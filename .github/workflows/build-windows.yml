@@ -1,0 +1,114 @@
+name: Build Mega Turrican for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'MegaTurrican_Windows_Build_Kit.zip'
+      - '.github/workflows/build-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract and validate source bundle
+        shell: pwsh
+        run: |
+          $archive = Join-Path $PWD 'MegaTurrican_Windows_Build_Kit.zip'
+          if (-not (Test-Path $archive)) {
+            throw 'Missing MegaTurrican_Windows_Build_Kit.zip. Upload the build-kit ZIP to the repository root first.'
+          }
+          $destination = Join-Path $PWD '_build-source'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+          $project = Join-Path $destination 'MegaTurrican_Windows_Build_Kit'
+          foreach ($required in @('recomp_gen.c', 'runtime/harness.c', 'launcher/package.json', 'config.ini')) {
+            if (-not (Test-Path (Join-Path $project $required))) {
+              throw "Source bundle is incomplete: $required is missing."
+            }
+          }
+          "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install MinGW-w64 and SDL2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-SDL2
+
+      - name: Compile native Windows game core
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cd "$MEGATURRICAN_PROJECT"
+          gcc -O0 -DMD_SDL -fno-strict-aliasing \
+            -Wno-unused-label -Wno-unused-variable \
+            $(sdl2-config --cflags) -Iruntime \
+            recomp_gen.c \
+            runtime/harness.c runtime/vdp.c runtime/m68k_interp.c \
+            runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c \
+            $(sdl2-config --libs) -lm -static-libgcc -mwindows \
+            -o MegaTurrican.exe
+          test -s MegaTurrican.exe
+          mkdir -p launcher/native
+          cp MegaTurrican.exe launcher/native/MegaTurrican.exe
+          cp /mingw64/bin/SDL2.dll launcher/native/SDL2.dll
+          for dep in libgcc_s_seh-1.dll libwinpthread-1.dll; do
+            if [[ -f "/mingw64/bin/$dep" ]]; then
+              cp "/mingw64/bin/$dep" launcher/native/
+            fi
+          done
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build portable Electron launcher
+        shell: pwsh
+        run: |
+          Push-Location (Join-Path $env:MEGATURRICAN_PROJECT 'launcher')
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
+          npm run dist -- --x64
+          if ($LASTEXITCODE -ne 0) { throw 'Electron packaging failed' }
+          Pop-Location
+
+      - name: Assemble ready-to-run Windows package
+        shell: pwsh
+        run: |
+          $project = $env:MEGATURRICAN_PROJECT
+          $release = Join-Path $PWD 'release/MegaTurrican-Windows-x64'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          $launchers = Get-ChildItem (Join-Path $project 'launcher/dist') -Filter '*.exe' -File
+          if (-not $launchers) { throw 'Portable launcher executable was not produced.' }
+          foreach ($item in $launchers) { Copy-Item $item.FullName $release }
+          Copy-Item (Join-Path $project 'MegaTurrican.exe') $release
+          Get-ChildItem (Join-Path $project 'launcher/native') -Filter '*.dll' -File |
+            Copy-Item -Destination $release
+          Copy-Item (Join-Path $project 'config.ini') $release
+          Copy-Item (Join-Path $project 'README.txt') $release
+          @'
+          START HERE: run the MegaTurricanLauncher portable executable.
+          In the launcher, browse to your own Mega Drive ROM and press LAUNCH MEGA TURRICAN.
+          The ROM is read locally and is not uploaded.
+          '@ | Set-Content -Encoding UTF8 (Join-Path $release 'START-HERE.txt')
+          $archive = Join-Path $PWD 'MegaTurrican-Windows-x64.zip'
+          if (Test-Path $archive) { Remove-Item $archive -Force }
+          Compress-Archive -Path (Join-Path $release '*') -DestinationPath $archive -CompressionLevel Optimal
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MegaTurrican-Windows-x64
+          path: MegaTurrican-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
