@@ -2,6 +2,11 @@ name: Build Mega Turrican for Windows
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-windows.yml'
+      - 'MegaTurrican_Windows_Build_Kit.zip.enc'
 
 permissions:
   contents: read
