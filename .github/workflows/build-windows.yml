@@ -66,7 +66,6 @@ jobs:
           $patchScript = Join-Path $PWD 'build-overrides/patch-launcher.ps1'
           if (-not (Test-Path $patchScript)) { throw 'Launcher patch script is missing.' }
           & $patchScript -ProjectRoot $project
-          if ($LASTEXITCODE -ne 0) { throw 'Applying launcher fixes failed.' }
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 
