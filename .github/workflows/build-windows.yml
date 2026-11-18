@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-windows.yml'
+      - 'build-overrides/**'
       - 'MegaTurrican_Windows_Build_Kit.zip.enc'
 
 permissions:
@@ -62,6 +63,10 @@ jobs:
               throw "Source bundle is incomplete: $required is missing."
             }
           }
+          $patchScript = Join-Path $PWD 'build-overrides/patch-launcher.ps1'
+          if (-not (Test-Path $patchScript)) { throw 'Launcher patch script is missing.' }
+          & $patchScript -ProjectRoot $project
+          if ($LASTEXITCODE -ne 0) { throw 'Applying launcher fixes failed.' }
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 
