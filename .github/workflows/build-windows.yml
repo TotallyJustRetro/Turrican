@@ -9,7 +9,7 @@ on:
       - 'MegaTurrican_Windows_Build_Kit.zip.enc'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows-x64:
@@ -110,10 +110,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Electron packaging failed' }
           Pop-Location
 
-      - name: Assemble and encrypt the Windows package
+      - name: Assemble the Windows package
         shell: pwsh
-        env:
-          MEGATURRICAN_SOURCE_KEY: ${{ secrets.MEGATURRICAN_SOURCE_KEY }}
         run: |
           $project = $env:MEGATURRICAN_PROJECT
           $release = Join-Path $PWD 'release/MegaTurrican-Windows-x64'
@@ -131,14 +129,32 @@ jobs:
           The ROM is read locally and is not uploaded.
           '@ | Set-Content -Encoding UTF8 (Join-Path $release 'START-HERE.txt')
           Compress-Archive -Path (Join-Path $release '*') -DestinationPath (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') -CompressionLevel Optimal
-          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-          & openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 -in (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') -out (Join-Path $PWD 'MegaTurrican-Windows-x64.zip.enc') -pass "env:MEGATURRICAN_SOURCE_KEY"
-          if ($LASTEXITCODE -ne 0) { throw 'Encrypting the Windows package failed.' }
 
-      - name: Upload encrypted Windows build artifact
+      - name: Verify Windows package contents
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $PWD 'MegaTurrican-Windows-x64.zip'
+          if (-not (Test-Path $zipPath)) { throw 'Windows package ZIP was not created.' }
+          $entries = tar -tf $zipPath
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify Windows package ZIP.' }
+          if (-not ($entries | Where-Object { $_ -match 'MegaTurricanLauncher.*\.exe$' })) { throw 'Portable launcher EXE is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -match 'MegaTurrican\.exe$' })) { throw 'Native game EXE is missing from the package.' }
+          Write-Host 'Verified EXEs in Windows package:'
+          $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
+
+      - name: Upload ready-to-run Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: MegaTurrican-Windows-x64-encrypted
-          path: MegaTurrican-Windows-x64.zip.enc
+          name: MegaTurrican-Windows-x64
+          path: MegaTurrican-Windows-x64.zip
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 14
+
+      - name: Publish downloadable GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = "windows-build-$env:GITHUB_RUN_NUMBER"
+          gh release create $tag (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') --title "Mega Turrican Windows x64 - build $env:GITHUB_RUN_NUMBER" --notes "Portable Windows x64 build. Extract the ZIP, run MegaTurricanLauncher, and select your own Mega Drive ROM. No ROM is included." --prerelease
