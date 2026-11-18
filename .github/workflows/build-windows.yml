@@ -81,7 +81,7 @@ jobs:
           cp /mingw64/bin/SDL2.dll launcher/native/SDL2.dll
           declare -A seen=()
           queue=(MegaTurrican.exe SDL2.dll)
-          while (('${#queue[@]}')); do
+          while ((${#queue[@]})); do
             item="${queue[0]}"
             queue=("${queue[@]:1}")
             [[ -n "${seen[$item]:-}" ]] && continue
