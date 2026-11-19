@@ -179,10 +179,10 @@ def patch_html(project):
     p=project/"launcher"/"index.html";s=p.read_text(encoding="utf-8-sig")
     if ".audio-grid" not in s:s=once(s,"</style>",CSS+"\n</style>","audio stylesheet")
     if '["audio","Audio"]' not in s:
-        tabs_match=re.search(r'const\\s+tabs\\s*=\\s*\\[(.*?)\\];',s,re.S)
+        tabs_match=re.search(r'const\s+tabs\s*=\s*\[(.*?)\];',s,re.S)
         if not tabs_match:raise RuntimeError("Could not locate launcher tab registry.")
         entries=tabs_match.group(1)
-        entries_new,n=re.subn(r'(\\[\\s*["\\']ctl["\\']\\s*,\\s*["\\']Controls["\\']\\s*\\]\\s*,?)',lambda m:m.group(1)+'["audio","Audio"],',entries,count=1)
+        entries_new,n=re.subn(r'(\[\s*["\']ctl["\']\s*,\s*["\']Controls["\']\s*\]\s*,?)',lambda m:m.group(1)+'["audio","Audio"],',entries,count=1)
         if n!=1:raise RuntimeError("Could not add Audio to the launcher tab registry.")
         s=s[:tabs_match.start(1)]+entries_new+s[tabs_match.end(1):]
     if 'id="t-audio"' not in s:
