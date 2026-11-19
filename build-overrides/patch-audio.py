@@ -30,6 +30,7 @@ MARKUP = r'''<section class="tab" id="t-audio">
     <input id="audioVolume" type="range" min="0" max="100" value="100" step="1">
    </div>
    <p class="audio-note" id="audioModeNote"></p>
+   <p class="audio-note">Mode and volume changes apply the next time the game is launched.</p>
    <p class="audio-note">The original game audio is a stereo FM/PSG mix. 5.1 mode preserves front left/right and creates center, subwoofer and delayed rear ambience from that stereo mix; it is an upmix, not original discrete 5.1 recordings. Windows must be configured for 5.1 speakers.</p>
    <div class="audio-status" id="audioSaveStatus" role="status" aria-live="polite">Audio preferences are saved on this PC.</div>
   </div>
@@ -177,16 +178,13 @@ def patch_main(project):
 def patch_html(project):
     p=project/"launcher"/"index.html";s=p.read_text(encoding="utf-8-sig")
     if ".audio-grid" not in s:s=once(s,"</style>",CSS+"\n</style>","audio stylesheet")
-    if 'data-tab="audio"' not in s:
-        nav=re.search(r'<button\b(?=[^>]*data-tab=["\']ctl["\'])[^>]*>.*?</button>',s,re.S)
-        if not nav:
-            buttons=re.findall(r'<button\\b[^>]*>.*?</button>',s,re.I|re.S)
-            anchors=re.findall(r'<a\\b[^>]*>.*?</a>',s,re.I|re.S)
-            raise RuntimeError("Could not locate Controls navigation button. Buttons="+repr(buttons[:30])+" Anchors="+repr(anchors[:20])+" SCRIPT="+repr(s[s.find("<script"):s.find("<script")+10000] if s.find("<script")>=0 else ""))
-        button=nav.group(0);audio=re.sub(r'data-tab=["\']ctl["\']','data-tab="audio"',button,count=1)
-        audio=re.sub(r'class=(["\'])(.*?)\1',lambda m:'class='+m.group(1)+re.sub(r'\bactive\b','',m.group(2)).strip()+m.group(1),audio,count=1)
-        audio=re.sub(r'>.*?</button>','>AUDIO</button>',audio,count=1,flags=re.S)
-        s=s[:nav.end()]+audio+s[nav.end():]
+    if '["audio","Audio"]' not in s:
+        tabs_match=re.search(r'const\\s+tabs\\s*=\\s*\\[(.*?)\\];',s,re.S)
+        if not tabs_match:raise RuntimeError("Could not locate launcher tab registry.")
+        entries=tabs_match.group(1)
+        entries_new,n=re.subn(r'(\\[\\s*["\\']ctl["\\']\\s*,\\s*["\\']Controls["\\']\\s*\\]\\s*,?)',lambda m:m.group(1)+'["audio","Audio"],',entries,count=1)
+        if n!=1:raise RuntimeError("Could not add Audio to the launcher tab registry.")
+        s=s[:tabs_match.start(1)]+entries_new+s[tabs_match.end(1):]
     if 'id="t-audio"' not in s:
         m=re.search(r'<section\b[^>]*id=["\']t-ctl["\'][^>]*>.*?</section>',s,re.S)
         if not m:raise RuntimeError("Could not locate Controls tab.")
