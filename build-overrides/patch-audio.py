@@ -162,7 +162,7 @@ def upscale_ico_to_256(data: bytes) -> bytes:
     ico_header = struct.pack("<HHH", 0, 1, 1)
     directory = struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(dib), 22)
     result = ico_header + directory + dib
-    if len(result) < 22 or result[2:4] != b"\\x01\\x00":
+    if len(result) < 22 or result[2] != 1 or result[3] != 0:
         raise RuntimeError("Generated Windows icon is invalid.")
     return result
 
@@ -175,7 +175,7 @@ def patch_icon(project):
     p=project/"launcher"/"package.json";pkg=json.loads(p.read_text(encoding="utf-8-sig"))
     build=pkg.setdefault("build",{});build.setdefault("win",{})["icon"]="build/MegaTurrican.ico"
     if isinstance(build.get("files"),list) and "audio-settings.js" not in build["files"]:build["files"].append("audio-settings.js")
-    p.write_text(json.dumps(pkg,indent=2)+"\\n",encoding="utf-8")
+    p.write_text(json.dumps(pkg,indent=2)+"\n",encoding="utf-8")
     print("Generated 256x256 icon and installed it for the launcher and native executable.")
 
 def patch_sdl(project):
