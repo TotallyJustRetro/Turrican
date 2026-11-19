@@ -179,7 +179,10 @@ def patch_html(project):
     if ".audio-grid" not in s:s=once(s,"</style>",CSS+"\n</style>","audio stylesheet")
     if 'data-tab="audio"' not in s:
         nav=re.search(r'<button\b(?=[^>]*data-tab=["\']ctl["\'])[^>]*>.*?</button>',s,re.S)
-        if not nav:raise RuntimeError("Could not locate Controls navigation button.")
+        if not nav:
+            buttons=re.findall(r'<button\\b[^>]*>.*?</button>',s,re.I|re.S)
+            anchors=re.findall(r'<a\\b[^>]*>.*?</a>',s,re.I|re.S)
+            raise RuntimeError("Could not locate Controls navigation button. Buttons="+repr(buttons[:30])+" Anchors="+repr(anchors[:20]))
         button=nav.group(0);audio=re.sub(r'data-tab=["\']ctl["\']','data-tab="audio"',button,count=1)
         audio=re.sub(r'class=(["\'])(.*?)\1',lambda m:'class='+m.group(1)+re.sub(r'\bactive\b','',m.group(2)).strip()+m.group(1),audio,count=1)
         audio=re.sub(r'>.*?</button>','>AUDIO</button>',audio,count=1,flags=re.S)
