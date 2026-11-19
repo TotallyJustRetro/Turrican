@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install persistent launcher audio settings, channel tests, and the supplied Windows game icon."""
 from __future__ import annotations
-import json, re, shutil, sys
+import json, re, shutil, struct, sys
 from pathlib import Path
 
 CSS = r"""
@@ -123,7 +123,7 @@ def once(s, old, new, label):
 
 
 def upscale_ico_to_256(data: bytes) -> bytes:
-    """Resize the supplied small PNG/DIB ICO into a 256x256 Windows icon."""
+    """Resize the supplied ICO and write a classic 32-bit DIB payload (windres-compatible)."""
     from io import BytesIO
     try:
         from PIL import Image
@@ -134,17 +134,36 @@ def upscale_ico_to_256(data: bytes) -> bytes:
             image = original.convert("RGBA")
             resampling = getattr(Image, "Resampling", Image).LANCZOS
             image = image.resize((256, 256), resampling)
-            output = BytesIO()
-            image.save(output, format="ICO", sizes=[(256, 256)])
-            result = output.getvalue()
     except Exception as exc:
         raise RuntimeError("Could not resize the supplied Mega Turrican ICO: " + str(exc)) from exc
+
+    width = height = 256
+    rgba = image.tobytes()
+    xor_stride = width * 4
+    xor = bytearray(xor_stride * height)
+    and_stride = ((width + 31) // 32) * 4
+    and_mask = bytearray(and_stride * height)
+    for row in range(height):
+        source_y = height - 1 - row
+        source_row = source_y * xor_stride
+        target_row = row * xor_stride
+        mask_row = row * and_stride
+        for x in range(width):
+            src = source_row + x * 4
+            dst = target_row + x * 4
+            red, green, blue, alpha = rgba[src:src + 4]
+            xor[dst:dst + 4] = bytes((blue, green, red, alpha))
+            if alpha < 128:
+                and_mask[mask_row + (x >> 3)] |= 0x80 >> (x & 7)
+
+    payload = bytes(xor) + bytes(and_mask)
+    dib_header = struct.pack("<IiiHHIIiiII", 40, width, height * 2, 1, 32, 0, len(payload), 0, 0, 0, 0)
+    dib = dib_header + payload
+    ico_header = struct.pack("<HHH", 0, 1, 1)
+    directory = struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(dib), 22)
+    result = ico_header + directory + dib
     if len(result) < 22 or result[2:4] != b"\\x01\\x00":
-        raise RuntimeError("Pillow did not produce a valid Windows ICO.")
-    width = result[6]
-    height = result[7]
-    if width not in (0, 256) or height not in (0, 256):
-        raise RuntimeError("Generated launcher icon is not 256x256.")
+        raise RuntimeError("Generated Windows icon is invalid.")
     return result
 
 def patch_icon(project):
