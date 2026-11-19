@@ -86,12 +86,14 @@ jobs:
           python-version: "3.12"
 
       - name: Apply Genesis controller UI and native mappings
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         shell: pwsh
         run: |
           python (Join-Path $PWD 'build-overrides/patch-controller-menu.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying Genesis controller changes failed.' }
 
       - name: Compile native Windows game core
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -122,11 +124,13 @@ jobs:
           done
 
       - name: Install Node.js
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Build portable Electron launcher
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         shell: pwsh
         run: |
           Push-Location (Join-Path $env:MEGATURRICAN_PROJECT 'launcher')
@@ -137,6 +141,7 @@ jobs:
           Pop-Location
 
       - name: Assemble the Windows package
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         shell: pwsh
         run: |
           $project = $env:MEGATURRICAN_PROJECT
@@ -157,6 +162,7 @@ jobs:
           Compress-Archive -Path (Join-Path $release '*') -DestinationPath (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') -CompressionLevel Optimal
 
       - name: Verify Windows package contents
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         shell: pwsh
         run: |
           $zipPath = Join-Path $PWD 'MegaTurrican-Windows-x64.zip'
@@ -169,6 +175,7 @@ jobs:
           $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
 
       - name: Upload ready-to-run Windows build
+        if: github.ref != 'refs/heads/diagnose/shared-input-mask'
         uses: actions/upload-artifact@v4
         with:
           name: MegaTurrican-Windows-x64
@@ -177,6 +184,7 @@ jobs:
           retention-days: 14
 
       - name: Publish downloadable GitHub release
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
