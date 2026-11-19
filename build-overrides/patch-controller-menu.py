@@ -251,6 +251,126 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
         raise RuntimeError(f"{label}: expected exactly one match, found {count}")
     return text.replace(old, new, 1)
 
+
+def patch_rom_persistence(project: Path) -> None:
+    """Remember the last valid ROM and reopen the file picker in its directory."""
+    html_path = project / "launcher" / "index.html"
+    html = html_path.read_text(encoding="utf-8-sig")
+
+    status_anchor = '<p class="mut" id="launchStatus" role="status" aria-live="polite">Choose a valid Mega Drive ROM to enable Play.</p>'
+    settings_markup = '''
+ <div id="romRememberSettings" class="mut" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:8px;overflow-wrap:anywhere">
+  <span id="romDirectoryStatus">Your last valid ROM and its folder will be remembered on this PC.</span>
+  <button class="b" id="forgetRom" type="button">Forget saved ROM</button>
+ </div>'''
+    if 'id="romRememberSettings"' not in html:
+        html = replace_once(html, status_anchor, status_anchor + settings_markup, "remembered ROM settings UI")
+
+    pick_old = 'const pick=()=>$("romIn").click();$("drop").onclick=pick;'
+    pick_new = r'''function setRomDirectoryStatus(message){
+ const status=$("romDirectoryStatus");if(status)status.textContent=message;
+}
+async function rememberRomPath(filePath){
+ if(!filePath||!window.GenesisRom?.remember)return;
+ try{
+  const result=await window.GenesisRom.remember(filePath);
+  if(result?.ok)setRomDirectoryStatus("Remembered ROM folder: "+result.lastRomDirectory);
+  else setRomDirectoryStatus(result?.error||"The ROM folder could not be saved.");
+ }catch(error){setRomDirectoryStatus("Could not save ROM location: "+(error?.message||String(error)));}
+}
+async function rememberRomFile(file){
+ try{
+  const filePath=window.GenesisRom?.pathForFile?.(file);
+  if(filePath)await rememberRomPath(filePath);
+ }catch(error){setRomDirectoryStatus("Could not read the selected ROM location: "+(error?.message||String(error)));}
+}
+async function chooseRom(){
+ if(!window.GenesisRom?.choose){$("romIn").click();return;}
+ try{
+  const selected=await window.GenesisRom.choose();
+  if(!selected||selected.canceled)return;
+  if(!selected.ok)throw new Error(selected.error||"The ROM could not be opened.");
+  const bytes=selected.bytes instanceof Uint8Array?selected.bytes:new Uint8Array(selected.bytes);
+  const buffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+  load(buffer,selected.name||"Selected ROM");
+  if(rom)await rememberRomPath(selected.path);
+ }catch(error){
+  $("launchStatus").textContent="Could not open ROM: "+(error?.message||String(error));
+ }
+}
+const pick=()=>chooseRom();
+$("drop").onclick=pick;'''
+    if "async function chooseRom()" not in html:
+        html = replace_once(html, pick_old, pick_new, "native ROM file picker")
+
+    input_old = '$("romIn").onchange=e=>{const f=e.target.files[0];if(f)f.arrayBuffer().then(b=>load(b,f.name)).catch(err=>rejectROM("Could not read that file: "+err.message));};'
+    input_new = r'''$("romIn").onchange=e=>{
+ const f=e.target.files[0];if(!f)return;
+ f.arrayBuffer().then(async b=>{
+  load(b,f.name);
+  if(rom)await rememberRomFile(f);
+ }).catch(err=>rejectROM("Could not read that file: "+err.message));
+};'''
+    if input_old in html:
+        html = replace_once(html, input_old, input_new, "ROM file input persistence")
+    elif 'rememberRomFile(f)' not in html:
+        raise RuntimeError("Could not find ROM file input handler for persistence patch.")
+
+    drop_old = '$("drop").ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)f.arrayBuffer().then(b=>load(b,f.name)).catch(err=>rejectROM("Could not read that file: "+err.message));};'
+    drop_new = r'''$("drop").ondrop=e=>{
+ e.preventDefault();const f=e.dataTransfer.files[0];if(!f)return;
+ f.arrayBuffer().then(async b=>{
+  load(b,f.name);
+  if(rom)await rememberRomFile(f);
+ }).catch(err=>rejectROM("Could not read that file: "+err.message));
+};
+$("forgetRom").addEventListener("click",async()=>{
+ try{
+  const result=await window.GenesisRom?.forget?.();
+  if(result?.ok)setRomDirectoryStatus("Saved ROM forgotten. Your current game selection remains loaded until you close the launcher.");
+  else setRomDirectoryStatus("Could not clear the saved ROM location.");
+ }catch(error){setRomDirectoryStatus("Could not clear saved ROM: "+(error?.message||String(error)));}
+});
+async function restoreRememberedROM(){
+ try{
+  const settings=await window.GenesisRom?.settings?.();
+  if(settings?.lastRomDirectory)setRomDirectoryStatus("Remembered ROM folder: "+settings.lastRomDirectory);
+  const saved=await window.GenesisRom?.loadLast?.();
+  if(saved?.ok&&saved.bytes){
+   const bytes=saved.bytes instanceof Uint8Array?saved.bytes:new Uint8Array(saved.bytes);
+   const buffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+   load(buffer,saved.name||"Saved ROM");
+   if(rom){
+    setRomDirectoryStatus("Remembered ROM folder: "+(saved.lastRomDirectory||settings?.lastRomDirectory||""));
+    $("launchStatus").textContent="Restored your saved ROM: "+(saved.name||"Mega Drive ROM")+". Ready to play.";
+   }
+  }else if(saved&&!saved.empty&&saved.error){
+   setRomDirectoryStatus(saved.error+(saved.lastRomDirectory?" Saved folder: "+saved.lastRomDirectory:""));
+  }else if(!settings?.lastRomDirectory){
+   setRomDirectoryStatus("No ROM saved yet. Choose a ROM and its location will be remembered.");
+  }
+ }catch(error){setRomDirectoryStatus("Could not restore saved ROM: "+(error?.message||String(error)));}
+}
+'''
+    if '$("forgetRom").addEventListener' not in html:
+        html = replace_once(html, drop_old, drop_new, "ROM drop handler and remembered ROM startup")
+    elif drop_old in html:
+        html = replace_once(html, drop_old, drop_new, "ROM drop handler update")
+
+    startup_anchor = "/* tile decode */"
+    if "restoreRememberedROM,{once:true}" not in html:
+        startup = '''if(document.readyState==="loading"){
+ window.addEventListener("DOMContentLoaded",restoreRememberedROM,{once:true});
+}else{
+ Promise.resolve().then(restoreRememberedROM);
+}
+'''
+        html = replace_once(html, startup_anchor, startup + startup_anchor, "automatic ROM restoration")
+
+    html_path.write_text(html, encoding="utf-8")
+    print("Installed remembered ROM path, automatic ROM restoration, and last-folder file picker.")
+
+
 def patch_html(project: Path) -> None:
     html_path = project / "launcher" / "index.html"
     html = html_path.read_text(encoding="utf-8-sig")
@@ -589,6 +709,7 @@ def patch(project: Path) -> None:
     patch_sdl(project)
     patch_harness_input(project)
     patch_html(project)
+    patch_rom_persistence(project)
     print("Installed reference-shaped Genesis pad, correct Fire/Jump/Rope mapping, SDL physical-input translation, and persistent controller settings.")
 
 if __name__ == "__main__":
