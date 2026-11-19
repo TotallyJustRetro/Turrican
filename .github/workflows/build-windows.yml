@@ -74,6 +74,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Pillow for Windows icon conversion
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check Pillow
+          if ($LASTEXITCODE -ne 0) { throw 'Installing Pillow for icon conversion failed.' }
+
       - name: Apply Genesis controller UI and native mappings
         shell: pwsh
         run: |
