@@ -215,16 +215,14 @@ def upscale_ico_to_256(data: bytes) -> bytes:
     return directory + dib
 
 def patch_icon(project):
-    source_icon=Path(__file__).resolve().parent/"MegaTurrican.ico"
-    if not source_icon.is_file(): raise RuntimeError("build-overrides/MegaTurrican.ico is missing")
-    large_icon=Path(__file__).resolve().parent/"MegaTurrican-build.ico"
-    large_icon.write_bytes(upscale_ico_to_256(source_icon.read_bytes()))
-    d=project/"launcher"/"build";d.mkdir(parents=True,exist_ok=True);shutil.copy2(large_icon,d/"MegaTurrican.ico")
+    icon=Path(__file__).resolve().parent/"MegaTurrican.ico"
+    if not icon.is_file(): raise RuntimeError("build-overrides/MegaTurrican.ico is missing")
+    d=project/"launcher"/"build";d.mkdir(parents=True,exist_ok=True);shutil.copy2(icon,d/"MegaTurrican.ico")
     p=project/"launcher"/"package.json";pkg=json.loads(p.read_text(encoding="utf-8-sig"))
     build=pkg.setdefault("build",{});build.setdefault("win",{})["icon"]="build/MegaTurrican.ico"
     if isinstance(build.get("files"),list) and "audio-settings.js" not in build["files"]:build["files"].append("audio-settings.js")
-    p.write_text(json.dumps(pkg,indent=2)+"\n",encoding="utf-8")
-    print("Generated 256x256 Windows icon from the supplied original and installed it in the launcher.")
+    p.write_text(json.dumps(pkg,indent=2)+"\\n",encoding="utf-8")
+    print("Installed the supplied 256x256 Windows icon in the launcher and game executable.")
 
 def patch_sdl(project):
     p=project/"runtime"/"sdl_main.c";s=p.read_text(encoding="utf-8-sig")
