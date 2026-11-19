@@ -182,7 +182,7 @@ def patch_html(project):
         if not nav:
             buttons=re.findall(r'<button\\b[^>]*>.*?</button>',s,re.I|re.S)
             anchors=re.findall(r'<a\\b[^>]*>.*?</a>',s,re.I|re.S)
-            raise RuntimeError("Could not locate Controls navigation button. Buttons="+repr(buttons[:30])+" Anchors="+repr(anchors[:20])+" NAV="+repr(s[s.find("<nav")-400:s.find("</nav>")+6] if s.find("<nav")>=0 else ""))
+            raise RuntimeError("Could not locate Controls navigation button. Buttons="+repr(buttons[:30])+" Anchors="+repr(anchors[:20])+" SCRIPT="+repr(s[s.find("<script"):s.find("<script")+10000] if s.find("<script")>=0 else ""))
         button=nav.group(0);audio=re.sub(r'data-tab=["\']ctl["\']','data-tab="audio"',button,count=1)
         audio=re.sub(r'class=(["\'])(.*?)\1',lambda m:'class='+m.group(1)+re.sub(r'\bactive\b','',m.group(2)).strip()+m.group(1),audio,count=1)
         audio=re.sub(r'>.*?</button>','>AUDIO</button>',audio,count=1,flags=re.S)
