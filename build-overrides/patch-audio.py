@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install persistent launcher audio settings, channel tests, and the supplied Windows game icon."""
 from __future__ import annotations
-import json, re, shutil, sys
+import json, re, shutil, struct, sys
 from pathlib import Path
 
 CSS = r"""
@@ -121,15 +121,110 @@ def once(s, old, new, label):
     if n!=1: raise RuntimeError("Expected one "+label+" anchor, found "+str(n))
     return s.replace(old,new,1)
 
+
+def upscale_ico_to_256(data: bytes) -> bytes:
+    """Create a classic 256x256 32-bit DIB ICO from the supplied small ICO."""
+    if len(data) < 22:
+        raise RuntimeError("Supplied game ICO is truncated.")
+    reserved, kind, count = struct.unpack_from("<HHH", data, 0)
+    if reserved != 0 or kind != 1 or count < 1:
+        raise RuntimeError("Supplied game icon has an invalid ICO directory.")
+    candidates = []
+    for index in range(count):
+        w, h, colors, reserved, planes, bpp, size, offset = struct.unpack_from("<BBBBHHII", data, 6 + index * 16)
+        w = w or 256
+        h = h or 256
+        if offset + size <= len(data):
+            candidates.append((bpp, w, h, size, offset))
+    if not candidates:
+        raise RuntimeError("Supplied game icon has no complete image payload.")
+    bpp, sw, sh, size, offset = max(candidates, key=lambda item: (item[0], item[1] * item[2]))
+    if data[offset:offset + 8] == b"\x89PNG\r\n\x1a\n" or size < 40:
+        raise RuntimeError("Expected the supplied icon to contain a Windows DIB image.")
+    hs, width, double_height, planes, bits, compression, image_size, xppm, yppm, used, important = struct.unpack_from("<IiiHHIIiiII", data, offset)
+    if hs < 40 or width != sw or abs(double_height) // 2 != sh or planes != 1 or bits not in (24, 32) or compression != 0:
+        raise RuntimeError("Supplied game ICO uses an unsupported DIB layout.")
+    stride = ((sw * bits + 31) // 32) * 4
+    xor_offset = offset + hs
+    xor_size = stride * sh
+    if xor_offset + xor_size > offset + size:
+        raise RuntimeError("Supplied game ICO pixel data is incomplete.")
+    mask_stride = ((sw + 31) // 32) * 4
+    mask_offset = xor_offset + xor_size
+    has_mask = mask_offset + mask_stride * sh <= offset + size
+    source = bytearray(sw * sh * 4)
+    alpha_present = False
+    for y in range(sh):
+        row = xor_offset + (sh - 1 - y) * stride
+        for x in range(sw):
+            pos = row + x * (bits // 8)
+            blue, green, red = data[pos:pos + 3]
+            alpha = data[pos + 3] if bits == 32 else 255
+            alpha_present = alpha_present or alpha != 0
+            dst = (y * sw + x) * 4
+            source[dst:dst + 4] = bytes((red, green, blue, alpha))
+    if bits == 32 and not alpha_present and has_mask:
+        for y in range(sh):
+            row = mask_offset + (sh - 1 - y) * mask_stride
+            for x in range(sw):
+                pos = (y * sw + x) * 4 + 3
+                source[pos] = 0 if data[row + (x >> 3)] & (0x80 >> (x & 7)) else 255
+
+    out_w = out_h = 256
+    rgba = bytearray(out_w * out_h * 4)
+    for y in range(out_h):
+        fy = (y + 0.5) * sh / out_h - 0.5
+        y0 = max(0, min(sh - 1, int(fy)))
+        y1 = min(sh - 1, y0 + 1)
+        wy = max(0.0, min(1.0, fy - y0))
+        for x in range(out_w):
+            fx = (x + 0.5) * sw / out_w - 0.5
+            x0 = max(0, min(sw - 1, int(fx)))
+            x1 = min(sw - 1, x0 + 1)
+            wx = max(0.0, min(1.0, fx - x0))
+            p00 = (y0 * sw + x0) * 4
+            p10 = (y0 * sw + x1) * 4
+            p01 = (y1 * sw + x0) * 4
+            p11 = (y1 * sw + x1) * 4
+            target = (y * out_w + x) * 4
+            for channel in range(4):
+                top = source[p00 + channel] * (1 - wx) + source[p10 + channel] * wx
+                bottom = source[p01 + channel] * (1 - wx) + source[p11 + channel] * wx
+                rgba[target + channel] = max(0, min(255, round(top * (1 - wy) + bottom * wy)))
+
+    xor_stride = out_w * 4
+    xor = bytearray(xor_stride * out_h)
+    and_stride = ((out_w + 31) // 32) * 4
+    and_mask = bytearray(and_stride * out_h)
+    for y in range(out_h):
+        source_row = (out_h - 1 - y) * xor_stride
+        target_row = y * xor_stride
+        mask_row = y * and_stride
+        for x in range(out_w):
+            pos = source_row + x * 4
+            red, green, blue, alpha = rgba[pos:pos + 4]
+            target = target_row + x * 4
+            xor[target:target + 4] = bytes((blue, green, red, alpha))
+            if alpha < 128:
+                and_mask[mask_row + (x >> 3)] |= 0x80 >> (x & 7)
+
+    pixels = bytes(xor) + bytes(and_mask)
+    dib_header = struct.pack("<IiiHHIIiiII", 40, out_w, out_h * 2, 1, 32, 0, len(pixels), 0, 0, 0, 0)
+    dib = dib_header + pixels
+    directory = struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(dib), 22)
+    return directory + dib
+
 def patch_icon(project):
-    icon=Path(__file__).resolve().parent/"MegaTurrican.ico"
-    if not icon.is_file(): raise RuntimeError("build-overrides/MegaTurrican.ico is missing")
-    d=project/"launcher"/"build";d.mkdir(parents=True,exist_ok=True);shutil.copy2(icon,d/"MegaTurrican.ico")
+    source_icon=Path(__file__).resolve().parent/"MegaTurrican.ico"
+    if not source_icon.is_file(): raise RuntimeError("build-overrides/MegaTurrican.ico is missing")
+    large_icon=Path(__file__).resolve().parent/"MegaTurrican-build.ico"
+    large_icon.write_bytes(upscale_ico_to_256(source_icon.read_bytes()))
+    d=project/"launcher"/"build";d.mkdir(parents=True,exist_ok=True);shutil.copy2(large_icon,d/"MegaTurrican.ico")
     p=project/"launcher"/"package.json";pkg=json.loads(p.read_text(encoding="utf-8-sig"))
     build=pkg.setdefault("build",{});build.setdefault("win",{})["icon"]="build/MegaTurrican.ico"
     if isinstance(build.get("files"),list) and "audio-settings.js" not in build["files"]:build["files"].append("audio-settings.js")
     p.write_text(json.dumps(pkg,indent=2)+"\n",encoding="utf-8")
-    print("Installed supplied Mega Turrican icon in Electron Windows package.")
+    print("Generated 256x256 Windows icon from the supplied original and installed it in the launcher.")
 
 def patch_sdl(project):
     p=project/"runtime"/"sdl_main.c";s=p.read_text(encoding="utf-8-sig")
