@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report only input-mask metadata from the decrypted private build kit; never print source."""
+"""Emit narrowly scoped input-mask expressions and bit definitions; never dump private source."""
 from pathlib import Path
 import re
 import sys
@@ -11,28 +11,22 @@ report = []
 for path in files:
     if not path.is_file():
         continue
-    source = path.read_text(encoding="utf-8", errors="replace")
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     report.append(f"FILE {path.name}")
-    hits = list(re.finditer(r"\bmd_live_mask\b", source))
-    report.append(f"md_live_mask references: {len(hits)}")
-    seen = set()
-    for hit in hits:
-        start = max(0, hit.start() - 260)
-        end = min(len(source), hit.end() + 260)
-        window = source[start:end]
-        funcs = re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{", source[:hit.start()])
-        func = funcs[-1] if funcs else "(unknown function)"
-        nums = re.findall(r"0[xX][0-9A-Fa-f]+|\b\d+\b", window)
-        key = (func, tuple(nums))
-        if key not in seen:
-            seen.add(key)
-            report.append(f"  function={func}; nearby numeric constants={','.join(nums[:24]) or '(none)'}")
-    for line in source.splitlines():
-        if re.search(r"#\s*define\s+.*(BUTTON|INPUT|PAD|KEY)", line, re.I):
-            m = re.match(r"\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+)", line)
-            if m:
-                value = re.sub(r"[^0-9A-Fa-fxX+*/()|&<> -]", "", m.group(2))
-                report.append(f"  define {m.group(1)} = {value.strip()[:80]}")
+    ref_lines = [i for i, line in enumerate(lines) if "md_live_mask" in line]
+    report.append(f"md_live_mask reference lines: {len(ref_lines)}")
+    for i in ref_lines:
+        # Include only the relevant statement and one adjacent line each side.
+        for j in range(max(0, i-1), min(len(lines), i+2)):
+            line = re.sub(r"\s+", " ", lines[j]).strip()
+            if line:
+                report.append(f"  L{j+1}: {line[:260]}")
+    report.append("input/button enum or define lines:")
+    for i, line in enumerate(lines):
+        if re.search(r"\b(enum|#\s*define)\b", line) and re.search(r"\b(B_[A-Z0-9_]+|BTN_[A-Z0-9_]+|PAD_[A-Z0-9_]+|BUTTON_[A-Z0-9_]+)\b", line):
+            report.append(f"  L{i+1}: {re.sub(r'\\s+', ' ', line).strip()[:260]}")
+        elif re.search(r"\b(B_[A-Z0-9_]+|BTN_[A-Z0-9_]+|PAD_[A-Z0-9_]+|BUTTON_[A-Z0-9_]+)\s*=", line):
+            report.append(f"  L{i+1}: {re.sub(r'\\s+', ' ', line).strip()[:260]}")
     report.append("")
 
 out = "\n".join(report) + "\n"
