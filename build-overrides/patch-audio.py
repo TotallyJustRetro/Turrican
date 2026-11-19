@@ -100,7 +100,7 @@ static void audio_pump(void){
   double left=(in[i*2]+(in[(i+1)*2]-in[i*2])*f)*vol/100.0;
   double right=(in[i*2+1]+(in[(i+1)*2+1]-in[i*2+1])*f)*vol/100.0;
   if(audio_channels==1)out[m]=audio_sat((left+right)*.5);
-  else if(audio_channels==2){out[m*2]=audio_sat(left);out[m*2+1]=audio_sat(right);}
+  else if(audio_channels==2){double ml=left,mr=right;if(cfg.audio_mode==0){ml=mr=(left+right)*.5;}out[m*2]=audio_sat(ml);out[m*2+1]=audio_sat(mr);}
   else{
    int rp=(delay_pos+1024-576)&1023;double rl=dl[rp]*.24,rr=dr[rp]*.24;
    dl[delay_pos]=audio_sat(left);dr[delay_pos]=audio_sat(right);delay_pos=(delay_pos+1)&1023;
