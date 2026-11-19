@@ -288,7 +288,7 @@ def patch_html(project: Path) -> None:
 
 def patch_preload(project: Path) -> None:
     path = project / "launcher" / "preload.js"
-    preload = r'''const { contextBridge, ipcRenderer } = require('electron');
+    preload = r'''const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('GenesisCore', {
   run: (rom, settings) => {
@@ -306,12 +306,121 @@ contextBridge.exposeInMainWorld('GenesisSettings', {
   load: () => ipcRenderer.invoke('controller-settings-load'),
   save: settings => ipcRenderer.invoke('controller-settings-save', settings || {})
 });
+
+contextBridge.exposeInMainWorld('GenesisRom', {
+  pathForFile: file => {
+    try { return webUtils.getPathForFile(file); } catch (_) { return ''; }
+  },
+  remember: filePath => ipcRenderer.invoke('rom-settings-remember', filePath),
+  settings: () => ipcRenderer.invoke('rom-settings-load'),
+  loadLast: () => ipcRenderer.invoke('rom-settings-load-last'),
+  choose: () => ipcRenderer.invoke('rom-choose'),
+  forget: () => ipcRenderer.invoke('rom-settings-forget')
+});
 '''
     path.write_text(preload, encoding="utf-8")
 
 def patch_main(project: Path) -> None:
     path = project / "launcher" / "main.js"
     main = path.read_text(encoding="utf-8-sig")
+    if "rom-settings-load-last" not in main:
+        rom_handlers = r'''
+const romSettingsFile = path.join(app.getPath('userData'), 'rom-settings.json');
+function readRomSettings() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(romSettingsFile, 'utf8'));
+    return {
+      version: 1,
+      lastRomPath: typeof saved.lastRomPath === 'string' ? saved.lastRomPath : '',
+      lastRomDirectory: typeof saved.lastRomDirectory === 'string' ? saved.lastRomDirectory : ''
+    };
+  } catch (_) {
+    return { version: 1, lastRomPath: '', lastRomDirectory: '' };
+  }
+}
+function writeRomSettings(settings) {
+  fs.mkdirSync(path.dirname(romSettingsFile), { recursive: true });
+  const temporary = romSettingsFile + '.tmp';
+  fs.writeFileSync(temporary, JSON.stringify(settings, null, 2), 'utf8');
+  fs.renameSync(temporary, romSettingsFile);
+}
+ipcMain.handle('rom-settings-load', async () => readRomSettings());
+ipcMain.handle('rom-settings-remember', async (_event, filePath) => {
+  if (typeof filePath !== 'string' || !filePath.trim() || !path.isAbsolute(filePath)) {
+    return { ok: false, error: 'The selected ROM path is invalid.' };
+  }
+  const resolved = path.resolve(filePath);
+  try {
+    if (!fs.statSync(resolved).isFile()) return { ok: false, error: 'The selected ROM is not a file.' };
+  } catch (_) {
+    return { ok: false, error: 'The selected ROM file could not be found.' };
+  }
+  const settings = readRomSettings();
+  settings.lastRomPath = resolved;
+  settings.lastRomDirectory = path.dirname(resolved);
+  writeRomSettings(settings);
+  return { ok: true, lastRomPath: settings.lastRomPath, lastRomDirectory: settings.lastRomDirectory };
+});
+ipcMain.handle('rom-settings-load-last', async () => {
+  const settings = readRomSettings();
+  if (!settings.lastRomPath) {
+    return { ok: false, empty: true, lastRomDirectory: settings.lastRomDirectory };
+  }
+  try {
+    const data = fs.readFileSync(settings.lastRomPath);
+    return {
+      ok: true,
+      path: settings.lastRomPath,
+      name: path.basename(settings.lastRomPath),
+      lastRomDirectory: settings.lastRomDirectory,
+      bytes: Uint8Array.from(data)
+    };
+  } catch (_) {
+    return {
+      ok: false,
+      error: 'The saved ROM could not be found. Choose it again to update the saved location.',
+      lastRomDirectory: settings.lastRomDirectory
+    };
+  }
+});
+ipcMain.handle('rom-settings-forget', async () => {
+  writeRomSettings({ version: 1, lastRomPath: '', lastRomDirectory: '' });
+  return { ok: true };
+});
+ipcMain.handle('rom-choose', async () => {
+  const settings = readRomSettings();
+  try {
+    const result = await require('electron').dialog.showOpenDialog({
+      title: 'Choose your Mega Drive ROM',
+      defaultPath: settings.lastRomDirectory || app.getPath('documents'),
+      properties: ['openFile'],
+      filters: [
+        { name: 'Mega Drive ROMs', extensions: ['md', 'bin', 'gen', 'smd'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePaths || !result.filePaths.length) {
+      return { ok: false, canceled: true };
+    }
+    const selectedPath = path.resolve(result.filePaths[0]);
+    const data = fs.readFileSync(selectedPath);
+    return {
+      ok: true,
+      path: selectedPath,
+      name: path.basename(selectedPath),
+      bytes: Uint8Array.from(data)
+    };
+  } catch (error) {
+    return { ok: false, error: 'Could not open the selected ROM: ' + error.message };
+  }
+});
+
+'''
+        marker = "// Launch the native port"
+        if marker not in main:
+            raise RuntimeError("Could not find native launcher IPC insertion point for ROM settings.")
+        main = main.replace(marker, rom_handlers + marker, 1)
+
     if "controller-settings-load" not in main:
         handlers = r'''
 const controllerSettingsFile = path.join(app.getPath('userData'), 'controller-settings.json');
