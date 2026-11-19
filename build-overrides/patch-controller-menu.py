@@ -389,10 +389,96 @@ def patch_sdl(project: Path) -> None:
             raise RuntimeError("Could not replace SDL's hard-coded controller input reader.")
     path.write_text(sdl, encoding="utf-8")
 
+
+def patch_harness_input(project: Path) -> None:
+    """Translate the abstract input mask to the actual Mega Drive DATA register bits."""
+    path = project / "runtime" / "harness.c"
+    source = path.read_text(encoding="utf-8-sig")
+    matches = list(re.finditer(r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)\s*\{", source))
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected exactly one native pad_read(int p), found {len(matches)}.")
+
+    start = matches[0].start()
+    open_brace = source.find("{", matches[0].start())
+    depth = 0
+    end = None
+    for index in range(open_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                break
+    if end is None:
+        raise RuntimeError("Could not find the end of native pad_read(int p).")
+
+    corrected = r'''static uint8_t pad_read(int p) {
+    int b = buttons();
+    int th = pad_latch[p] & 0x40;
+    /*
+     * Mega Drive DATA register:
+     * D0=Up, D1=Down, D2=Left, D3=Right,
+     * D4=TL, D5=TR, D6=TH. Controller signals are active-low.
+     *
+     * TH=1: D4=B, D5=C.
+     * TH=0: D4=A, D5=Start.
+     */
+    int v;
+    if (th) {
+        v = 0x40
+          | ((b & 0x01) ? 0 : 0x01)  /* Up    -> D0 */
+          | ((b & 0x02) ? 0 : 0x02)  /* Down  -> D1 */
+          | ((b & 0x04) ? 0 : 0x04)  /* Left  -> D2 */
+          | ((b & 0x08) ? 0 : 0x08)  /* Right -> D3 */
+          | ((b & 0x20) ? 0 : 0x10)  /* B     -> D4 / TL */
+          | ((b & 0x40) ? 0 : 0x20); /* C     -> D5 / TR */
+    } else {
+        v = ((b & 0x01) ? 0 : 0x01)  /* Up    -> D0 */
+          | ((b & 0x02) ? 0 : 0x02)  /* Down  -> D1 */
+          | ((b & 0x10) ? 0 : 0x10)  /* A     -> D4 / TL */
+          | ((b & 0x80) ? 0 : 0x20); /* Start -> D5 / TR */
+    }
+    return (v & ~pad_ctrl[p]) | (pad_latch[p] & pad_ctrl[p]) | 0x80;
+}'''
+
+    existing = source[start:end]
+    if "D0=Up, D1=Down, D2=Left, D3=Right" not in existing:
+        source = source[:start] + corrected + source[end:]
+        path.write_text(source, encoding="utf-8")
+        print("Corrected Mega Drive DATA-register bit order in runtime/harness.c.")
+    else:
+        print("Mega Drive DATA-register bit order is already corrected.")
+
+    # Pure mapping checks: each logical action must toggle exactly one hardware bit.
+    high_map = [(0x01, 0x01), (0x02, 0x02), (0x04, 0x04),
+                (0x08, 0x08), (0x20, 0x10), (0x40, 0x20)]
+    low_map = [(0x01, 0x01), (0x02, 0x02), (0x10, 0x10), (0x80, 0x20)]
+
+    def encoded(mask: int, th_high: bool) -> int:
+        pairs = high_map if th_high else low_map
+        value = 0x40 if th_high else 0
+        for source_bit, port_bit in pairs:
+            if not (mask & source_bit):
+                value |= port_bit
+        return value | 0x80
+
+    for pairs, th_high in ((high_map, True), (low_map, False)):
+        idle = encoded(0, th_high)
+        for source_bit, port_bit in pairs:
+            pressed = encoded(source_bit, th_high)
+            if idle ^ pressed != port_bit:
+                raise RuntimeError(
+                    f"Mega Drive pad mapping test failed: mask 0x{source_bit:02X}, "
+                    f"expected one port bit 0x{port_bit:02X}, got 0x{idle ^ pressed:02X}."
+                )
+    print("Mega Drive pad mapping tests passed: every direction/button toggles one correct DATA bit.")
+
 def patch(project: Path) -> None:
     patch_preload(project)
     patch_main(project)
     patch_sdl(project)
+    patch_harness_input(project)
     patch_html(project)
     print("Installed reference-shaped Genesis pad, correct Fire/Jump/Rope mapping, SDL physical-input translation, and persistent controller settings.")
 
