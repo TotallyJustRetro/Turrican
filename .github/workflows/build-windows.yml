@@ -70,6 +70,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Input mask inspection failed.' }
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Preserve input mask diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MegaTurrican-Input-Mask-Diagnostic
+          path: input-mask-report.txt
+          if-no-files-found: error
+          retention-days: 7
+
 
       - name: Set up Python for build patches
         uses: actions/setup-python@v5
