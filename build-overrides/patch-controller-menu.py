@@ -487,6 +487,10 @@ ipcMain.handle('rom-settings-load-last', async () => {
     return { ok: false, empty: true, lastRomDirectory: settings.lastRomDirectory };
   }
   try {
+    const stat = fs.statSync(settings.lastRomPath);
+    if (!stat.isFile() || stat.size <= 0x200 || stat.size > 0x400000) {
+      throw new Error('The saved file is not a supported Mega Drive ROM size.');
+    }
     const data = fs.readFileSync(settings.lastRomPath);
     return {
       ok: true,
@@ -498,7 +502,7 @@ ipcMain.handle('rom-settings-load-last', async () => {
   } catch (_) {
     return {
       ok: false,
-      error: 'The saved ROM could not be found. Choose it again to update the saved location.',
+      error: 'The saved ROM is unavailable or is not a supported size. Choose it again to update the saved location.',
       lastRomDirectory: settings.lastRomDirectory
     };
   }
@@ -523,6 +527,10 @@ ipcMain.handle('rom-choose', async () => {
       return { ok: false, canceled: true };
     }
     const selectedPath = path.resolve(result.filePaths[0]);
+    const stat = fs.statSync(selectedPath);
+    if (!stat.isFile() || stat.size <= 0x200 || stat.size > 0x400000) {
+      return { ok: false, error: 'That file is not a supported Mega Drive ROM size (up to 4 MiB).' };
+    }
     const data = fs.readFileSync(selectedPath);
     return {
       ok: true,
