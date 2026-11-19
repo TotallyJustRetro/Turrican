@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
@@ -80,12 +80,20 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-controller-menu.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying Genesis controller changes failed.' }
 
+      - name: Apply launcher audio options and game icon
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-audio.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Applying audio and icon changes failed.' }
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/build-overrides"
+          windres MegaTurrican.rc -O coff -o "$(cygpath -u "$MEGATURRICAN_PROJECT")/MegaTurrican-icon.o"
           cd "$(cygpath -u "$MEGATURRICAN_PROJECT")"
-          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime recomp_gen.c runtime/harness.c runtime/vdp.c runtime/m68k_interp.c runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c $(sdl2-config --libs) -lm -static-libgcc -mwindows -o MegaTurrican.exe
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime recomp_gen.c runtime/harness.c runtime/vdp.c runtime/m68k_interp.c runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c MegaTurrican-icon.o $(sdl2-config --libs) -lm -static-libgcc -mwindows -o MegaTurrican.exe
           test -s MegaTurrican.exe
           mkdir -p launcher/native
           cp MegaTurrican.exe launcher/native/MegaTurrican.exe
