@@ -115,6 +115,25 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate launcher ROM persistence code
+        shell: pwsh
+        run: |
+          $launcher = Join-Path $env:MEGATURRICAN_PROJECT 'launcher'
+          node --check (Join-Path $launcher 'main.js')
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher main.js syntax check failed.' }
+          node --check (Join-Path $launcher 'preload.js')
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher preload.js syntax check failed.' }
+          $main = Get-Content (Join-Path $launcher 'main.js') -Raw
+          $preload = Get-Content (Join-Path $launcher 'preload.js') -Raw
+          $html = Get-Content (Join-Path $launcher 'index.html') -Raw
+          foreach ($marker in @('rom-settings-load-last', 'rom-settings-remember', 'rom-choose')) {
+            if (-not $main.Contains($marker)) { throw "Main process ROM persistence hook is missing: $marker" }
+          }
+          if (-not $preload.Contains("exposeInMainWorld('GenesisRom'")) { throw 'GenesisRom preload bridge is missing.' }
+          foreach ($marker in @('romDirectoryStatus', 'restoreRememberedROM', 'GenesisRom.choose')) {
+            if (-not $html.Contains($marker)) { throw "Launcher ROM persistence UI hook is missing: $marker" }
+          }
+
       - name: Build portable Electron launcher
         shell: pwsh
         run: |
