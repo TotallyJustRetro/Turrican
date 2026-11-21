@@ -6,7 +6,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
+import struct
 import sys
+import zlib
 from io import BytesIO
 from pathlib import Path
 
@@ -170,8 +172,84 @@ static void reborn_titlefix_render(int w, int h)
 '''
 
 
+def repair_palette_png(data: bytes) -> bytes:
+    """Repair the supplied PNG's damaged PLTE boundary without changing pixels.
+
+    The uploaded file has an intact IHDR, palette data, tRNS data and IDAT
+    stream, but the PLTE CRC/boundary bytes are malformed. Rebuild the
+    standard chunk sequence and recalculate CRCs so ordinary PNG decoders
+    can load the original indexed-colour artwork.
+    """
+    signature = b"\x89PNG\r\n\x1a\n"
+    if not data.startswith(signature):
+        raise RuntimeError("Reborn logo payload is not a PNG")
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(kind + payload) & 0xFFFFFFFF
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", crc)
+
+    ihdr_at = data.find(b"IHDR")
+    plte_at = data.find(b"PLTE")
+    trns_at = data.find(b"tRNS")
+    idat_at = data.find(b"IDAT")
+    iend_at = data.find(b"IEND")
+
+    if min(ihdr_at, plte_at, trns_at, idat_at, iend_at) < 4:
+        raise RuntimeError("Reborn logo PNG is missing a required image chunk")
+    if not (ihdr_at < plte_at < trns_at < idat_at < iend_at):
+        raise RuntimeError("Reborn logo PNG chunks are in an unexpected order")
+
+    ihdr_len = struct.unpack(">I", data[ihdr_at - 4:ihdr_at])[0]
+    plte_len = struct.unpack(">I", data[plte_at - 4:plte_at])[0]
+    trns_len = struct.unpack(">I", data[trns_at - 4:trns_at])[0]
+    idat_len = struct.unpack(">I", data[idat_at - 4:idat_at])[0]
+    iend_len = struct.unpack(">I", data[iend_at - 4:iend_at])[0]
+
+    if (ihdr_len, plte_len, iend_len) != (13, 768, 0):
+        raise RuntimeError(
+            f"Unexpected Reborn PNG chunk sizes: IHDR={ihdr_len}, "
+            f"PLTE={plte_len}, IEND={iend_len}"
+        )
+
+    ihdr = data[ihdr_at + 4:ihdr_at + 4 + ihdr_len]
+    palette = data[plte_at + 4:plte_at + 4 + plte_len]
+    transparency = data[trns_at + 4:trns_at + 4 + trns_len]
+    compressed = data[idat_at + 4:idat_at + 4 + idat_len]
+
+    if len(ihdr) != 13 or len(palette) != 768:
+        raise RuntimeError("Reborn PNG header or palette is truncated")
+    width, height, bit_depth, color_type = struct.unpack(">IIBB", ihdr[:10])
+    if (width, height, bit_depth, color_type) != (160, 40, 8, 3):
+        raise RuntimeError(
+            f"Unexpected Reborn PNG format: {width}x{height}, "
+            f"depth={bit_depth}, colour_type={color_type}"
+        )
+    decoded = zlib.decompress(compressed)
+    if len(decoded) != (width + 1) * height:
+        raise RuntimeError("Reborn PNG image stream has an unexpected decoded size")
+    if len(transparency) > 256:
+        raise RuntimeError("Reborn PNG transparency table is too large")
+
+    rebuilt = (
+        signature
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"PLTE", palette)
+        + chunk(b"tRNS", transparency)
+        + chunk(b"IDAT", compressed)
+        + chunk(b"IEND", b"")
+    )
+    return rebuilt
+
+
 def make_header(png_path: Path, header_path: Path) -> None:
-    image = Image.open(png_path).convert("RGBA")
+    raw_png = png_path.read_bytes()
+    try:
+        image = Image.open(BytesIO(raw_png)).convert("RGBA")
+    except Exception:
+        repaired_png = repair_palette_png(raw_png)
+        image = Image.open(BytesIO(repaired_png)).convert("RGBA")
+        png_path.write_bytes(repaired_png)
+        print("Repaired the Reborn logo PNG palette/chunk checksums before embedding.")
     width, height = image.size
     if (width, height) != (160, 40):
         raise RuntimeError(f"Unexpected embedded logo size: {width}x{height}")
