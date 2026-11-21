@@ -79,7 +79,7 @@ jobs:
           [System.IO.File]::WriteAllBytes($menuSourcePath, $outputStream.ToArray())
           $outputStream.Dispose()
           $menuHash = (Get-FileHash -LiteralPath $menuSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($menuHash -ne '515cd60714eabd0a3f941b34de6a88f87b8309ac7adb6eb0dc0a9cf600826867') {
+          if ($menuHash -ne '751429cffcba03bfe5a60403ecab8a4c4739fd7eab2ad66b6a9c8f0cb94d6d80') {
             throw "Updated in-game menu source checksum mismatch: $menuHash"
           }
           Write-Host 'Installed updated in-game pause/options menu source.'
