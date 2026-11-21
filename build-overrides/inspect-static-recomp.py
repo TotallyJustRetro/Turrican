@@ -1,43 +1,49 @@
 #!/usr/bin/env python3
-"""Print a compact, non-sensitive map of the private static-recomp runtime."""
+"""Emit only runtime type/field names needed for native save-state integration."""
 from __future__ import annotations
 import re
 import sys
 from pathlib import Path
 
 ROOT=Path(sys.argv[1]).resolve()
-FILES=["recomp_gen.c","runtime/harness.c","runtime/m68k_interp.c",
-       "runtime/vdp.h","runtime/vdp.c","runtime/m68k_rt.h","runtime/z80.h",
-       "runtime/z80.c","runtime/ym2612.h","runtime/ym2612.c",
-       "runtime/psg.h","runtime/psg.c"]
-
-PATTERNS=[
-    r"\b(?:work_ram|wram|main_ram|m68k_ram|ram|memory|mem)\b",
-    r"\b(?:read|write|mem_read|mem_write|m68k_read|m68k_write|md_read|md_write)\w*\b",
-    r"\b(?:cpu|m68k|z80)_[A-Za-z0-9_]*\b",
-    r"0x[fF][fF][bB][fF](?:20|26|28)",
-    r"\b(?:rom|romlen|md_live_mask|md_frame_hook)\b",
+FILES=[
+ "runtime/harness.c","runtime/m68k_rt.h","runtime/m68k_interp.c",
+ "runtime/z80.h","runtime/ym2612.h","runtime/psg.h","runtime/vdp.h",
 ]
-compiled=[re.compile(p,re.I) for p in PATTERNS]
-decl=re.compile(r"^\s*(?:(?:static|extern|volatile|const)\s+)*(?:unsigned\s+)?(?:u?int(?:8|16|32|64)_t|char|short|int|long|size_t|bool|struct\s+\w+)\s+([A-Za-z_]\w*)\s*(\[[^\]]*\])?\s*(?:=|;|,)")
-func=re.compile(r"^\s*(?:(?:static|inline|extern)\s+)*(?:void|int|bool|char|short|long|size_t|u?int(?:8|16|32|64)_t|[A-Z]\w*)\s+([A-Za-z_]\w*)\s*\(")
+OUT=[]
+def emit(s=""): OUT.append(s)
 
+field=re.compile(r"^\s*(?:unsigned\s+)?(?:u?int(?:8|16|32|64)_t|char|short|int|long|size_t|bool|double|float|struct\s+\w+|[A-Z]\w*)\s+([A-Za-z_]\w*)\s*(\[[^\]]*\])?\s*[,;]")
+func=re.compile(r"^\s*(?:(?:static|inline|extern)\s+)*(?:void|int|bool|char|short|long|size_t|u?int(?:8|16|32|64)_t|[A-Z]\w*)\s+([A-Za-z_]\w*)\s*\(([^;{}]*)\)\s*[;{]")
 for rel in FILES:
-    p=ROOT/rel
-    if not p.exists():
-        print(f"\n[{rel}] MISSING")
-        continue
-    lines=p.read_text(encoding="utf-8",errors="replace").splitlines()
-    print(f"\n[{rel}] {len(lines)} lines")
-    found=[]
-    for no,line in enumerate(lines,1):
-        if any(rx.search(line) for rx in compiled):
-            found.append((no,line.strip()))
-    for no,line in found[:100]:
-        print(f"  MATCH {no}: {line[:230]}")
-    if len(found)>100:
-        print(f"  ... {len(found)-100} additional matching lines omitted")
-    if rel in ("runtime/harness.c","runtime/m68k_interp.c","runtime/vdp.h"):
-        for no,line in enumerate(lines,1):
-            if decl.match(line) or (func.match(line) and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot",line,re.I)):
-                print(f"  DECL  {no}: {line.strip()[:230]}")
+ p=ROOT/rel
+ emit(f"[{rel}]")
+ if not p.exists():
+  emit("MISSING")
+  continue
+ lines=p.read_text(encoding="utf-8",errors="replace").splitlines()
+ in_struct=False
+ struct_depth=0
+ for n,line in enumerate(lines,1):
+  t=line.strip()
+  if re.search(r"\b(?:typedef\s+)?struct\b",t):
+   in_struct=True
+   struct_depth+=t.count("{")-t.count("}")
+   emit(f"TYPE line={n} {t[:110]}")
+   continue
+  if in_struct:
+   struct_depth+=t.count("{")-t.count("}")
+   if ";" in t and not t.startswith(("/*","*","//")):
+    m=field.match(line)
+    if m:
+     emit(f"FIELD line={n} name={m.group(1)} array={m.group(2) or '-'}")
+   if struct_depth<=0 and "}" in t: in_struct=False
+  m=func.match(line)
+  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot",m.group(1),re.I):
+   params=re.sub(r"\s+"," ",m.group(2).strip())
+   emit(f"FUNCTION line={n} name={m.group(1)} params={params[:100] or '-'}")
+  if rel=="runtime/harness.c" and re.search(r"\b(?:static\s+)?(?:M68K\s*\*CPU|uint8_t\s+ram|static\s+Z80\s+zcpu|zbank|zbusreq|zreset|fm_acc|psg_acc|z80_over|long\s+frame|md_frame_hook)\b",t):
+   emit(f"RUNTIME line={n} {t[:180]}")
+report="\n".join(OUT)+"\n"
+Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
+print(report)
