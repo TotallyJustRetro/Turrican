@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Embed and permanently brand the Mega Turrican title screen with Reborn."""
-
+"""Install Reborn as an animated native VDP title sprite, not an SDL overlay."""
 from __future__ import annotations
 
 import base64
-import hashlib
 import re
 import struct
 import sys
@@ -15,171 +13,14 @@ from pathlib import Path
 from PIL import Image
 
 
-C_CODE = r'''
-/* ---- Mega Turrican Reborn permanent title branding (compiled into the native game) ---- */
-static SDL_Texture *reborn_titlefix_stage[5];
-static int reborn_titlefix_state = 0; /* 0 waiting, 1 reveal playing, 2 persistent */
-static int reborn_titlefix_played = 0;
-static uint32_t reborn_titlefix_started = 0;
-
-static int reborn_titlefix_is_title(int w, int h)
-{
-    if (w < 256 || h < 200) return 0;
-
-    int menu_white = 0;
-    int logo_warm = 0;
-    int x0 = w * 22 / 100;
-    int x1 = w * 78 / 100;
-    int y0 = h * 54 / 100;
-    int y1 = h * 71 / 100;
-
-    /* The native title screen has two bright, centred menu labels below its logo. */
-    for (int y = y0; y < y1; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = x0; x < x1; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255;
-            int g = (p >> 8) & 255;
-            int b = p & 255;
-            if (r > 145 && g > 145 && b > 150) ++menu_white;
-        }
-    }
-
-    /* Also require the original orange/yellow flame artwork in the upper half. */
-    int top_end = h * 52 / 100;
-    for (int y = 0; y < top_end; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = 0; x < w; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255;
-            int g = (p >> 8) & 255;
-            int b = p & 255;
-            if (r > 150 && g > 35 && r > g + 55 && g > b + 20)
-                ++logo_warm;
-        }
-    }
-    return menu_white > 100 && logo_warm > 700;
-}
-
-static int reborn_titlefix_create_textures(void)
-{
-    static const int stage_w[5] = {10, 20, 40, 80, REBORN_LOGO_WIDTH};
-    static const int stage_h[5] = { 3,  5, 10, 20, REBORN_LOGO_HEIGHT};
-    uint32_t base[REBORN_LOGO_WIDTH * REBORN_LOGO_HEIGHT];
-
-    for (int i = 0; i < REBORN_LOGO_WIDTH * REBORN_LOGO_HEIGHT; ++i) {
-        base[i] = REBORN_LOGO_PALETTE[REBORN_LOGO_PIXELS[i]];
-    }
-
-    for (int stage = 0; stage < 5; ++stage) {
-        SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(
-            0, stage_w[stage], stage_h[stage], 32, SDL_PIXELFORMAT_ARGB8888);
-        if (!surface) return 0;
-
-        for (int y = 0; y < stage_h[stage]; ++y) {
-            uint32_t *dst = (uint32_t *)((uint8_t *)surface->pixels + y * surface->pitch);
-            int sy = y * REBORN_LOGO_HEIGHT / stage_h[stage];
-            for (int x = 0; x < stage_w[stage]; ++x) {
-                int sx = x * REBORN_LOGO_WIDTH / stage_w[stage];
-                dst[x] = base[sy * REBORN_LOGO_WIDTH + sx];
-            }
-        }
-
-        reborn_titlefix_stage[stage] = SDL_CreateTextureFromSurface(ren, surface);
-        SDL_FreeSurface(surface);
-        if (!reborn_titlefix_stage[stage]) return 0;
-        SDL_SetTextureBlendMode(reborn_titlefix_stage[stage], SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(reborn_titlefix_stage[stage], SDL_ScaleModeNearest);
-    }
-    return 1;
-}
-
-static SDL_Rect reborn_titlefix_logo_rect(void)
-{
-    /* Keep the complete wordmark in the title's open band, just below the
-       original Mega Turrican artwork and above START / OPTIONS. */
-    int logo_w = game_dst.w * 30 / 100;
-    int logo_h = logo_w / 4;
-    int max_h = game_dst.h * 11 / 100;
-    if (logo_h > max_h) {
-        logo_h = max_h;
-        logo_w = logo_h * 4;
-    }
-
-    SDL_Rect logo_dst = {
-        game_dst.x + (game_dst.w - logo_w) / 2,
-        game_dst.y + game_dst.h * 47 / 100,
-        logo_w,
-        logo_h
-    };
-    return logo_dst;
-}
-
-static void reborn_titlefix_render(int w, int h)
-{
-    int title_screen = reborn_titlefix_is_title(w, h);
-
-    if (title_screen && !reborn_titlefix_played) {
-        reborn_titlefix_played = 1;
-        reborn_titlefix_state = 1;
-        reborn_titlefix_started = SDL_GetTicks();
-    }
-
-    /* The wordmark belongs to the title presentation, not to a separate
-       startup splash. Do not cover or fade away the original title screen. */
-    if (!title_screen || reborn_titlefix_state == 0) return;
-
-    if (!reborn_titlefix_stage[4] && !reborn_titlefix_create_textures())
-        return;
-
-    SDL_Rect logo_dst = reborn_titlefix_logo_rect();
-
-    if (reborn_titlefix_state == 1) {
-        uint32_t elapsed = SDL_GetTicks() - reborn_titlefix_started;
-
-        if (elapsed < 1850) {
-            /* Keep Start/Options from being activated before the reveal ends. */
-            md_live_mask = 0;
-
-            int stage = elapsed < 220 ? 0 :
-                        elapsed < 440 ? 1 :
-                        elapsed < 660 ? 2 :
-                        elapsed < 900 ? 3 : 4;
-
-            /* A short fade-in, followed by a pixel-art resolution reveal.
-               The finished mark remains at this exact size and position. */
-            int alpha = elapsed < 100 ? (int)(elapsed * 255 / 100) : 255;
-            if (alpha < 0) alpha = 0;
-            if (alpha > 255) alpha = 255;
-
-            SDL_SetTextureAlphaMod(reborn_titlefix_stage[stage], (uint8_t)alpha);
-            SDL_RenderCopy(ren, reborn_titlefix_stage[stage], NULL, &logo_dst);
-            SDL_SetTextureAlphaMod(reborn_titlefix_stage[stage], 255);
-            return;
-        }
-
-        reborn_titlefix_state = 2;
-    }
-
-    /* Permanent title lockup: keep the full Reborn wordmark visible for as
-       long as the original title menu is on screen. No shrink, fade, or swap
-       back to the unbranded Mega Turrican title. */
-    if (reborn_titlefix_state == 2) {
-        SDL_RenderCopy(ren, reborn_titlefix_stage[4], NULL, &logo_dst);
-    }
-}
-/* ---- end Reborn title branding ---- */
-'''
+WIDTH = 96
+HEIGHT = 24
+FRAME_COUNT = 11
+FRAME_TICKS = 4
 
 
 def repair_palette_png(data: bytes) -> bytes:
-    """Repair the supplied PNG's damaged PLTE boundary without changing pixels.
-
-    The uploaded file has an intact IHDR, palette data, tRNS data and IDAT
-    stream, but the PLTE CRC/boundary bytes are malformed. Rebuild the
-    standard chunk sequence and recalculate CRCs so ordinary PNG decoders
-    can load the original indexed-colour artwork.
-    """
+    """Repair the supplied indexed PNG's damaged PLTE boundary/CRCs."""
     signature = b"\x89PNG\r\n\x1a\n"
     if not data.startswith(signature):
         raise RuntimeError("Reborn logo payload is not a PNG")
@@ -193,9 +34,8 @@ def repair_palette_png(data: bytes) -> bytes:
     trns_at = data.find(b"tRNS")
     idat_at = data.find(b"IDAT")
     iend_at = data.find(b"IEND")
-
     if min(ihdr_at, plte_at, trns_at, idat_at, iend_at) < 4:
-        raise RuntimeError("Reborn logo PNG is missing a required image chunk")
+        raise RuntimeError("Reborn logo PNG is missing a required chunk")
     if not (ihdr_at < plte_at < trns_at < idat_at < iend_at):
         raise RuntimeError("Reborn logo PNG chunks are in an unexpected order")
 
@@ -203,34 +43,23 @@ def repair_palette_png(data: bytes) -> bytes:
     plte_len = struct.unpack(">I", data[plte_at - 4:plte_at])[0]
     trns_len = struct.unpack(">I", data[trns_at - 4:trns_at])[0]
     idat_len = struct.unpack(">I", data[idat_at - 4:idat_at])[0]
-    iend_len = struct.unpack(">I", data[iend_at - 4:iend_at])[0]
-
-    if (ihdr_len, plte_len, iend_len) != (13, 768, 0):
-        raise RuntimeError(
-            f"Unexpected Reborn PNG chunk sizes: IHDR={ihdr_len}, "
-            f"PLTE={plte_len}, IEND={iend_len}"
-        )
+    if ihdr_len != 13 or plte_len != 768:
+        raise RuntimeError(f"Unexpected Reborn PNG chunk sizes: IHDR={ihdr_len}, PLTE={plte_len}")
 
     ihdr = data[ihdr_at + 4:ihdr_at + 4 + ihdr_len]
     palette = data[plte_at + 4:plte_at + 4 + plte_len]
     transparency = data[trns_at + 4:trns_at + 4 + trns_len]
     compressed = data[idat_at + 4:idat_at + 4 + idat_len]
-
-    if len(ihdr) != 13 or len(palette) != 768:
-        raise RuntimeError("Reborn PNG header or palette is truncated")
     width, height, bit_depth, color_type = struct.unpack(">IIBB", ihdr[:10])
     if (width, height, bit_depth, color_type) != (160, 40, 8, 3):
-        raise RuntimeError(
-            f"Unexpected Reborn PNG format: {width}x{height}, "
-            f"depth={bit_depth}, colour_type={color_type}"
-        )
+        raise RuntimeError(f"Unexpected Reborn PNG format: {width}x{height}, depth={bit_depth}, type={color_type}")
     decoded = zlib.decompress(compressed)
     if len(decoded) != (width + 1) * height:
         raise RuntimeError("Reborn PNG image stream has an unexpected decoded size")
     if len(transparency) > 256:
         raise RuntimeError("Reborn PNG transparency table is too large")
 
-    rebuilt = (
+    return (
         signature
         + chunk(b"IHDR", ihdr)
         + chunk(b"PLTE", palette)
@@ -238,102 +67,360 @@ def repair_palette_png(data: bytes) -> bytes:
         + chunk(b"IDAT", compressed)
         + chunk(b"IEND", b"")
     )
-    return rebuilt
 
 
-def make_header(png_path: Path, header_path: Path) -> None:
-    raw_png = png_path.read_bytes()
-    try:
-        image = Image.open(BytesIO(raw_png)).convert("RGBA")
-    except Exception:
-        repaired_png = repair_palette_png(raw_png)
-        image = Image.open(BytesIO(repaired_png)).convert("RGBA")
-        png_path.write_bytes(repaired_png)
-        print("Repaired the Reborn logo PNG palette/chunk checksums before embedding.")
-    width, height = image.size
-    if (width, height) != (160, 40):
-        raise RuntimeError(f"Unexpected embedded logo size: {width}x{height}")
+def _pack_indices(indices: list[int]) -> bytes:
+    out = bytearray((len(indices) + 1) // 2)
+    for i in range(0, len(indices), 2):
+        hi = indices[i] & 15
+        lo = indices[i + 1] & 15 if i + 1 < len(indices) else 0
+        out[i // 2] = (hi << 4) | lo
+    return bytes(out)
 
+
+def make_vdp_asset(image: Image.Image, target: Path) -> None:
+    """Make a compact multi-frame 4-bit pixel animation for the VDP sprite path."""
+    if image.size != (160, 40):
+        raise RuntimeError(f"Unexpected supplied Reborn logo size: {image.width}x{image.height}")
+
+    image = image.resize((WIDTH, HEIGHT), Image.Resampling.NEAREST).convert("RGBA")
     pixels = list(image.getdata())
-    palette = [(0, 0, 0, 0)]
-    lookup = {(0, 0, 0, 0): 0}
-    indices = []
+    transparent = (0, 0, 0, 0)
+    palette = [transparent]
+    lookup = {transparent: 0}
+    base: list[int] = []
 
     for r, g, b, a in pixels:
-        color = (r, g, b, a) if a >= 128 else (0, 0, 0, 0)
+        color = (r, g, b, a) if a >= 128 else transparent
         idx = lookup.get(color)
         if idx is None:
             idx = len(palette)
             if idx >= 16:
-                raise RuntimeError("Reborn logo has more than 16 colours")
+                raise RuntimeError("Downscaled Reborn logo exceeds the 16-colour VDP palette")
             lookup[color] = idx
             palette.append(color)
-        indices.append(idx)
+        base.append(idx)
 
-    palette += [(0, 0, 0, 0)] * (16 - len(palette))
-    packed = []
+    palette += [transparent] * (16 - len(palette))
+    rgb = [(c[0], c[1], c[2]) for c in palette]
+
+    # Give every 4x3 pixel cell a deterministic centre-outward reveal rank.
+    block_w, block_h = 4, 3
+    blocks_x, blocks_y = WIDTH // block_w, HEIGHT // block_h
+    cx, cy = (blocks_x - 1) / 2.0, (blocks_y - 1) / 2.0
+    ranks: dict[tuple[int, int], float] = {}
+    for by in range(blocks_y):
+        for bx in range(blocks_x):
+            dist = abs(bx - cx) / max(cx, 1.0) + abs(by - cy) / max(cy, 1.0)
+            noise = ((bx * 37 + by * 19 + bx * by * 7) % 23) / 90.0
+            ranks[(bx, by)] = dist + noise
+    low, high = min(ranks.values()), max(ranks.values())
+    for key, value in list(ranks.items()):
+        ranks[key] = (value - low) / max(high - low, 0.001)
+
+    frames: list[list[int]] = []
+    frames.append([0] * (WIDTH * HEIGHT))
+
+    # Brief glints, then a deliberately pixelated centre-out assembly.
+    spark = [0] * (WIDTH * HEIGHT)
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            p = y * WIDTH + x
+            if base[p] and ((x * 29 + y * 43 + x * y * 7) % 97) < 4:
+                spark[p] = base[p]
+    frames.append(spark)
+
+    thresholds = [0.10, 0.24, 0.42, 0.62, 0.82, 1.01]
+    for threshold in thresholds:
+        frame = [0] * (WIDTH * HEIGHT)
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                p = y * WIDTH + x
+                if base[p] == 0:
+                    continue
+                if ranks[(x // block_w, y // block_h)] <= threshold:
+                    frame[p] = base[p]
+        frames.append(frame)
+
+    # A narrow metallic light sweep travels across the finished wordmark.
+    bright_map = [0] * 16
+    for i in range(1, 16):
+        r, g, b = rgb[i]
+        target_rgb = (min(255, r + 58), min(255, g + 58), min(255, b + 58))
+        bright_map[i] = min(
+            range(1, 16),
+            key=lambda j: sum((rgb[j][k] - target_rgb[k]) ** 2 for k in range(3)),
+        )
+    for centre in (18, 48, 78):
+        frame = list(base)
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                p = y * WIDTH + x
+                if frame[p] and abs(x - centre - (y - HEIGHT / 2) * 0.22) <= 3:
+                    frame[p] = bright_map[frame[p]]
+        frames.append(frame)
+
+    frames.append(list(base))
+    if len(frames) != FRAME_COUNT:
+        raise RuntimeError(f"Expected {FRAME_COUNT} Reborn animation frames, got {len(frames)}")
+
+    palette_values = []
     for r, g, b, a in palette:
-        packed.append((a << 24) | (r << 16) | (g << 8) | b)
+        palette_values.append((r << 16) | (g << 8) | b if a >= 128 else 0)
 
-    def rows(values: list[int], per_row: int, render) -> str:
+    def emit_rows(values: list[int], per_row: int, render) -> str:
         return ",\n".join(
-            "    " + ", ".join(render(v) for v in values[i:i + per_row])
+            "        " + ", ".join(render(v) for v in values[i:i + per_row])
             for i in range(0, len(values), per_row)
         )
 
+    packed_frames = [_pack_indices(frame) for frame in frames]
+    frame_bytes = len(packed_frames[0])
     header = (
-        "#ifndef REBORN_LOGO_ASSET_H\n"
-        "#define REBORN_LOGO_ASSET_H\n"
+        "#ifndef REBORN_VDP_ASSET_H\n"
+        "#define REBORN_VDP_ASSET_H\n"
         "#include <stdint.h>\n"
-        "#define REBORN_LOGO_WIDTH 160\n"
-        "#define REBORN_LOGO_HEIGHT 40\n"
-        "static const uint32_t REBORN_LOGO_PALETTE[16] = {\n"
-        + rows(packed, 4, lambda v: f"0x{v:08X}u")
+        f"#define REBORN_VDP_WIDTH {WIDTH}\n"
+        f"#define REBORN_VDP_HEIGHT {HEIGHT}\n"
+        f"#define REBORN_VDP_FRAME_COUNT {FRAME_COUNT}\n"
+        f"#define REBORN_VDP_FRAME_TICKS {FRAME_TICKS}\n"
+        f"#define REBORN_VDP_FRAME_BYTES {frame_bytes}\n"
+        "static const uint32_t REBORN_VDP_PALETTE[16] = {\n"
+        + emit_rows(palette_values, 4, lambda v: f"0x{v:06X}u")
         + "\n};\n"
-        "static const uint8_t REBORN_LOGO_PIXELS[REBORN_LOGO_WIDTH * REBORN_LOGO_HEIGHT] = {\n"
-        + rows(indices, 24, lambda v: str(v))
-        + "\n};\n"
-        "#endif\n"
-    )
-    header_path.write_text(header, encoding="utf-8", newline="\n")
-
-
-def patch_source(source_path: Path) -> None:
-    source = source_path.read_text(encoding="utf-8")
-
-    if "reborn_titlefix_render(w, h);" in source:
-        raise RuntimeError("Reborn title bumper patch is already installed")
-
-    include = '#include "reborn_logo_asset.h"\n'
-    if include not in source:
-        marker = '#include "vdp.h"\n'
-        if marker not in source:
-            raise RuntimeError('Could not find #include "vdp.h" in SDL frontend')
-        source = source.replace(marker, marker + include, 1)
-
-    frame_marker = "void md_frame_hook(void)"
-    if source.count(frame_marker) != 1:
-        raise RuntimeError("Could not uniquely identify md_frame_hook()")
-    source = source.replace(frame_marker, C_CODE + "\n" + frame_marker, 1)
-
-    render_pattern = re.compile(
-        r"(?m)^([ \t]*)SDL_RenderCopy\(ren,\s*tex,\s*&src,\s*&game_dst\);\s*$"
-    )
-    matches = list(render_pattern.finditer(source))
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"Expected one game-frame SDL_RenderCopy call, found {len(matches)}"
+        "static const uint8_t REBORN_VDP_FRAMES[REBORN_VDP_FRAME_COUNT][REBORN_VDP_FRAME_BYTES] = {\n"
+        + ",\n".join(
+            "    {\n" + emit_rows(list(frame), 16, lambda v: f"0x{v:02X}") + "\n    }"
+            for frame in packed_frames
         )
-    match = matches[0]
-    indent = match.group(1)
-    insertion = (
-        match.group(0)
-        + "\n"
-        + indent
-        + "reborn_titlefix_render(w, h);"
+        + "\n};\n#endif\n"
     )
-    source = source[:match.start()] + insertion + source[match.end():]
-    source_path.write_text(source, encoding="utf-8", newline="\n")
+    target.write_text(header, encoding="utf-8", newline="\n")
+
+
+VDP_DRAW = r'''
+/* Reborn is a native title-only extended sprite in the emulated VDP path.
+ * It enters the same sprite pixel buffer as the cartridge sprites, before
+ * priority composition, scaling, scanlines, and the SDL presentation stage. */
+static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
+{
+    if (!vdp.reborn_title_active) return;
+    int y0 = (vdp.height * 445) / 1000;
+    int row = y - y0;
+    if (row < 0 || row >= REBORN_VDP_HEIGHT) return;
+
+    int x0 = (W - REBORN_VDP_WIDTH) / 2;
+    if (x0 < 0) return;
+
+    int frame = vdp.reborn_title_frame;
+    if (frame < 0) frame = 0;
+    if (frame >= REBORN_VDP_FRAME_COUNT) frame = REBORN_VDP_FRAME_COUNT - 1;
+    const uint8_t *packed = REBORN_VDP_FRAMES[frame];
+    size_t row_start = (size_t)row * REBORN_VDP_WIDTH;
+
+    for (int x = 0; x < REBORN_VDP_WIDTH && x0 + x < W; ++x) {
+        size_t pixel = row_start + (size_t)x;
+        uint8_t byte = packed[pixel >> 1];
+        uint8_t index = (pixel & 1) ? (byte & 15) : (byte >> 4);
+        if (index) dst[x0 + x] = (uint8_t)(0xC0 | index);
+    }
+}
+'''
+
+
+TITLE_HELPERS = StringRaw = r'''
+/* Reborn title-state detection is intentionally stricter than a colour-only
+ * guess: require the Mega Turrican fire/metal logo, the centred title menu,
+ * and its original copyright block. That rejects ordinary gameplay scenes. */
+static int reborn_title_scene_visible(void)
+{
+    int W = vdp.width, H = vdp.height;
+    if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
+
+    int warm = 0, metal = 0, menu_red = 0, menu_white = 0, credits = 0;
+
+    for (int y = H * 3 / 100; y < H * 46 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 5 / 100; x < W * 95 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 150 && g > 35 && r > g + 55 && g > b + 20) ++warm;
+            int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            if (hi > 70 && hi < 230 && hi - lo < 52 && r > 55 && g > 50 && b > 65)
+                ++metal;
+        }
+    }
+
+    for (int y = H * 50 / 100; y < H * 70 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 30 / 100; x < W * 70 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 130 && g < 110 && b < 90) ++menu_red;
+            if (r > 130 && g > 130 && b > 140) ++menu_white;
+        }
+    }
+
+    for (int y = H * 76 / 100; y < H * 93 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 5 / 100; x < W * 95 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 150 && g > 150 && b > 155) ++credits;
+        }
+    }
+
+    return warm > 500 && metal > 1500 &&
+           menu_red + menu_white > 80 && credits > 300;
+}
+
+static void reborn_title_update(void)
+{
+    static int present_frames = 0;
+    static int missing_frames = 0;
+    static int frame_ticks = 0;
+    static int animation_finished = 0;
+    int visible = reborn_title_scene_visible();
+
+    if (visible) {
+        missing_frames = 0;
+        if (present_frames < 3) ++present_frames;
+    } else {
+        present_frames = 0;
+        if (missing_frames < 4) ++missing_frames;
+    }
+
+    if (!vdp.reborn_title_active && present_frames >= 3) {
+        vdp.reborn_title_active = 1;
+        vdp.reborn_title_frame = animation_finished
+            ? REBORN_VDP_FRAME_COUNT - 1 : 0;
+        frame_ticks = 0;
+    }
+
+    if (!vdp.reborn_title_active) return;
+    if (missing_frames >= 4) {
+        vdp.reborn_title_active = 0;
+        return;
+    }
+
+    if (!animation_finished && ++frame_ticks >= REBORN_VDP_FRAME_TICKS) {
+        frame_ticks = 0;
+        if (vdp.reborn_title_frame < REBORN_VDP_FRAME_COUNT - 1)
+            ++vdp.reborn_title_frame;
+        if (vdp.reborn_title_frame >= REBORN_VDP_FRAME_COUNT - 1)
+            animation_finished = 1;
+    }
+}
+'''
+
+
+def replace_once(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
+    if count != 1:
+        raise RuntimeError(f"Expected one {label} marker, found {count}")
+    return source.replace(old, new, 1)
+
+
+def patch_vdp(project: Path) -> None:
+    header = project / "runtime" / "vdp.h"
+    source = project / "runtime" / "vdp.c"
+    h = header.read_text(encoding="utf-8")
+    c = source.read_text(encoding="utf-8")
+
+    h = replace_once(
+        h,
+        "int width, height; uint32_t fb[320 * 240];",
+        "int width, height; uint32_t fb[320 * 240];\n"
+        "    int reborn_title_active, reborn_title_frame;",
+        "VDP presentation fields",
+    )
+    c = replace_once(
+        c,
+        '#include "vdp.h"\n#include <string.h>\n',
+        '#include "vdp.h"\n#include <string.h>\n#include "reborn_vdp_asset.h"\n',
+        "VDP asset include",
+    )
+    c = replace_once(
+        c,
+        "void vdp_render_line(int y){",
+        VDP_DRAW + "\nvoid vdp_render_line(int y){",
+        "VDP scanline renderer",
+    )
+    c = replace_once(
+        c,
+        "draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W);",
+        "draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); "
+        "draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);",
+        "VDP sprite composition call",
+    )
+    c = replace_once(
+        c,
+        "uint8_t a = pa[x], b = pb[x], s = sp[x]; int v, mode = 0, spr = 0;",
+        "uint8_t a = pa[x], b = pb[x], s = sp[x];\n"
+        "        if (s & 0x40) { out[x] = REBORN_VDP_PALETTE[s & 15] & 0x00FFFFFFu; continue; }\n"
+        "        int v, mode = 0, spr = 0;",
+        "VDP custom sprite palette path",
+    )
+    header.write_text(h, encoding="utf-8", newline="\n")
+    source.write_text(c, encoding="utf-8", newline="\n")
+
+
+def patch_sdl(project: Path) -> None:
+    path = project / "runtime" / "sdl_main.c"
+    source = path.read_text(encoding="utf-8")
+
+    start = "/* ------------------------------------------------------------------ Reborn intro bumper */"
+    frame_hook = "/* ------------------------------------------------------------------ frame hook */"
+    if source.count(start) != 1 or source.count(frame_hook) != 1:
+        raise RuntimeError("Could not uniquely locate the old SDL Reborn bumper section")
+    a = source.index(start)
+    b = source.index(frame_hook, a)
+    source = source[:a] + source[b:]
+
+    # Remove the old input-swallowing bumper behavior.
+    event_block = re.compile(
+        r"\n\s*if\s*\(reborn_intro_active\s*&&[\s\S]*?\n\s*\}\n",
+        re.MULTILINE,
+    )
+    source, n = event_block.subn("\n", source, count=1)
+    if n != 1:
+        raise RuntimeError("Could not remove old Reborn bumper input interception")
+
+    source = replace_once(
+        source,
+        "    /* Reborn bumper runs once after the original Mega Turrican logo card. */\n"
+        "    reborn_intro_update();",
+        "    /* Update the native title-only VDP sprite before the next emulated frame. */\n"
+        "    reborn_title_update();",
+        "old Reborn frame update",
+    )
+    source = replace_once(
+        source,
+        "md_live_mask = (overlay_state==0 && !reborn_intro_active) ? readpad() : 0;",
+        "md_live_mask = (overlay_state==0) ? readpad() : 0;",
+        "old bumper input gate",
+    )
+    source = replace_once(
+        source,
+        "    if(reborn_intro_active) reborn_intro_draw(ww,wh);\n",
+        "",
+        "old SDL bumper draw call",
+    )
+    source = replace_once(
+        source,
+        "    reborn_logo_init();\n",
+        "",
+        "old SDL logo texture initialization",
+    )
+
+    source = source.replace(frame_hook, TITLE_HELPERS + "\n" + frame_hook, 1)
+    if "reborn_intro_active" in source or "reborn_intro_draw" in source or "reborn_logo_init" in source:
+        raise RuntimeError("Old SDL Reborn bumper code remains after cleanup")
+    if "SDL_RenderCopy(ren, reborn" in source or "reborn_titlefix_render" in source:
+        raise RuntimeError("SDL Reborn overlay rendering remains after cleanup")
+
+    path.write_text(source, encoding="utf-8", newline="\n")
 
 
 def main() -> int:
@@ -342,17 +429,25 @@ def main() -> int:
         return 2
 
     project = Path(sys.argv[1]).resolve()
-    source_path = project / "runtime" / "sdl_main.c"
-    header_path = project / "runtime" / "reborn_logo_asset.h"
     asset_b64 = Path(__file__).with_name("reborn-logo.png.b64").read_text(
         encoding="ascii"
     ).strip()
     png_path = project / "runtime" / "reborn-logo-build.png"
+    header_path = project / "runtime" / "reborn_vdp_asset.h"
     png_path.write_bytes(base64.b64decode(asset_b64, validate=True))
 
     try:
-        make_header(png_path, header_path)
-        patch_source(source_path)
+        raw = png_path.read_bytes()
+        try:
+            image = Image.open(BytesIO(raw)).convert("RGBA")
+        except Exception:
+            repaired = repair_palette_png(raw)
+            image = Image.open(BytesIO(repaired)).convert("RGBA")
+            png_path.write_bytes(repaired)
+            print("Repaired supplied Reborn PNG palette and chunk checksums.")
+        make_vdp_asset(image, header_path)
+        patch_vdp(project)
+        patch_sdl(project)
     finally:
         try:
             png_path.unlink()
@@ -360,8 +455,9 @@ def main() -> int:
             pass
 
     print(
-        "Embedded Reborn logo and installed permanent title branding: "
-        + hashlib.sha256(header_path.read_bytes()).hexdigest()
+        "Installed Reborn as a native VDP title sprite: "
+        f"{WIDTH}x{HEIGHT}, {FRAME_COUNT} animation frames, "
+        f"header SHA256={__import__('hashlib').sha256(header_path.read_bytes()).hexdigest()}"
     )
     return 0
 
