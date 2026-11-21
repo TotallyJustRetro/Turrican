@@ -128,6 +128,13 @@ jobs:
           python (Join-Path $PWD 'build-overrides/inspect-static-recomp.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Static recomp diagnostics failed.' }
 
+      - name: Upload private runtime state report
+        uses: actions/upload-artifact@v4
+        with:
+          name: MegaTurrican-runtime-state-report
+          path: runtime-state-report.txt
+          retention-days: 3
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
