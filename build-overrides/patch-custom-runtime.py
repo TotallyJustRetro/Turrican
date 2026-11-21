@@ -231,7 +231,7 @@ int {prefix}_state_load(const void *src,size_t bytes) {{
     return 1;
 }}
 """
-    path.write_text(s,encoding="utf-8",newline="\n")
+    path.write_text(s,encoding="utf-8")
 
 def patch_harness(project: Path) -> None:
     path=project/"runtime"/"harness.c"
