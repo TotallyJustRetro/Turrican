@@ -241,13 +241,13 @@ def patch_harness(project: Path) -> None:
         # objects are translation-unit globals so the serializer lives here.
         s=add_system_include(s,"errno.h")
         s=add_system_include(s,"sys/stat.h")
-        if "_WIN32" not in s:
+        if "#include <direct.h>" not in s:
             s=once(s,'#include <sys/stat.h>\n',
                    '#include <sys/stat.h>\n#ifdef _WIN32\n#include <direct.h>\n#endif\n',
                    "portable save directory header")
         api=RUNTIME_API
         s=s.rstrip()+"\n\n"+api+"\n"
-        path.write_text(s,encoding="utf-8",newline="\n")
+        path.write_text(s,encoding="utf-8")
     # Assert that the state globals used by the snapshot are actually declared.
     for name in ["ram[0x10000]","zram[0x2000]","static M68K *CPU","static Z80 zcpu",
                  "zbank","zbusreq","zreset","fm_acc","psg_acc","z80_over"]:
