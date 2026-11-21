@@ -13,8 +13,8 @@ from pathlib import Path
 from PIL import Image
 
 
-WIDTH = 96
-HEIGHT = 24
+WIDTH = 72
+HEIGHT = 18
 FRAME_COUNT = 12
 FRAME_TICKS = 4
 
@@ -205,7 +205,7 @@ VDP_DRAW = r'''
 static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
 {
     if (!vdp.reborn_title_active) return;
-    int y0 = (vdp.height * 445) / 1000;
+    int y0 = (vdp.height * 465) / 1000;
     int row = y - y0;
     if (row < 0 || row >= REBORN_VDP_HEIGHT) return;
 
