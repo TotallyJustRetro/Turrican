@@ -52,4 +52,4 @@ for rel in ("runtime/sdl_main.c", "runtime/vdp.h", "runtime/vdp.c", "runtime/har
 report = "\n".join(lines) + "\n"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(report, encoding="utf-8")
-print(report)
+print(report.encode('ascii', 'backslashreplace').decode('ascii'))
