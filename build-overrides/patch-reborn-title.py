@@ -231,22 +231,22 @@ static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
 TITLE_HELPERS = r'''
 #define REBORN_VDP_FRAME_COUNT 12
 #define REBORN_VDP_FRAME_TICKS 4
+#define REBORN_VDP_TITLE_EXIT_FRAMES 3
 #define REBORN_OPTIONS_RESET_FRAMES 8
 
-/* Detect the actual Mega Turrican logo card, not generic bright gameplay:
- * the small orange MEGA word at the top, the wide metallic TURRICAN wordmark,
- * and the characteristic fire band must all be present together. This card
- * occurs in the original intro and remains on the title screen. */
-static int reborn_title_logo_visible(void)
+/* Require the complete title composition, not just colours found in gameplay:
+ * MEGA lettering, metallic TURRICAN/fire logo, START, OPTIONS, and copyright
+ * credits must all be present in their original title-screen bands. */
+static int reborn_title_scene_visible(void)
 {
     int W = vdp.width, H = vdp.height;
     if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
 
-    int mega = 0;
-    int fire = 0;
+    int mega = 0, fire = 0;
     int metal[3] = {0, 0, 0};
+    int start_red = 0, options_white = 0, credits_white = 0;
 
-    /* The compact MEGA letters sit above the main wordmark. */
+    /* Original MEGA lettering, high above the metallic Turrican wordmark. */
     for (int y = H * 2 / 100; y < H * 15 / 100; ++y) {
         const uint32_t *row = &vdp.fb[y * 320];
         for (int x = W * 28 / 100; x < W * 75 / 100; ++x) {
@@ -256,7 +256,7 @@ static int reborn_title_logo_visible(void)
         }
     }
 
-    /* The fire and metallic bevel occupy three broad, adjoining logo zones. */
+    /* Metallic title wordmark and orange fire band across all three zones. */
     for (int y = H * 12 / 100; y < H * 46 / 100; ++y) {
         const uint32_t *row = &vdp.fb[y * 320];
         for (int x = W * 3 / 100; x < W * 97 / 100; ++x) {
@@ -275,19 +275,45 @@ static int reborn_title_logo_visible(void)
         }
     }
 
+    /* START is red/orange in the first menu row. */
+    for (int y = H * 50 / 100; y < H * 65 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 120 && r > g + 40 && g < 130 && b < 100) ++start_red;
+        }
+    }
+
+    /* OPTIONS is a separate pale row beneath START. */
+    for (int y = H * 65 / 100; y < H * 78 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 20 / 100; x < W * 80 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 130 && g > 130 && b > 140) ++options_white;
+        }
+    }
+
+    /* The multi-line copyright/license block exists only on the title screen. */
+    for (int y = H * 78 / 100; y < H * 99 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 2 / 100; x < W * 98 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 130 && g > 130 && b > 140) ++credits_white;
+        }
+    }
+
     return mega > 200 && fire > 600 &&
-           metal[0] > 500 && metal[1] > 500 && metal[2] > 500;
+           metal[0] > 500 && metal[1] > 500 && metal[2] > 500 &&
+           start_red > 60 && options_white > 75 && credits_white > 400;
 }
 
-/* The wordmark is introduced when the original Mega Turrican logo card
- * appears after the SEGA sequence. The completed mark then stays in the
- * VDP scene while that title art remains visible, including the title menu.
- * Leaving the logo card (for gameplay) removes it; it never paints gameplay. */
-
-/* Original GAME OPTIONS menu signature. This detector is evaluated only
- * after the logo-card signature has been absent for several consecutive
- * frames, so title-logo fire, START/OPTIONS, and credits cannot reset the
- * animation while the title is idle. */
+/* Reveal once when the original title composition first appears. Keep the
+ * completed logo visible, then loop its metallic glint frames indefinitely.
+ * The logo is removed after leaving the title composition for several frames,
+ * and a later return to the title restarts the pixelated reveal. */
 static int reborn_game_options_visible(void)
 {
     int W = vdp.width, H = vdp.height;
@@ -368,21 +394,23 @@ static void reborn_title_update(void)
     static int frame_ticks = 0;
     static int animation_finished = 0;
 
-    int visible = reborn_title_logo_visible();
+    int visible = reborn_title_scene_visible();
 
     if (visible) {
-        /* Title is present: don't even evaluate the Options signature. */
+        /* While the full title composition is visible, Options cannot be
+         * considered active even if individual text colour bands overlap. */
         missing_frames = 0;
         options_frames = 0;
         options_reset_latched = 0;
-        if (present_frames < 3) ++present_frames;
+        if (present_frames < REBORN_VDP_TITLE_EXIT_FRAMES)
+            ++present_frames;
     } else {
         present_frames = 0;
         if (missing_frames < REBORN_OPTIONS_RESET_FRAMES)
             ++missing_frames;
 
-        /* Only accept the Options signature after the title/logo has been
-         * absent continuously. A few missed title frames cannot retrigger. */
+        /* Require a sustained non-title screen before testing the specific
+         * GAME OPTIONS layout. This rejects brief title-renderer fluctuations. */
         if (missing_frames >= REBORN_OPTIONS_RESET_FRAMES &&
             !options_reset_latched &&
             reborn_game_options_visible()) {
@@ -393,9 +421,8 @@ static void reborn_title_update(void)
         }
     }
 
-    /* A confirmed Options visit resets the one-shot for the next title entry.
-     * It does not change the animation frames or replay while Options is open. */
     if (options_frames >= REBORN_OPTIONS_RESET_FRAMES) {
+        /* Options visit is the only event that rearms the one-shot animation. */
         animation_finished = 0;
         vdp.reborn_title_active = 0;
         vdp.reborn_title_frame = 0;
@@ -405,7 +432,8 @@ static void reborn_title_update(void)
         return;
     }
 
-    if (!vdp.reborn_title_active && present_frames >= 3) {
+    if (!vdp.reborn_title_active &&
+        present_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
         vdp.reborn_title_active = 1;
         vdp.reborn_title_frame = animation_finished
             ? REBORN_VDP_FRAME_COUNT - 1 : 0;
@@ -414,9 +442,8 @@ static void reborn_title_update(void)
 
     if (!vdp.reborn_title_active) return;
 
-    /* Leaving for gameplay hides the mark but does not consume or reset the
-     * reveal. Returning from Options is the only way to replay it. */
-    if (missing_frames >= 4) {
+    if (missing_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
+        /* Hide during gameplay without resetting the reveal-completed latch. */
         vdp.reborn_title_active = 0;
         return;
     }
