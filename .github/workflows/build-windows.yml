@@ -92,6 +92,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Inspect native title and intro source
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/inspect-reborn-internals.py') $env:MEGATURRICAN_PROJECT (Join-Path $PWD 'reborn-source-inspection.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'Inspecting native title and intro source failed.' }
+          Get-Content (Join-Path $PWD 'reborn-source-inspection.txt') -Raw
+      - name: Upload native title source inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: MegaTurrican-Reborn-Source-Inspection
+          path: reborn-source-inspection.txt
+          retention-days: 7
+
       - name: Install Pillow for Windows icon conversion
         shell: pwsh
         run: |
