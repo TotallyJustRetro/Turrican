@@ -260,13 +260,18 @@ def patch_recompiled_continues(project: Path) -> None:
         m=re.search(r'(?m)^#include [^\n]+\n',s)
         if not m: raise RuntimeError("Could not find generated recomp include section.")
         s=s[:m.end()]+"extern int md_infinite_continues_enabled;\n"+s[m.end():]
-    old="D(1)=(uint32_t)(int32_t)(int8_t)1; fl_logic(c,D(1),32);"
-    new="D(1)=(uint32_t)(int32_t)(int8_t)(md_infinite_continues_enabled ? 0 : 1); fl_logic(c,D(1),32);"
-    if new not in s:
-        n=s.count(old)
-        if n!=2: raise RuntimeError(f"Expected both static-recomp $00192C sites, found {n}")
-        s=s.replace(old,new)
-    path.write_text(s,encoding="utf-8",newline="\n")
+    pattern=re.compile(
+        r'(L_192C:\s*\{\s*RT_POLL\(0x192C\);\s*)'
+        r'D\(1\)=\(uint32_t\)\(int32_t\)\(int8_t\)1;'
+        r'(\s*fl_logic\(c,D\(1\),32\);\s*\})'
+    )
+    if "md_infinite_continues_enabled ? 0 : 1" not in s:
+        s,n=pattern.subn(
+            r'\g<1>D(1)=(uint32_t)(int32_t)(int8_t)(md_infinite_continues_enabled ? 0 : 1);\\g<2>',
+            s
+        )
+        if n!=2: raise RuntimeError(f"Expected two generated L_192C blocks, found {n}")
+    path.write_text(s,encoding="utf-8",newline="\\n")
 
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
