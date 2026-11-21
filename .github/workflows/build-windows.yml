@@ -116,6 +116,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-reborn-title.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Embedding the Reborn title animation failed.' }
 
+      - name: Install native VDP pause and controller menus
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-native-game-menus.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native VDP pause and controller menus failed.' }
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
