@@ -234,9 +234,7 @@ TITLE_HELPERS = r'''
 #define REBORN_VDP_TITLE_EXIT_FRAMES 3
 #define REBORN_OPTIONS_RESET_FRAMES 8
 
-/* Require the complete title composition, not just colours found in gameplay:
- * MEGA lettering, metallic TURRICAN/fire logo, START, OPTIONS, and copyright
- * credits must all be present in their original title-screen bands. */
+/* Recognize the original title card from its MEGA letters, metallic TURRICAN/fire artwork, and copyright credit block. Do not key off START/OPTIONS selection colours: hovering either menu item changes those colours. */
 static int reborn_title_scene_visible(void)
 {
     int W = vdp.width, H = vdp.height;
@@ -244,7 +242,7 @@ static int reborn_title_scene_visible(void)
 
     int mega = 0, fire = 0;
     int metal[3] = {0, 0, 0};
-    int start_red = 0, options_white = 0, credits_white = 0;
+    int credits_white = 0;
 
     /* Original MEGA lettering, high above the metallic Turrican wordmark. */
     for (int y = H * 2 / 100; y < H * 15 / 100; ++y) {
@@ -275,26 +273,6 @@ static int reborn_title_scene_visible(void)
         }
     }
 
-    /* START is red/orange in the first menu row. */
-    for (int y = H * 50 / 100; y < H * 65 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 120 && r > g + 40 && g < 130 && b < 100) ++start_red;
-        }
-    }
-
-    /* OPTIONS is a separate pale row beneath START. */
-    for (int y = H * 65 / 100; y < H * 78 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 20 / 100; x < W * 80 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 130 && g > 130 && b > 140) ++options_white;
-        }
-    }
-
     /* The multi-line copyright/license block exists only on the title screen. */
     for (int y = H * 78 / 100; y < H * 99 / 100; ++y) {
         const uint32_t *row = &vdp.fb[y * 320];
@@ -307,7 +285,7 @@ static int reborn_title_scene_visible(void)
 
     return mega > 200 && fire > 600 &&
            metal[0] > 500 && metal[1] > 500 && metal[2] > 500 &&
-           start_red > 60 && options_white > 75 && credits_white > 400;
+           credits_white > 400;
 }
 
 /* Reveal once when the original title composition first appears. Keep the
@@ -392,13 +370,13 @@ static void reborn_title_update(void)
     static int options_frames = 0;
     static int options_reset_latched = 0;
     static int frame_ticks = 0;
-    static int animation_finished = 0;
+    static int reveal_consumed = 0;
 
-    int visible = reborn_title_scene_visible();
+    const int title_visible = reborn_title_scene_visible();
 
-    if (visible) {
-        /* While the full title composition is visible, Options cannot be
-         * considered active even if individual text colour bands overlap. */
+    if (title_visible) {
+        /* The title logo and credits stay visible when START/OPTIONS selection
+         * changes, so menu hover never hides or restarts the Reborn mark. */
         missing_frames = 0;
         options_frames = 0;
         options_reset_latched = 0;
@@ -409,8 +387,8 @@ static void reborn_title_update(void)
         if (missing_frames < REBORN_OPTIONS_RESET_FRAMES)
             ++missing_frames;
 
-        /* Require a sustained non-title screen before testing the specific
-         * GAME OPTIONS layout. This rejects brief title-renderer fluctuations. */
+        /* Only a sustained, specific GAME OPTIONS screen can re-arm the
+         * one-shot. Gameplay and single-frame detector misses cannot do so. */
         if (missing_frames >= REBORN_OPTIONS_RESET_FRAMES &&
             !options_reset_latched &&
             reborn_game_options_visible()) {
@@ -422,8 +400,7 @@ static void reborn_title_update(void)
     }
 
     if (options_frames >= REBORN_OPTIONS_RESET_FRAMES) {
-        /* Options visit is the only event that rearms the one-shot animation. */
-        animation_finished = 0;
+        reveal_consumed = 0;
         vdp.reborn_title_active = 0;
         vdp.reborn_title_frame = 0;
         frame_ticks = 0;
@@ -435,25 +412,35 @@ static void reborn_title_update(void)
     if (!vdp.reborn_title_active &&
         present_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
         vdp.reborn_title_active = 1;
-        vdp.reborn_title_frame = animation_finished
-            ? REBORN_VDP_FRAME_COUNT - 1 : 0;
         frame_ticks = 0;
+
+        if (!reveal_consumed) {
+            /* Initial launch or return from GAME OPTIONS: animate once. */
+            vdp.reborn_title_frame = 0;
+            reveal_consumed = 1;
+        } else {
+            /* Every other re-entry holds the final frame; never loop. */
+            vdp.reborn_title_frame = REBORN_VDP_FRAME_COUNT - 1;
+        }
     }
 
     if (!vdp.reborn_title_active) return;
 
     if (missing_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
-        /* Hide during gameplay without resetting the reveal-completed latch. */
+        /* Leave the logo hidden during gameplay. Preserve reveal_consumed. */
         vdp.reborn_title_active = 0;
         return;
     }
 
-    if (!animation_finished && ++frame_ticks >= REBORN_VDP_FRAME_TICKS) {
-        frame_ticks = 0;
-        if (vdp.reborn_title_frame < REBORN_VDP_FRAME_COUNT - 1)
+    /* Advance only through the original one-shot Build #63 reveal frames.
+     * Once the final frame is reached it remains static indefinitely. */
+    if (vdp.reborn_title_frame < REBORN_VDP_FRAME_COUNT - 1) {
+        if (++frame_ticks >= REBORN_VDP_FRAME_TICKS) {
+            frame_ticks = 0;
             ++vdp.reborn_title_frame;
-        if (vdp.reborn_title_frame >= REBORN_VDP_FRAME_COUNT - 1)
-            animation_finished = 1;
+        }
+    } else {
+        frame_ticks = 0;
     }
 }'''
 
