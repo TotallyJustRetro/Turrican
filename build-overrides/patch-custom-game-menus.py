@@ -38,6 +38,9 @@ extern void md_apply_custom_gameplay_options(void);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
+extern int md_save_slot(int slot);
+extern int md_load_slot(int slot);
+extern int md_save_slot_exists(int slot);
 '''
 
 CUSTOM_PAGES = r'''
