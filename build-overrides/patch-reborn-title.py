@@ -14,9 +14,9 @@ from PIL import Image
 
 
 C_CODE = r'''
-/* ---- Mega Turrican Reborn title bumper (compiled into the native game) ---- */
+/* ---- Mega Turrican Reborn permanent title branding (compiled into the native game) ---- */
 static SDL_Texture *reborn_titlefix_stage[5];
-static int reborn_titlefix_state = 0; /* 0 waiting, 1 bumper playing, 2 shown */
+static int reborn_titlefix_state = 0; /* 0 waiting, 1 reveal playing, 2 persistent */
 static int reborn_titlefix_played = 0;
 static uint32_t reborn_titlefix_started = 0;
 
@@ -166,7 +166,7 @@ static void reborn_titlefix_render(int w, int h)
         SDL_RenderCopy(ren, reborn_titlefix_stage[4], NULL, &logo_dst);
     }
 }
-/* ---- end Reborn title bumper ---- */
+/* ---- end Reborn title branding ---- */
 '''
 
 
@@ -282,7 +282,7 @@ def main() -> int:
             pass
 
     print(
-        "Embedded Reborn logo and installed title-screen bumper: "
+        "Embedded Reborn logo and installed permanent title branding: "
         + hashlib.sha256(header_path.read_bytes()).hexdigest()
     )
     return 0
