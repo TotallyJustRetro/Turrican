@@ -122,6 +122,14 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-native-game-menus.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing native VDP pause and controller menus failed.' }
 
+      - name: Install native gameplay cheats, continues patch, and save slots
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-custom-runtime.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native gameplay options and save slots failed.' }
+          python (Join-Path $PWD 'build-overrides/patch-custom-game-menus.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native Extras menus failed.' }
+
       - name: Inspect static recomp gameplay hooks
         shell: pwsh
         run: |
