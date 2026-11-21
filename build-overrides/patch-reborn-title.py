@@ -309,6 +309,85 @@ static int reborn_title_scene_visible(void)
            start_red > 60 && options_white > 75 && credits_white > 400;
 }
 
+/* Detect the game's own GAME OPTIONS screen so a completed title reveal
+ * is reset only for a real visit to Options, never because animated title
+ * artwork briefly fails a pixel threshold. */
+static int reborn_options_menu_visible(void)
+{
+    int W = vdp.width, H = vdp.height;
+    if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
+
+    int heading = 0, game_level = 0;
+    int normal = 0, rapid_fire = 0, controls = 0;
+    int music_test = 0, exit_label = 0;
+
+    /* GAME OPTIONS heading, centred near the very top. */
+    for (int y = H * 4 / 100; y < H * 12 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 27 / 100; x < W * 73 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++heading;
+        }
+    }
+
+    /* GAME LEVEL is the distinctive red option heading. */
+    for (int y = H * 22 / 100; y < H * 30 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 28 / 100; x < W * 72 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 120 && r > g + 35 && g < 125 && b < 105) ++game_level;
+        }
+    }
+
+    /* Fixed rows: NORMAL, RAPID FIRE, CONTROLS, MUSIC-TEST, and EXIT. */
+    for (int y = H * 30 / 100; y < H * 37 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 29 / 100; x < W * 71 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++normal;
+        }
+    }
+    for (int y = H * 37 / 100; y < H * 45 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 27 / 100; x < W * 73 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++rapid_fire;
+        }
+    }
+    for (int y = H * 49 / 100; y < H * 59 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++controls;
+        }
+    }
+    for (int y = H * 67 / 100; y < H * 77 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++music_test;
+        }
+    }
+    for (int y = H * 85 / 100; y < H * 96 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 30 / 100; x < W * 70 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 125 && g > 125 && b > 135) ++exit_label;
+        }
+    }
+
+    return heading > 45 && game_level > 25 &&
+           normal > 18 && rapid_fire > 25 &&
+           controls > 20 && music_test > 20 && exit_label > 15;
+}
+
 /* Reveal once when the original title composition first appears. Keep the
  * completed logo visible, then hold the final complete frame until leaving the title screen.
  * The logo is removed after leaving the title composition for several frames,
@@ -317,9 +396,32 @@ static void reborn_title_update(void)
 {
     static int present_frames = 0;
     static int missing_frames = 0;
+    static int options_frames = 0;
     static int frame_ticks = 0;
-    static int reveal_finished = 0;
+    static int reveal_consumed_this_title_visit = 0;
+
     int visible = reborn_title_scene_visible();
+    int options_visible = reborn_options_menu_visible();
+
+    /* Only the actual GAME OPTIONS menu resets the one-shot reveal. This
+     * avoids restarting it when animated fire or other title pixels briefly
+     * cause the title signature to miss for a frame. */
+    if (options_visible) {
+        if (options_frames < REBORN_VDP_TITLE_EXIT_FRAMES)
+            ++options_frames;
+    } else {
+        options_frames = 0;
+    }
+
+    if (options_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
+        vdp.reborn_title_active = 0;
+        vdp.reborn_title_frame = 0;
+        present_frames = 0;
+        missing_frames = 0;
+        frame_ticks = 0;
+        reveal_consumed_this_title_visit = 0;
+        return;
+    }
 
     if (visible) {
         missing_frames = 0;
@@ -331,38 +433,42 @@ static void reborn_title_update(void)
             ++missing_frames;
     }
 
-    if (!vdp.reborn_title_active && present_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
+    if (!vdp.reborn_title_active &&
+        present_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
         vdp.reborn_title_active = 1;
-        vdp.reborn_title_frame = 0;
         frame_ticks = 0;
-        reveal_finished = 0;
+
+        if (!reveal_consumed_this_title_visit) {
+            /* First title entry, or first title entry after a confirmed
+             * Options visit: play the pixelated animation from frame zero. */
+            vdp.reborn_title_frame = 0;
+            reveal_consumed_this_title_visit = 1;
+        } else {
+            /* The title signature may momentarily flicker. Restore the final
+             * still logo, but never replay the animation during this visit. */
+            vdp.reborn_title_frame = REBORN_VDP_FRAME_COUNT - 1;
+        }
     }
 
     if (!vdp.reborn_title_active) return;
 
     if (missing_frames >= REBORN_VDP_TITLE_EXIT_FRAMES) {
+        /* Hide it on gameplay/other screens, but do NOT reset the one-shot.
+         * Only the explicitly detected GAME OPTIONS menu resets that latch. */
         vdp.reborn_title_active = 0;
         vdp.reborn_title_frame = 0;
         frame_ticks = 0;
-        reveal_finished = 0;
         return;
     }
 
-    if (!reveal_finished) {
+    if (vdp.reborn_title_frame < REBORN_VDP_FRAME_COUNT - 1) {
         if (++frame_ticks >= REBORN_VDP_FRAME_TICKS) {
             frame_ticks = 0;
-            if (vdp.reborn_title_frame < REBORN_VDP_FRAME_COUNT - 1)
-                ++vdp.reborn_title_frame;
-            if (vdp.reborn_title_frame >= REBORN_VDP_FRAME_COUNT - 1) {
-                reveal_finished = 1;
-                frame_ticks = 0;
-            }
+            ++vdp.reborn_title_frame;
         }
     } else {
-        /* Play the reveal once per title-screen entry, then hold the finished
-         * artwork. Leaving for Options or another screen clears reveal_finished
-         * above, so returning to the title plays the same reveal again. */
-        vdp.reborn_title_frame = REBORN_VDP_FRAME_COUNT - 1;
+        /* Hold the completed artwork indefinitely until a real Options visit. */
+        frame_ticks = 0;
     }
 }
 '''
