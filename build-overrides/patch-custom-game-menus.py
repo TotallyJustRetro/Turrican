@@ -467,7 +467,8 @@ confirm:
             else if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
             else native_menu_dump_snapshot("other");
             continue;
-        }        if(reborn_game_options_visible() && e.type==SDL_KEYDOWN && !e.key.repeat &&
+        }
+        if(reborn_game_options_visible() && e.type==SDL_KEYDOWN && !e.key.repeat &&
            e.key.keysym.sym==SDLK_F6) {
             native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
             continue;
