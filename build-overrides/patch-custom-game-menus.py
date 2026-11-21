@@ -299,7 +299,7 @@ static void render_native_level_builder(void) {
     native_menu_rect(0,(vdp.height?vdp.height:224)-28,vdp.width?vdp.width:320,28,0x07,0x09,0x0D,230);
     draw_str(4,(vdp.height?vdp.height:224)-25,a,1,0xFF,0xAE,0x1F);
     draw_str(4,(vdp.height?vdp.height:224)-15,b,1,0xCC,0xD6,0xE0);
-    draw_str(4,(vdp.height?vdp.height:224)-5,"TILEMAP ONLY - COLLISION AND OBJECTS NOT EDITED",1,0x99,0xB4,0xC8);
+    draw_str(4,(vdp.height?vdp.height:224)-7,"TILEMAP ONLY - COLLISION AND OBJECTS NOT EDITED",1,0x99,0xB4,0xC8);
 }
 static void proc_native_level_builder(SDL_Event *e) {
     int cols=native_level_cols(),rows=native_level_rows();
@@ -336,9 +336,18 @@ static void proc_native_level_builder(SDL_Event *e) {
 }
 '''
 
+
+def ensure_sdl_headers(source: str) -> str:
+    if "#include <sys/stat.h>" not in source:
+        source=once(source,'#include <math.h>\\n','#include <math.h>\\n#include <sys/stat.h>\\n',"level builder mkdir header")
+    if "#include <direct.h>" not in source:
+        source=once(source,'#include <sys/stat.h>\\n','#include <sys/stat.h>\\n#ifdef _WIN32\\n#include <direct.h>\\n#endif\\n',"Windows level builder mkdir header")
+    return source
+
 def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
     s=path.read_text(encoding="utf-8-sig")
+    s=ensure_sdl_headers(s)
     if "static void render_native_extras(void)" in s:
         print("Native Extras pages already installed.")
         return
