@@ -110,6 +110,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-audio.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying audio and icon changes failed.' }
 
+      - name: Embed Reborn intro and persistent title branding
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-reborn-title.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Embedding the Reborn title animation failed.' }
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
