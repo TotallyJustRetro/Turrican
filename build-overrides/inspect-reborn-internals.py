@@ -42,7 +42,7 @@ for p in files:
     if seen >= 420:
         break
 
-for rel in ("runtime/sdl_main.c", "runtime/vdp.h", "runtime/vdp.c", "runtime/harness.c"):
+for rel in ("runtime/sdl_main.c", "runtime/vdp.h", "runtime/vdp.c", "runtime/harness.c", "runtime/m68k_rt.h"):
     p = root / rel
     if p.exists():
         data = p.read_text(encoding="utf-8", errors="ignore")
