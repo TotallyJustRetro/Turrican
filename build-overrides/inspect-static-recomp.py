@@ -7,8 +7,9 @@ from pathlib import Path
 
 ROOT=Path(sys.argv[1]).resolve()
 FILES=["recomp_gen.c","runtime/harness.c","runtime/m68k_interp.c",
-       "runtime/vdp.h","runtime/vdp.c","runtime/z80.c",
-       "runtime/ym2612.c","runtime/psg.c"]
+       "runtime/vdp.h","runtime/vdp.c","runtime/m68k_rt.h","runtime/z80.h",
+       "runtime/z80.c","runtime/ym2612.h","runtime/ym2612.c",
+       "runtime/psg.h","runtime/psg.c"]
 
 PATTERNS=[
     r"\b(?:work_ram|wram|main_ram|m68k_ram|ram|memory|mem)\b",
