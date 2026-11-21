@@ -34,14 +34,16 @@ for rel in FILES:
   if in_struct:
    struct_depth+=t.count("{")-t.count("}")
    if ";" in t and not t.startswith(("/*","*","//")):
-    m=field.match(line)
-    if m:
-     emit(f"FIELD line={n} name={m.group(1)} array={m.group(2) or '-'}")
-    elif rel.endswith(".h"):
-     emit(f"STRUCT_FIELD line={n} {t[:180]}")
+    if rel.endswith(".h"):
+     emit(f"STRUCT_FIELD line={n} {t[:220]}")
+    else:
+     m=field.match(line)
+     if m:
+      emit(f"FIELD line={n} name={m.group(1)} array={m.group(2) or '-'}")
    if struct_depth<=0 and "}" in t: in_struct=False
-  if rel in ("runtime/ym2612.c","runtime/psg.c") and n<=35 and re.search(r"typedef|struct|static\s+(?:const\s+)?(?:struct|[A-Z]\w*)|\b(?:ym|psg)\b",t,re.I):
-   emit(f"STATE_DECL line={n} {t[:180]}")
+  if rel in ("runtime/ym2612.c","runtime/psg.c") and n<=55:
+   if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
+    emit(f"STATE_DECL line={n} {t[:220]}")
   if rel=="recomp_gen.c" and re.search(r"rt_shadow|rt_sp|recomp_reset_pc",t):
    emit(f"RECOMP_STATE line={n} {t[:180]}")
   m=func.match(line)
