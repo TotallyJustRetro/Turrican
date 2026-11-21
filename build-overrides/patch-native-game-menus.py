@@ -276,7 +276,7 @@ static void native_menu_pause_loop(void) {
     }
     memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);
     if(adev)SDL_PauseAudioDevice(adev,0);
-    native_pause_resume_guard=1;
+    native_menu_resume_guard=1;
 }
 '''
 
