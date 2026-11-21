@@ -339,9 +339,9 @@ static void proc_native_level_builder(SDL_Event *e) {
 
 def ensure_sdl_headers(source: str) -> str:
     if "#include <sys/stat.h>" not in source:
-        source=once(source,'#include <math.h>\\n','#include <math.h>\\n#include <sys/stat.h>\\n',"level builder mkdir header")
+        source=once(source,'#include <math.h>\n','#include <math.h>\n#include <sys/stat.h>\n',"level builder mkdir header")
     if "#include <direct.h>" not in source:
-        source=once(source,'#include <sys/stat.h>\\n','#include <sys/stat.h>\\n#ifdef _WIN32\\n#include <direct.h>\\n#endif\\n',"Windows level builder mkdir header")
+        source=once(source,'#include <sys/stat.h>\n','#include <sys/stat.h>\n#ifdef _WIN32\n#include <direct.h>\n#endif\n',"Windows level builder mkdir header")
     return source
 
 def patch_sdl(project: Path) -> None:
