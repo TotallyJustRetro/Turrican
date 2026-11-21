@@ -35,6 +35,7 @@ static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 
 extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
+extern void md_copy_main_ram(uint8_t *dst);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
@@ -44,6 +45,28 @@ extern int md_save_slot_exists(int slot);
 '''
 
 CUSTOM_PAGES = r'''
+static unsigned int native_menu_trace_index=0;
+static void native_menu_dump_snapshot(const char *scene) {
+    uint8_t ram_snapshot[0x10000];
+    char filename[96];
+    snprintf(filename,sizeof filename,"menu-trace-%s-%02u.bin",scene,++native_menu_trace_index);
+    FILE *f=fopen(filename,"wb");
+    if(!f)return;
+    static const uint8_t magic[8]={'M','T','M','E','N','U','1',0};
+    uint32_t dims[2]={(uint32_t)vdp.width,(uint32_t)vdp.height};
+    int ok=fwrite(magic,1,sizeof magic,f)==sizeof magic &&
+           fwrite(dims,sizeof dims,1,f)==1 &&
+           fwrite(vdp.reg,sizeof vdp.reg,1,f)==1 &&
+           fwrite(vdp.cram,sizeof vdp.cram,1,f)==1 &&
+           fwrite(vdp.vsram,sizeof vdp.vsram,1,f)==1 &&
+           fwrite(vdp.vram,sizeof vdp.vram,1,f)==1;
+    md_copy_main_ram(ram_snapshot);
+    if(ok)ok=fwrite(ram_snapshot,sizeof ram_snapshot,1,f)==1;
+    if(ok)ok=fwrite(vdp.fb,sizeof vdp.fb,1,f)==1;
+    if(fclose(f)!=0)ok=0;
+    if(!ok)remove(filename);
+}
+
 static void native_custom_apply(void) {
     md_set_custom_gameplay_options(native_cheat_energy,native_cheat_lives,native_cheat_timer,
         native_game_level_modern && native_modern_lives,
@@ -344,6 +367,22 @@ def ensure_sdl_headers(source: str) -> str:
         source=once(source,'#include <sys/stat.h>\n','#include <sys/stat.h>\n#ifdef _WIN32\n#include <direct.h>\n#endif\n',"Windows level builder mkdir header")
     return source
 
+def patch_harness(project: Path) -> None:
+    path=project/"runtime"/"harness.c"
+    s=path.read_text(encoding="utf-8-sig")
+    anchor="int md_infinite_continues_enabled = 0;"
+    if "void md_copy_main_ram(uint8_t *dst)" not in s:
+        if s.count(anchor)!=1:
+            raise RuntimeError("Cannot locate custom runtime RAM export anchor.")
+        helper=r"""
+void md_copy_main_ram(uint8_t *dst) {
+    if(!dst)return;
+    for(unsigned i=0;i<0x10000u;i++)dst[i]=ram[i];
+}
+"""
+        s=s.replace(anchor,anchor+"\n"+helper,1)
+        path.write_text(s,encoding="utf-8",newline="\n")
+
 def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
     s=path.read_text(encoding="utf-8-sig")
@@ -423,7 +462,12 @@ confirm:
 
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
     title_event=r'''
-        if(reborn_game_options_visible() && e.type==SDL_KEYDOWN && !e.key.repeat &&
+        if(e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F8) {
+            if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
+            else if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
+            else native_menu_dump_snapshot("other");
+            continue;
+        }        if(reborn_game_options_visible() && e.type==SDL_KEYDOWN && !e.key.repeat &&
            e.key.keysym.sym==SDLK_F6) {
             native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
             continue;
@@ -441,19 +485,7 @@ confirm:
     frame_anchor="    native_menu_pause_loop();"
     s=once(s,frame_anchor,"    if(!native_custom_cfg_loaded)native_custom_load_config();\n"+frame_anchor,
            "load persistent Extras options")
-    title_draw=r'''
-    if(reborn_game_options_visible()) {
-        int W=vdp.width?vdp.width:320, H=vdp.height?vdp.height:224;
-        char mode[40];
-        snprintf(mode,sizeof mode,"GAME LEVEL: %s",native_game_level_modern?"MODERN":"ORIGINAL");
-        draw_str((W-str_w(mode,1))/2,H*28/100,mode,1,0xFF,0xAE,0x1F);
-        const char *extra="EXTRAS  [F6 / X]";
-        draw_str((W-str_w(extra,1))/2,H*79/100,extra,1,0xFF,0xAE,0x1F);
-    }
-'''
-    after_title="    reborn_title_update();"
-    s=once(s,after_title,after_title+"\n"+title_draw,
-           "draw title Options Extras entry")
+
     sync_anchor="    native_menu_resume_guard=0;"
     if sync_anchor in s:
         s=once(s,sync_anchor,sync_anchor+"\n    if(native_menu_state==0)md_apply_custom_gameplay_options();",
@@ -464,8 +496,10 @@ confirm:
 
 def main() -> int:
     if len(sys.argv)!=2: raise SystemExit("usage: patch-custom-game-menus.py PROJECT_ROOT")
-    patch_sdl(Path(sys.argv[1]).resolve())
-    print("Installed native Extras, Modern Options, Cheats, full save slots, and tilemap editor pages.")
+    root=Path(sys.argv[1]).resolve()
+    patch_harness(root)
+    patch_sdl(root)
+    print("Installed Extras pages and F8 original-menu RAM/VRAM snapshots; removed fixed-position gold title/options labels.")
     return 0
 
 if __name__=="__main__":
