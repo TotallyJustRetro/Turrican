@@ -231,7 +231,6 @@ static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
 TITLE_HELPERS = r'''
 #define REBORN_VDP_FRAME_COUNT 12
 #define REBORN_VDP_FRAME_TICKS 4
-#define REBORN_VDP_GLINT_TICKS 7
 #define REBORN_VDP_TITLE_EXIT_FRAMES 3
 
 /* Require the complete title composition, not just colours found in gameplay:
@@ -311,7 +310,7 @@ static int reborn_title_scene_visible(void)
 }
 
 /* Reveal once when the original title composition first appears. Keep the
- * completed logo visible, then loop its metallic glint frames indefinitely.
+ * completed logo visible, then hold the final complete frame until leaving the title screen.
  * The logo is removed after leaving the title composition for several frames,
  * and a later return to the title restarts the pixelated reveal. */
 static void reborn_title_update(void)
@@ -359,14 +358,11 @@ static void reborn_title_update(void)
                 frame_ticks = 0;
             }
         }
-    } else if (++frame_ticks >= REBORN_VDP_GLINT_TICKS) {
-        frame_ticks = 0;
-        /* Frames 8-10 sweep the shine across the artwork; frame 11 is the
-         * clean complete wordmark. The four-frame loop never blanks the logo. */
-        if (vdp.reborn_title_frame < 8 || vdp.reborn_title_frame >= 11)
-            vdp.reborn_title_frame = 8;
-        else
-            ++vdp.reborn_title_frame;
+    } else {
+        /* Play the reveal once per title-screen entry, then hold the finished
+         * artwork. Leaving for Options or another screen clears reveal_finished
+         * above, so returning to the title plays the same reveal again. */
+        vdp.reborn_title_frame = REBORN_VDP_FRAME_COUNT - 1;
     }
 }
 '''
