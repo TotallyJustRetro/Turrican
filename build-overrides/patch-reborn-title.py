@@ -232,59 +232,63 @@ TITLE_HELPERS = r'''
 #define REBORN_VDP_FRAME_COUNT 12
 #define REBORN_VDP_FRAME_TICKS 4
 
-/* Reborn title-state detection is intentionally stricter than a colour-only
- * guess: require the Mega Turrican fire/metal logo, the centred title menu,
- * and its original copyright block. That rejects ordinary gameplay scenes. */
-static int reborn_title_scene_visible(void)
+/* Detect the actual Mega Turrican logo card, not generic bright gameplay:
+ * the small orange MEGA word at the top, the wide metallic TURRICAN wordmark,
+ * and the characteristic fire band must all be present together. This card
+ * occurs in the original intro and remains on the title screen. */
+static int reborn_title_logo_visible(void)
 {
     int W = vdp.width, H = vdp.height;
     if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
 
-    int warm = 0, metal = 0, menu_red = 0, menu_white = 0, credits = 0;
+    int mega = 0;
+    int fire = 0;
+    int metal[3] = {0, 0, 0};
 
-    for (int y = H * 3 / 100; y < H * 46 / 100; ++y) {
+    /* The compact MEGA letters sit above the main wordmark. */
+    for (int y = H * 2 / 100; y < H * 15 / 100; ++y) {
         const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 5 / 100; x < W * 95 / 100; ++x) {
+        for (int x = W * 28 / 100; x < W * 75 / 100; ++x) {
             uint32_t p = row[x];
             int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 150 && g > 35 && r > g + 55 && g > b + 20) ++warm;
+            if (r > 135 && g > 30 && r > g + 25 && g > b + 10) ++mega;
+        }
+    }
+
+    /* The fire and metallic bevel occupy three broad, adjoining logo zones. */
+    for (int y = H * 12 / 100; y < H * 46 / 100; ++y) {
+        const uint32_t *row = &vdp.fb[y * 320];
+        for (int x = W * 3 / 100; x < W * 97 / 100; ++x) {
+            uint32_t p = row[x];
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (r > 130 && g > 25 && r > g + 35 && g > b + 10) ++fire;
             int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
             int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
-            if (hi > 70 && hi < 230 && hi - lo < 52 && r > 55 && g > 50 && b > 65)
-                ++metal;
+            if (hi > 70 && hi < 245 && hi - lo < 75 &&
+                r > 50 && g > 45 && b > 60) {
+                int zone = (x * 3) / W;
+                if (zone < 0) zone = 0;
+                if (zone > 2) zone = 2;
+                ++metal[zone];
+            }
         }
     }
 
-    for (int y = H * 50 / 100; y < H * 70 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 30 / 100; x < W * 70 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 130 && g < 110 && b < 90) ++menu_red;
-            if (r > 130 && g > 130 && b > 140) ++menu_white;
-        }
-    }
-
-    for (int y = H * 76 / 100; y < H * 93 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 5 / 100; x < W * 95 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 150 && g > 150 && b > 155) ++credits;
-        }
-    }
-
-    return warm > 500 && metal > 1500 &&
-           menu_red + menu_white > 80 && credits > 300;
+    return mega > 200 && fire > 600 &&
+           metal[0] > 500 && metal[1] > 500 && metal[2] > 500;
 }
 
+/* The wordmark is introduced when the original Mega Turrican logo card
+ * appears after the SEGA sequence. The completed mark then stays in the
+ * VDP scene while that title art remains visible, including the title menu.
+ * Leaving the logo card (for gameplay) removes it; it never paints gameplay. */
 static void reborn_title_update(void)
 {
     static int present_frames = 0;
     static int missing_frames = 0;
     static int frame_ticks = 0;
     static int animation_finished = 0;
-    int visible = reborn_title_scene_visible();
+    int visible = reborn_title_logo_visible();
 
     if (visible) {
         missing_frames = 0;
