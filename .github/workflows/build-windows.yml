@@ -122,6 +122,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-native-game-menus.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing native VDP pause and controller menus failed.' }
 
+      - name: Inspect static recomp gameplay hooks
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/inspect-static-recomp.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Static recomp diagnostics failed.' }
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
