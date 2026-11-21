@@ -607,7 +607,7 @@ def patch_sdl(project: Path) -> None:
         if not cfg_end:
             raise RuntimeError("Could not find native SDL config declaration.")
         sdl = sdl[:cfg_end.end()] + "\nstatic int pad_map[8] = { 12, 13, 14, 15, 2, 0, 1, 9 };\n" + sdl[cfg_end.end():]
-    if 'else if(!strcmp(l, "pad_up"))' not in sdl:
+    if 'else if(!strcmp(l, "pad_up"))' not in sdl and 'else if(!strcmp(l,"pad_up"))' not in sdl:
         background = 'else if(!strcmp(l, "background")) strncpy(cfg.bg, v, sizeof cfg.bg - 1);'
         pad_parser = '''else if(!strcmp(l, "pad_up")) pad_map[0] = atoi(v);
         else if(!strcmp(l, "pad_down")) pad_map[1] = atoi(v);
@@ -620,7 +620,7 @@ def patch_sdl(project: Path) -> None:
         ''' + background
         sdl = replace_once(sdl, background, pad_parser, "native SDL controller config parser")
     if "static int mapped_controller_button(int binding)" not in sdl:
-        readpad = re.compile(r'static int readpad\(void\)\{.*?\n\s*static void open_pad\(void\)\{', re.S)
+        readpad = re.compile(r'static int readpad\s*\(void\)\s*\{.*?\n\s*static void open_pad\s*\(void\)\s*\{', re.S)
         sdl, n = readpad.subn(SDL_READER + "\nstatic void open_pad(void){", sdl, count=1)
         if n != 1:
             raise RuntimeError("Could not replace SDL's hard-coded controller input reader.")

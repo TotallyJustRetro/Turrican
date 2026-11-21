@@ -66,6 +66,24 @@ jobs:
           $patchScript = Join-Path $PWD 'build-overrides/patch-launcher.ps1'
           if (-not (Test-Path $patchScript)) { throw 'Launcher patch script is missing.' }
           & $patchScript -ProjectRoot $project
+
+          # Install the updated in-game pause/options menu from the supplied WindowsPort source.
+          $menuPayload = Join-Path $PWD 'build-overrides/ingame-menu-sdl_main.c.gz.b64'
+          if (-not (Test-Path -LiteralPath $menuPayload)) { throw 'Updated in-game menu source payload is missing.' }
+          $compressed = [Convert]::FromBase64String((Get-Content -LiteralPath $menuPayload -Raw).Trim())
+          $inputStream = [System.IO.MemoryStream]::new($compressed)
+          $outputStream = [System.IO.MemoryStream]::new()
+          $gzipStream = [System.IO.Compression.GZipStream]::new($inputStream, [System.IO.Compression.CompressionMode]::Decompress)
+          try { $gzipStream.CopyTo($outputStream) } finally { $gzipStream.Dispose(); $inputStream.Dispose() }
+          $menuSourcePath = Join-Path $project 'runtime/sdl_main.c'
+          [System.IO.File]::WriteAllBytes($menuSourcePath, $outputStream.ToArray())
+          $outputStream.Dispose()
+          $menuHash = (Get-FileHash -LiteralPath $menuSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($menuHash -ne '515cd60714eabd0a3f941b34de6a88f87b8309ac7adb6eb0dc0a9cf600826867') {
+            throw "Updated in-game menu source checksum mismatch: $menuHash"
+          }
+          Write-Host 'Installed updated in-game pause/options menu source.'
+
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 

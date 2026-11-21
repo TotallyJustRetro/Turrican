@@ -181,8 +181,17 @@ def patch_icon(project):
 def patch_sdl(project):
     p=project/"runtime"/"sdl_main.c";s=p.read_text(encoding="utf-8-sig")
     if "audio_mode" not in s:
-        s,n=re.subn(r"int\s+fullscreen\s*,\s*vsync\s*,\s*audio\s*,\s*volume\s*;","int fullscreen, vsync, audio, volume, audio_mode;",s,count=1)
-        if n!=1:raise RuntimeError("Could not add native audio mode setting.")
+        declaration_patterns = [
+            (r"int\s+fullscreen\s*,\s*vsync\s*,\s*audio\s*,\s*volume\s*,\s*scan_pct\s*;", "int fullscreen, vsync, audio, volume, audio_mode, scan_pct;"),
+            (r"int\s+fullscreen\s*,\s*vsync\s*,\s*audio\s*,\s*volume\s*;", "int fullscreen, vsync, audio, volume, audio_mode;"),
+        ]
+        n = 0
+        for pattern, replacement in declaration_patterns:
+            s, n = re.subn(pattern, replacement, s, count=1)
+            if n:
+                break
+        if n != 1:
+            raise RuntimeError("Could not add native audio mode setting to the SDL config structure.")
         m=re.search(r"}\s*cfg\s*=\s*\{([^}]*)\};",s)
         if not m:raise RuntimeError("Could not locate native config defaults.")
         vals=[x.strip() for x in m.group(1).split(",")]
@@ -193,19 +202,36 @@ def patch_sdl(project):
         pat=re.compile(r'((?:else\s+)?if\(!strcmp\(l,\s*"volume"\)\)\s*cfg\.volume\s*=\s*atoi\(v\);)')
         s,n=pat.subn(lambda m:m.group(1)+' else if(!strcmp(l, "audio_mode")) cfg.audio_mode = atoi(v);',s,count=1)
         if n!=1:raise RuntimeError("Could not locate native volume config parser.")
+    if "audio_mode=%d\\n" not in s:
+        s=s.replace(
+            '"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\nbackground=%s\\n"',
+            '"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\n"'
+        )
+        s=s.replace(
+            'cfg.fullscreen,cfg.vsync,cfg.audio,cfg.volume,cfg.bg,',
+            'cfg.fullscreen,cfg.vsync,cfg.audio,cfg.volume,cfg.audio_mode,cfg.bg,'
+        )
     if "stereo chip mix, mono fold-down" not in s:
-        start=s.find("/* ---- audio:");end=s.find("static void toggle_fs",start)
-        if start<0 or end<0:raise RuntimeError("Could not locate native SDL audio block.")
+        start=s.find("/* ---- audio:")
+        end=s.find("static void toggle_fs",start) if start>=0 else -1
+        if start<0 or end<0:
+            start=s.find("/* ------------------------------------------------------------------ audio */")
+            end=s.find("/* ------------------------------------------------------------------ overlay menu */",start) if start>=0 else -1
+        if start<0 or end<0:
+            raise RuntimeError("Could not locate the native SDL audio block in this source version.")
         s=s[:start]+C_AUDIO+"\n\n"+s[end:]
     if "audio_status);" not in s:
-        a=s.find("static void title(");b=s.find("\nvoid md_frame_hook",a)
-        if a<0 or b<a:raise RuntimeError("Could not locate native game title function.")
-        block=s[a:b]
-        pat=re.compile(r'snprintf\s*\(\s*t\s*,\s*sizeof\s+t\s*,.*?\);',re.S)
-        rep='snprintf(t, sizeof t, "Mega Turrican  |  %s  |  shader %d  |  %s%s  |  %s", aspect_name[cfg.aspect], cfg.shader, cfg.integer ? "integer" : "fit", cfg.linear ? " +linear" : "", audio_status);'
-        block,n=pat.subn(rep,block,count=1)
-        if n!=1:raise RuntimeError("Could not append negotiated audio status to game title.")
-        s=s[:a]+block+s[b:]
+        a=s.find("static void title(")
+        b=s.find("\nvoid md_frame_hook",a) if a>=0 else -1
+        # The updated in-game-menu frontend has no separate title() function.
+        # Keep its existing window title; audio routing still works normally.
+        if a>=0 and b>=a:
+            block=s[a:b]
+            pat=re.compile(r'snprintf\s*\(\s*t\s*,\s*sizeof\s+t\s*,.*?\);',re.S)
+            rep='snprintf(t, sizeof t, "Mega Turrican  |  %s  |  shader %d  |  %s%s  |  %s", aspect_name[cfg.aspect], cfg.shader, cfg.integer ? "integer" : "fit", cfg.linear ? " +linear" : "", audio_status);'
+            block,n=pat.subn(rep,block,count=1)
+            if n==1:
+                s=s[:a]+block+s[b:]
     p.write_text(s,encoding="utf-8")
     print("Installed native mono, stereo and six-channel 5.1 audio routing.")
 
