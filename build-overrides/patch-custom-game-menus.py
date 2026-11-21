@@ -36,6 +36,8 @@ static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
 extern void md_copy_main_ram(uint8_t *dst);
+extern uint32_t md_cpu_state_size(void);
+extern void md_copy_cpu_state(void *dst, uint32_t bytes);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
@@ -47,19 +49,24 @@ extern int md_save_slot_exists(int slot);
 CUSTOM_PAGES = r'''
 static unsigned int native_menu_trace_index=0;
 static void native_menu_dump_snapshot(const char *scene) {
-    uint8_t ram_snapshot[0x10000];
+    uint8_t ram_snapshot[0x10000], cpu_snapshot[128];
     char filename[96];
     snprintf(filename,sizeof filename,"menu-trace-%s-%02u.bin",scene,++native_menu_trace_index);
     FILE *f=fopen(filename,"wb");
     if(!f)return;
-    static const uint8_t magic[8]={'M','T','M','E','N','U','1',0};
+    static const uint8_t magic[8]={'M','T','M','E','N','U','2',0};
     uint32_t dims[2]={(uint32_t)vdp.width,(uint32_t)vdp.height};
+    uint32_t cpu_bytes=md_cpu_state_size();
+    if(cpu_bytes>sizeof cpu_snapshot)cpu_bytes=0;
+    if(cpu_bytes)md_copy_cpu_state(cpu_snapshot,cpu_bytes);
     int ok=fwrite(magic,1,sizeof magic,f)==sizeof magic &&
            fwrite(dims,sizeof dims,1,f)==1 &&
+           fwrite(&cpu_bytes,sizeof cpu_bytes,1,f)==1 &&
            fwrite(vdp.reg,sizeof vdp.reg,1,f)==1 &&
            fwrite(vdp.cram,sizeof vdp.cram,1,f)==1 &&
            fwrite(vdp.vsram,sizeof vdp.vsram,1,f)==1 &&
            fwrite(vdp.vram,sizeof vdp.vram,1,f)==1;
+    if(ok && cpu_bytes)ok=fwrite(cpu_snapshot,1,cpu_bytes,f)==cpu_bytes;
     md_copy_main_ram(ram_snapshot);
     if(ok)ok=fwrite(ram_snapshot,sizeof ram_snapshot,1,f)==1;
     if(ok)ok=fwrite(vdp.fb,sizeof vdp.fb,1,f)==1;
@@ -381,7 +388,20 @@ void md_copy_main_ram(uint8_t *dst) {
 }
 """
         s=s.replace(anchor,anchor+"\n"+helper,1)
-        path.write_text(s,encoding="utf-8",newline="\n")
+    if "void md_copy_cpu_state(void *dst, uint32_t bytes)" not in s:
+        marker="void md_copy_main_ram(uint8_t *dst) {\n    if(!dst)return;\n    for(unsigned i=0;i<0x10000u;i++)dst[i]=ram[i];\n}"
+        if s.count(marker)!=1:
+            raise RuntimeError("Cannot locate RAM snapshot helper for CPU-state instrumentation.")
+        helper=r"""
+uint32_t md_cpu_state_size(void) { return (uint32_t)sizeof(M68K); }
+void md_copy_cpu_state(void *dst, uint32_t bytes) {
+    if(!dst)return;
+    memset(dst,0,bytes);
+    if(CPU && bytes>=sizeof *CPU)memcpy(dst,CPU,sizeof *CPU);
+}
+"""
+        s=s.replace(marker,marker+"\n"+helper,1)
+    path.write_text(s,encoding="utf-8",newline="\n")
 
 def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
@@ -500,7 +520,7 @@ def main() -> int:
     root=Path(sys.argv[1]).resolve()
     patch_harness(root)
     patch_sdl(root)
-    print("Installed Extras pages and F8 original-menu RAM/VRAM snapshots; removed fixed-position gold title/options labels.")
+    print("Installed Extras pages and F8 original-menu CPU/RAM/VRAM snapshots; removed fixed-position gold title/options labels.")
     return 0
 
 if __name__=="__main__":
