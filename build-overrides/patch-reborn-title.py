@@ -15,7 +15,7 @@ from PIL import Image
 
 WIDTH = 96
 HEIGHT = 24
-FRAME_COUNT = 11
+FRAME_COUNT = 12
 FRAME_TICKS = 4
 
 
@@ -228,7 +228,10 @@ static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
 '''
 
 
-TITLE_HELPERS = StringRaw = r'''
+TITLE_HELPERS = r'''
+#define REBORN_VDP_FRAME_COUNT 12
+#define REBORN_VDP_FRAME_TICKS 4
+
 /* Reborn title-state detection is intentionally stricter than a colour-only
  * guess: require the Mega Turrican fire/metal logo, the centred title menu,
  * and its original copyright block. That rejects ordinary gameplay scenes. */
