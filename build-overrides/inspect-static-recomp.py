@@ -8,7 +8,8 @@ from pathlib import Path
 ROOT=Path(sys.argv[1]).resolve()
 FILES=[
  "recomp_gen.c","runtime/harness.c","runtime/m68k_rt.h","runtime/m68k_interp.c",
- "runtime/z80.h","runtime/ym2612.h","runtime/psg.h","runtime/vdp.h",
+ "runtime/z80.h","runtime/ym2612.h","runtime/ym2612.c",
+ "runtime/psg.h","runtime/psg.c","runtime/vdp.h",
 ]
 OUT=[]
 def emit(s=""): OUT.append(s)
@@ -44,8 +45,14 @@ for rel in FILES:
   if rel in ("runtime/ym2612.c","runtime/psg.c") and n<=55:
    if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
     emit(f"STATE_DECL line={n} {t[:220]}")
-  if rel=="recomp_gen.c" and re.search(r"rt_shadow|rt_sp|recomp_reset_pc",t):
-   emit(f"RECOMP_STATE line={n} {t[:180]}")
+  if rel=="recomp_gen.c":
+   if re.search(r"\b(?:uint32_t\s+rt_shadow|int\s+rt_sp)\b",t):
+    emit(f"RECOMP_GLOBAL line={n} {t[:220]}")
+   if "L_192C" in t:
+    emit(f"CONTINUES_PATCH_SITE line={n} {t[:320]}")
+  if rel in ("runtime/ym2612.c","runtime/psg.c") and n<=80:
+   if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
+    emit(f"STATE_DECL line={n} {t[:220]}")
   m=func.match(line)
   if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot",m.group(1),re.I):
    params=re.sub(r"\s+"," ",m.group(2).strip())
