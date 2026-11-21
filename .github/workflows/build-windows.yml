@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
@@ -79,7 +79,7 @@ jobs:
           [System.IO.File]::WriteAllBytes($menuSourcePath, $outputStream.ToArray())
           $outputStream.Dispose()
           $menuHash = (Get-FileHash -LiteralPath $menuSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($menuHash -ne '751429cffcba03bfe5a60403ecab8a4c4739fd7eab2ad66b6a9c8f0cb94d6d80') {
+          if ($menuHash -ne '96981beaa64122b40786dfdac8788323f582979bb26a88c4584ab42777f1deaa') {
             throw "Updated in-game menu source checksum mismatch: $menuHash"
           }
           Write-Host 'Installed updated in-game pause/options menu source.'
