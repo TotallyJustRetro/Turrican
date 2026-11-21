@@ -185,7 +185,7 @@ PAUSE_LOOP = r'''
  * emulated CPU/game state. The pause UI is written into the same VDP framebuffer
  * as the cartridge picture, then goes through the ordinary game presentation. */
 static uint32_t native_pause_backdrop[320*240];
-static int native_pause_resume_guard=0;
+static int native_menu_resume_guard=0;
 
 static void native_menu_present_frame(void) {
     int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;
@@ -216,11 +216,11 @@ static void native_menu_draw_frame(const uint32_t *backdrop) {
         }
     }
     switch(native_menu_state) {
-    case 1: render_pause_main(); break;
-    case 2: render_options_video(); break;
-    case 3: render_options_audio(); break;
-    case 4: render_controls_info(); break;
-    case 5: render_achievements(); break;
+    case 1: render_native_pause_main(); break;
+    case 2: render_native_options_video(); break;
+    case 3: render_native_options_audio(); break;
+    case 4: render_native_controls_info(); break;
+    case 5: render_native_achievements(); break;
     case 6: render_native_options_root(); break;
     case 7: render_native_controller_options(); break;
     }
