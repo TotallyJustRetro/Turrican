@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed the Reborn pixel logo and add a reliable title-screen bumper."""
+"""Embed and permanently brand the Mega Turrican title screen with Reborn."""
 
 from __future__ import annotations
 
@@ -92,6 +92,27 @@ static int reborn_titlefix_create_textures(void)
     return 1;
 }
 
+static SDL_Rect reborn_titlefix_logo_rect(void)
+{
+    /* Keep the complete wordmark in the title's open band, just below the
+       original Mega Turrican artwork and above START / OPTIONS. */
+    int logo_w = game_dst.w * 30 / 100;
+    int logo_h = logo_w / 4;
+    int max_h = game_dst.h * 11 / 100;
+    if (logo_h > max_h) {
+        logo_h = max_h;
+        logo_w = logo_h * 4;
+    }
+
+    SDL_Rect logo_dst = {
+        game_dst.x + (game_dst.w - logo_w) / 2,
+        game_dst.y + game_dst.h * 47 / 100,
+        logo_w,
+        logo_h
+    };
+    return logo_dst;
+}
+
 static void reborn_titlefix_render(int w, int h)
 {
     int title_screen = reborn_titlefix_is_title(w, h);
@@ -102,66 +123,46 @@ static void reborn_titlefix_render(int w, int h)
         reborn_titlefix_started = SDL_GetTicks();
     }
 
-    if (reborn_titlefix_state == 0 && !title_screen) return;
+    /* The wordmark belongs to the title presentation, not to a separate
+       startup splash. Do not cover or fade away the original title screen. */
+    if (!title_screen || reborn_titlefix_state == 0) return;
 
     if (!reborn_titlefix_stage[4] && !reborn_titlefix_create_textures())
         return;
 
+    SDL_Rect logo_dst = reborn_titlefix_logo_rect();
+
     if (reborn_titlefix_state == 1) {
         uint32_t elapsed = SDL_GetTicks() - reborn_titlefix_started;
-        if (elapsed >= 1850) {
-            reborn_titlefix_state = 2;
-        } else {
-            /* Hold the game on the title screen while the studio mark plays. */
+
+        if (elapsed < 1850) {
+            /* Keep Start/Options from being activated before the reveal ends. */
             md_live_mask = 0;
 
-            int overlay_alpha = 255;
-            int logo_alpha = 255;
-            if (elapsed > 1400) {
-                int fade = (int)(elapsed - 1400);
-                overlay_alpha = 255 - (fade * 255 / 450);
-                logo_alpha = overlay_alpha;
-                if (overlay_alpha < 0) overlay_alpha = 0;
-                if (logo_alpha < 0) logo_alpha = 0;
-            }
-
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, (uint8_t)overlay_alpha);
-            SDL_RenderFillRect(ren, &game_dst);
-
             int stage = elapsed < 220 ? 0 :
-                       elapsed < 440 ? 1 :
-                       elapsed < 660 ? 2 :
-                       elapsed < 900 ? 3 : 4;
+                        elapsed < 440 ? 1 :
+                        elapsed < 660 ? 2 :
+                        elapsed < 900 ? 3 : 4;
 
-            int logo_w = game_dst.w * 70 / 100;
-            int logo_h = logo_w / 4;
-            if (logo_h > game_dst.h / 3) {
-                logo_h = game_dst.h / 3;
-                logo_w = logo_h * 4;
-            }
-            SDL_Rect logo_dst = {
-                game_dst.x + (game_dst.w - logo_w) / 2,
-                game_dst.y + (game_dst.h - logo_h) / 2,
-                logo_w, logo_h
-            };
-            SDL_SetTextureAlphaMod(reborn_titlefix_stage[stage], (uint8_t)logo_alpha);
+            /* A short fade-in, followed by a pixel-art resolution reveal.
+               The finished mark remains at this exact size and position. */
+            int alpha = elapsed < 100 ? (int)(elapsed * 255 / 100) : 255;
+            if (alpha < 0) alpha = 0;
+            if (alpha > 255) alpha = 255;
+
+            SDL_SetTextureAlphaMod(reborn_titlefix_stage[stage], (uint8_t)alpha);
             SDL_RenderCopy(ren, reborn_titlefix_stage[stage], NULL, &logo_dst);
             SDL_SetTextureAlphaMod(reborn_titlefix_stage[stage], 255);
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             return;
         }
+
+        reborn_titlefix_state = 2;
     }
 
-    /* Keep the Reborn wordmark on the original title screen after the bumper. */
-    if (title_screen && reborn_titlefix_state == 2) {
-        int logo_w = game_dst.w * 26 / 100;
-        int logo_h = logo_w / 4;
-        SDL_Rect logo_dst = {
-            game_dst.x + (game_dst.w - logo_w) / 2,
-            game_dst.y + game_dst.h * 70 / 100,
-            logo_w, logo_h
-        };
+    /* Permanent title lockup: keep the full Reborn wordmark visible for as
+       long as the original title menu is on screen. No shrink, fade, or swap
+       back to the unbranded Mega Turrican title. */
+    if (reborn_titlefix_state == 2) {
         SDL_RenderCopy(ren, reborn_titlefix_stage[4], NULL, &logo_dst);
     }
 }
