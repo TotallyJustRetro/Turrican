@@ -1776,10 +1776,12 @@ confirm:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
     pause_call="    native_menu_pause_loop();"
-    if "if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();" not in hook:
-        hook=once(hook,pause_call,
-                  "    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();",
-                  "allow pause entry only during active gameplay")
+    pause_guard="    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();"
+    pause_call_count=hook.count(pause_call)
+    if pause_call_count<1:
+        raise RuntimeError("Could not locate native pause-loop calls inside md_frame_hook.")
+    if pause_guard not in hook:
+        hook=hook.replace(pause_call,pause_guard)
         s=s[:hook_start]+hook+s[hook_end:]
         hook_end=hook_start+len(hook)
     restore_arm=r"""
