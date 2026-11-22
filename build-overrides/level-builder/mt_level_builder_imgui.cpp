@@ -610,6 +610,10 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_x = std::max(0, mtlb_map_cursor_x());
     g_selected_y = std::max(0, mtlb_map_cursor_y());
     g_brush_tile = std::max(0, std::min(2047, mtlb_map_brush()));
+    // Each editor visit gets a fresh transition state; the level document itself persists.
+    g_fade_in_frame = 0;
+    g_fade_out_frame = -1;
+    g_exit_requested = false;
     g_initialized = true;
     return 1;
 }
