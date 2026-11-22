@@ -31,7 +31,14 @@ The expanded static report now includes the full bodies of several routines that
 - `f_D75E` checks a flag at `$FF9A86`, builds a descriptor under `$FFBC00` (length/size field `0x50`, source pointer `$FF9A88`, another field `0x90`), installs handler `f_D7A0` at `$FFBC10`, and issues VDP control/data writes. This is consistent with a queued/small transfer descriptor, but the exact content and owner of `$FF9A88` remain to be identified.
 - `f_19FA` stores its input pointer at `$FFBC50`, checks a byte at offset +48, copies fields from the record into several shared dispatch slots (offsets +4, +18, +22, +26, +30, +34, +42), and calls through pointers loaded from nested offsets +10, +8, and +38. This is much stronger evidence of a structured runtime context with multiple callback fields than a flat sprite table. It is not yet proven to be the global enemy/boss definition format.
 
-The next static step is call-site mapping for `f_7D04`, `f_8A22`, `f_D75E`, and their helper routines. Then trace where `$FF0852-$FF086F`, `$FF9A86-$FF9A88`, and the source pointer at `$FFBC00` are populated. Those are better next targets than a user-triggered runtime snapshot.
+The Build #308 caller index found two direct call relationships:
+
+- `f_200` calls `f_6B80` from its early initialization path. This is a startup VDP setup sequence, not enough evidence of a whole-game asset library.
+- `f_6C3E` calls `f_7D04`, then checks `$FFBC18` and dispatches through that callback pointer. This is a stronger per-context/per-object graphics-update candidate because it sits inside the shared callback path. Its exact object class is still unknown.
+
+The `f_D75E` transfer descriptor appears to chain through `f_D7A0`, `f_D7B4`, and `f_D7C8` using the callback slot `$FFBC10`. It stores source pointer `$FF9A88`, length/size fields `0x50` and `0x90`, and issues VDP control/data writes. That is consistent with a small queued transfer/state machine, but the source content and owner have not yet been identified.
+
+The next static step is to inspect the helper routines called by `f_6B80`, `f_7D04`, and the `f_D75E` callback chain, then trace where `$FF0852-$FF086F`, `$FF9A86-$FF9A88`, and the source pointer at `$FFBC00` are populated. Those are better next targets than a user-triggered runtime snapshot.
 
 The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
 
