@@ -938,7 +938,7 @@ def patch_sdl(project: Path) -> None:
     s=once(s,anchor,anchor+"\n"+CUSTOM_GLOBALS,"custom menu state globals")
 
     # Pause main menu now exposes Extras and retains all prior entries.
-pause_render=r'''static void render_native_pause_main(void) {
+    pause_render=r'''static void render_native_pause_main(void) {
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
     int x=8,y=7,w=W-16,h=H-14;
     native_menu_rect(x,y,w,h,0x6A,0x74,0x88,255);
