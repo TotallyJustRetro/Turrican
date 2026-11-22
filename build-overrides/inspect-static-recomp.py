@@ -133,22 +133,67 @@ if sdl_path.exists():
    for line in block.splitlines()[:150]:emit("  "+line[:260])
  else:
   emit("CONFIG_STRUCT_NOT_FOUND")
-# Scan generated 68000 output for accesses to the standard Mega Drive sound
-# command/mailbox and YM interfaces. Context helps identify the original SFX call.
+# Scan the complete 68k-to-Z80 sound-RAM window, not only YM registers.
+# Mega Drive game SFX are usually requested through bytes in Z80 RAM; a search
+# for $A04000 alone misses the driver's command mailbox at $A00000-$A01FFF.
 gen=ROOT/"recomp_gen.c"
 if gen.exists():
  lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
- emit("[GENERATED_SOUND_WRITE_SITES]")
- pat=re.compile(r"0xFFFFA000|0xFFFFA040|0xFFFFC000|0xA00000|0xA04000|0xC00011",re.I)
- count=0
+ emit("[GENERATED_Z80_SOUND_RAM_ACCESS]")
+ zpat=re.compile(r"0x(?:FFFF)?A0(?:0[0-9A-Fa-f]{3}|1[0-9A-Fa-f]{3})",re.I)
+ hits=[]
  for i,line in enumerate(lines):
-  if pat.search(line):
-   emit(f"SOUND_ACCESS line={i+1} {line[:300]}")
-   for j in range(max(0,i-3),min(len(lines),i+4)):
-    emit(f"  {j+1}: {lines[j][:260]}")
-   count+=1
-   if count>=80:break
- emit(f"SOUND_ACCESS_CONTEXTS {count}")
+  if zpat.search(line):
+   hits.append(i)
+ for i in hits[:240]:
+  emit(f"Z80_RAM_ACCESS line={i+1} {lines[i][:360]}")
+  for j in range(max(0,i-5),min(len(lines),i+6)):
+   if j!=i:emit(f"  {j+1}: {lines[j][:300]}")
+ emit(f"Z80_RAM_ACCESS_CONTEXTS {len(hits)}")
+
+ # Associate each literal sound-RAM access with its generated 68k function.
+ # This reveals whether an address is used only for initial Z80-driver upload,
+ # or by a routine that writes gameplay/title sound commands.
+ function_starts=[]
+ for i,line in enumerate(lines):
+  if re.match(r"^\\s*(?:static\\s+)?(?:void|int)\\s+f_[A-Za-z0-9_]+\\s*\\(",line):
+   function_starts.append(i)
+ function_hits={}
+ for i in hits:
+  owner=None
+  for start in reversed(function_starts):
+   if start<=i:
+    owner=start;break
+  if owner is not None:
+   name=re.search(r"\\b(f_[A-Za-z0-9_]+)\\s*\\(",lines[owner]).group(1)
+   function_hits.setdefault((owner,name),[]).append(i)
+ emit("[GENERATED_Z80_SOUND_FUNCTIONS]")
+ for (owner,name),indices in function_hits.items():
+  emit(f"Z80_SOUND_FUNCTION name={name} declaration_line={owner+1} access_lines={','.join(str(x+1) for x in indices)}")
+  for i in indices[:16]:
+   emit(f"  ACCESS {i+1}: {lines[i][:300]}")
+   for j in range(max(owner,i-2),min(len(lines),i+3)):
+    if j!=i:emit(f"    {j+1}: {lines[j][:240]}")
+
+ # Show VBlank/frame-hook placement and reset entry details. The title return
+ # implementation must only reset the core at a safe frame boundary.
+ for rel in ("runtime/harness.c","runtime/m68k_rt.h"):
+  p=ROOT/rel
+  emit(f"[FRAME_RESET_CONTEXT {rel}]")
+  if not p.exists():
+   emit("MISSING")
+   continue
+  src=p.read_text(encoding="utf-8",errors="replace").splitlines()
+  keys=("md_frame_hook();","void md_boot(void)","rt_call_addr","#define RT_POLL","RT_POLL(")
+  seen=set()
+  for i,line in enumerate(src):
+   if any(k in line for k in keys):
+    if any((i,d) in seen for d in (0,)):
+     continue
+    emit(f"CONTEXT line={i+1}")
+    for j in range(max(0,i-8),min(len(src),i+10)):
+     emit(f"  {j+1}: {src[j][:260]}")
+    seen.add((i,0))
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
