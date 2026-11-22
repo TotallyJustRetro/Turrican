@@ -131,6 +131,36 @@ Build #333 provides the full `f_5300` and `f_5400` bodies:
 
 Together with `f_5232` (initialize the 79-record pool), `f_5300` (allocate), `f_5432/f_543C` (walk and update active records), and `f_5400` (release), we now have a direct map of the engine's object lifecycle: initialize pool → allocate a record → set up its object-specific fields and +34 handler → update it through the frame list walker → release it back to the pool.
 
+### Build #344: the second allocator targets a separate active list
+
+The second allocator `f_5382` has now been inspected in full. It uses the same free-list head, but inserts the allocated record into a different active list:
+
+- It reads the free-list head at `$FFBC2C`, takes the first record, and updates the free-list head to that record's +0 next pointer.
+- It then inserts the record at the head of `$FFBC30`, repairing the new head's +4 back-link and the allocated record's +0/+4 links.
+- It clears the same general record fields used by the other allocator (+16 longword, +43/+42/+11/+10/+15 flags, and byte +13 from `$FFBC86`).
+- If the free list is empty, it returns the fallback record at `$FFBF3C`.
+
+So the pool is shared, but there are **two allocation destinations**:
+- `f_5300` → active list `$FFBC28`
+- `f_5382` → active list `$FFBC30`
+
+The main frame update walker `f_5432/f_543C` runs both lists. The ROM-selected setup family routines `f_3DB4`, `f_3FA4`, and `f_419A` use `f_5382`, which proves that they create records belonging to the second active list, not the first. This distinction is important for the Maker: a placement recipe must choose the correct native list/record family.
+
+### Shared helper `f_3C7A`: stage-relative coordinate adjustment
+
+The setup families also call `f_3C7A` after loading a pair of coordinates:
+
+- It loads a coordinate pair from `$FFBD1E`.
+- It derives a table index from the state/type word at `$FFBCC0` (subtracting `0x0D`, then stepping through entries).
+- It reads a pair of adjustment values from the ROM table beginning at `0x3CA6`.
+- Depending on the flag at `$FFBD22`, it may mirror/swap the first adjustment and subtract it from the second.
+- It adds the resulting pair to D0/D1 and returns them to the caller.
+
+This is a table-driven coordinate adjustment used by the object setup recipes. It is not the allocator and does not itself create an object.
+
+The ROM setup stubs `f_3C6E`, `f_3C72`, and `f_3C76` are only tiny branches to `f_3DB4`, `f_3FA4`, and `f_419A`, respectively; the selector logic is in `f_3BD8`.
+
+
 The next static pass is to find the other consumers of per-object +30 and +38, then correlate spawn routines, update routines, and ROM animation/resource pointers into verified object families. That is the step needed before exposing safe named objects in the Maker.
 
 ### Build #335: +30/+38 can be data tables, not callbacks
