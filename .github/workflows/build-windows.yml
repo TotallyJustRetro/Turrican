@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
