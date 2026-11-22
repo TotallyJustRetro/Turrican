@@ -715,6 +715,61 @@ if gen.exists():
    if len(body_lines)>260: emit(f"  ... clipped {len(body_lines)-260} additional function lines ...")
 
 
+ # Index every immediate handler assignment to the common object record
+ # (+34 is the per-frame/update routine). Also capture +30/+38 resource/context
+ # pointers from the same initializer block, then emit the referenced routines.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_RECORD_HANDLER_ASSIGNMENTS]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  owner="(global)"
+  handler_assigns=[]
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: owner=fm.group(1)
+   if not re.search(r"WR32\s*\(\s*d\s*,\s*v\s*\)",line): continue
+   vm=re.search(r"uint32_t\s+v\s*=\s*0x([0-9A-Fa-f]+)u",line)
+   if not vm: continue
+   off=re.search(r"A\(([05])\)\s*\+\s*\(int32_t\)34",line)
+   if not off: continue
+   handler=int(vm.group(1),16)
+   handler_assigns.append((owner,handler,int(off.group(1)),n,line.strip()[:250]))
+  dedupe={}
+  for owner,handler,reg,n,code in handler_assigns:
+   key=(owner,handler,reg)
+   dedupe.setdefault(key,[]).append((n,code))
+  referenced=set()
+  for (owner,handler,reg),sites in sorted(dedupe.items()):
+   referenced.add(handler)
+   emit(f"OBJECT_HANDLER_ASSIGN owner={owner} handler=0x{handler:X} record_base=A{reg} count={len(sites)} lines="+",".join(str(n) for n,_ in sites[:12]))
+   for n,code in sites[:3]: emit(f"  {n}: {code}")
+  emit(f"OBJECT_HANDLER_UNIQUE_COUNT {len(referenced)}")
+  emit("[OBJECT_HANDLER_ROUTINE_BODIES]")
+  source="\n".join(gen_lines)
+  for handler in sorted(referenced):
+   name=f"f_{handler:X}"
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
+   hit=pat.search(source)
+   if not hit:
+    emit(f"OBJECT_HANDLER_BODY_MISSING {name}")
+    continue
+   brace=source.find("{",hit.start())
+   depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{": depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:
+      end=pos+1;break
+   if end<=brace: continue
+   block=source[hit.start():end]
+   body_lines=block.splitlines()
+   emit(f"OBJECT_HANDLER_BODY {name} source_lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line in body_lines[:170]:
+    emit("  "+line[:280])
+   if len(body_lines)>170: emit(f"  ... clipped {len(body_lines)-170} further source lines ...")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
