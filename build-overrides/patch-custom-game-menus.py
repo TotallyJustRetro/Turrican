@@ -50,6 +50,11 @@ static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
 static int native_pause_keep_title_audio=0;
 static int native_title_checkpoint_saved=0;
+static int native_title_input_passthrough=0,native_title_forced_mask=0;
+static int native_title_restore_after_input=0;
+static int native_title_pending_open=0,native_title_pending_selection=0;
+static int native_title_reopen_options_after_input=0,native_title_reopen_focus=0;
+static int readpad(void);
 static int native_pause_achievement_first=0;
 static uint8_t native_pause_font_cache[43][32];
 static int native_pause_font_cache_valid=0;
@@ -63,7 +68,7 @@ static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
 static void native_pause_enter_confirm(int action);
 static void native_pause_audio_pump(void);
 static void native_pause_apply_control_config(void);
-static void native_title_menu_sfx(int confirm);
+static int native_title_menu_sfx(int confirm);
 static void render_native_pause_video_settings(void);
 static void render_native_pause_audio_settings(void);
 static void render_native_pause_controller_setup(void);
@@ -91,6 +96,7 @@ extern void md_copy_cpu_state(void *dst, uint32_t bytes);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
+extern void md_preserve_audio_on_next_load(void);
 '''
 
 CUSTOM_PAGES = r'''
@@ -290,7 +296,8 @@ static void native_title_open_selected(void) {
         native_title_page_mode=0;
         native_title_compose_enabled=0;
         native_title_input_block=1;
-        native_title_game_options_focus=native_game_level_modern?1:0;
+        native_title_game_options_focus=native_title_reopen_options_after_input ? native_title_reopen_focus : (native_game_level_modern?1:0);
+        native_title_reopen_options_after_input=0;
         /* Preserve the real title frame before an attract demo can advance. */
         memcpy(native_title_options_backdrop,vdp.fb,sizeof native_title_options_backdrop);
         native_title_options_backdrop_valid=1;
@@ -786,44 +793,52 @@ static void native_title_game_options_confirm(void) {
         break;
     }
 }
+static void native_title_game_options_pass_input(int confirm,int reopen) {
+    native_title_reopen_focus=native_title_game_options_focus;
+    native_title_reopen_options_after_input=reopen;
+    native_menu_state=0; /* leave the modal pause loop for exactly one ROM frame */
+    if(!native_title_menu_sfx(confirm)) {
+        native_title_reopen_options_after_input=0;
+        if(reopen)native_menu_state=13; /* keep the page open if no title checkpoint exists */
+    }
+}
+static void native_title_game_options_change_side(int direction) {
+    if(native_title_game_options_focus==0) {
+        native_game_level_modern=1;native_custom_save_config();
+        native_title_game_options_focus=2;native_modern_scroll_offset=0;
+    } else if(native_title_game_options_focus==1) {
+        native_game_level_modern=0;native_custom_save_config();
+        native_title_game_options_focus=0;
+    } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
+        native_modern_option_toggle(native_title_game_options_focus-2);
+    }
+    native_title_game_options_pass_input(0,1);
+}
+static void native_title_game_options_select(void) {
+    int exiting=(native_title_game_options_focus==8);
+    native_title_game_options_confirm();
+    native_title_game_options_pass_input(1,!exiting);
+}
 static void proc_native_title_game_options(SDL_Event *e) {
     if(e->type==SDL_KEYDOWN && !e->key.repeat) {
         switch(e->key.keysym.sym) {
-        case SDLK_UP:native_title_game_options_move(-1);break;
-        case SDLK_DOWN:native_title_game_options_move(1);break;
+        case SDLK_UP:native_title_game_options_move(-1);native_title_game_options_pass_input(0,1);break;
+        case SDLK_DOWN:native_title_game_options_move(1);native_title_game_options_pass_input(0,1);break;
         case SDLK_LEFT:case SDLK_RIGHT:
-            if(native_title_game_options_focus==0) {
-                native_game_level_modern=1;native_custom_save_config();
-                native_title_game_options_focus=2;native_modern_scroll_offset=0;
-            } else if(native_title_game_options_focus==1) {
-                native_game_level_modern=0;native_custom_save_config();
-                native_title_game_options_focus=0;
-            } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
-                native_modern_option_toggle(native_title_game_options_focus-2);
-            }
-            break;
-        case SDLK_RETURN:case SDLK_x:native_title_game_options_confirm();break;
-        case SDLK_ESCAPE:native_title_game_options_exit();break;
+            native_title_game_options_change_side(e->key.keysym.sym==SDLK_RIGHT?1:-1);break;
+        case SDLK_RETURN:case SDLK_x:native_title_game_options_select();break;
+        case SDLK_ESCAPE:native_title_game_options_exit();native_title_menu_sfx(0);break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         switch(e->cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:native_title_game_options_move(-1);break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:native_title_game_options_move(1);break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-            if(native_title_game_options_focus==0) {
-                native_game_level_modern=1;native_custom_save_config();
-                native_title_game_options_focus=2;native_modern_scroll_offset=0;
-            } else if(native_title_game_options_focus==1) {
-                native_game_level_modern=0;native_custom_save_config();
-                native_title_game_options_focus=0;
-            } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
-                native_modern_option_toggle(native_title_game_options_focus-2);
-            }
-            break;
-        case SDL_CONTROLLER_BUTTON_A:native_title_game_options_confirm();break;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:native_title_game_options_move(-1);native_title_game_options_pass_input(0,1);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:native_title_game_options_move(1);native_title_game_options_pass_input(0,1);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:native_title_game_options_change_side(-1);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:native_title_game_options_change_side(1);break;
+        case SDL_CONTROLLER_BUTTON_A:native_title_game_options_select();break;
         case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_START:native_title_game_options_exit();break;
+        case SDL_CONTROLLER_BUTTON_START:native_title_game_options_exit();native_title_menu_sfx(0);break;
         }
     }
 }
@@ -1369,19 +1384,20 @@ static void proc_native_pause_info_back(SDL_Event *e) {
         native_pause_page_back(4);
 }
 
-static void native_title_menu_sfx(int confirm) {
-    if(!adev)return;
-    /* The FM core is shared with the title music callback. Quiesce that callback
-       while the short cue is rendered, restore the exact YM state, then queue
-       the samples and resume immediately. */
-    int was_paused=(SDL_GetAudioDeviceStatus(adev)==SDL_AUDIO_PAUSED);
-    SDL_PauseAudioDevice(adev,1);
-    int16_t samples[2400*2];
-    md_pause_fm_test_start(confirm?2:0);
-    md_pause_fm_test_render(samples,2400,2);
-    md_pause_fm_test_stop();
-    SDL_QueueAudio(adev,samples,(Uint32)sizeof samples);
-    if(!was_paused)SDL_PauseAudioDevice(adev,0);
+static int native_title_menu_sfx(int confirm) {
+    (void)confirm;
+    /* Let the original cartridge process this exact navigation/confirm input
+       for one frame. Its own YM/PSG driver produces the real menu SFX. We then
+       restore the saved Reborn title state on the next frame, so the hidden
+       vanilla menu cannot change screens beneath the custom UI. */
+    if(!native_title_checkpoint_saved || !md_save_slot_exists(5)) {
+        if(!md_save_slot(5))return 0;
+        native_title_checkpoint_saved=1;
+    }
+    native_title_forced_mask=readpad();
+    native_title_input_passthrough=1;
+    native_title_restore_after_input=1;
+    return 1;
 }
 
 static int native_pause_audio_active=0;
@@ -1574,8 +1590,10 @@ confirm:
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
-           "if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_title_menu_update();\n    md_live_mask = (native_menu_state==0 && !native_menu_resume_guard && !native_title_input_block) ? readpad() : 0;\n    native_menu_resume_guard=0;",
-           "install title-screen menu and gate original input for custom entries")
+           "if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_title_menu_update();\n"
+           "    md_live_mask = (native_menu_state==0 && (native_title_input_passthrough || !native_menu_resume_guard) && (native_title_input_passthrough || !native_title_input_block)) ? (readpad() | native_title_forced_mask) : 0;\n"
+           "    native_title_input_passthrough=0; native_title_forced_mask=0; native_menu_resume_guard=0;",
+           "install original title input pass-through for authentic SFX")
 
     # Route the new page states.
     s=once(s,"    else if(native_menu_state==7)proc_native_controller_options(e);",
@@ -1644,8 +1662,12 @@ confirm:
                     break;
                 case SDLK_RETURN:case SDLK_x:
                     if(native_title_menu_selection>=2) {
-                        native_title_menu_sfx(1);
-                        native_title_open_selected();
+                        if(native_title_menu_sfx(1)) {
+                            native_title_pending_selection=native_title_menu_selection;
+                            native_title_pending_open=1;
+                        } else {
+                            native_title_open_selected();
+                        }
                         continue;
                     }
                     break; /* vanilla START/OPTIONS confirmation remains with the cartridge */
@@ -1685,8 +1707,12 @@ confirm:
                 if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
                    e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
                     if(native_title_menu_selection>=2) {
-                        native_title_menu_sfx(1);
-                        native_title_open_selected();
+                        if(native_title_menu_sfx(1)) {
+                            native_title_pending_selection=native_title_menu_selection;
+                            native_title_pending_open=1;
+                        } else {
+                            native_title_open_selected();
+                        }
                         continue;
                     }
                     break;
@@ -1721,6 +1747,42 @@ confirm:
     if hook_end<0:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
+    restore_title=r"""
+    if(native_title_restore_after_input) {
+        native_title_restore_after_input=0;
+        int restored=0;
+        if(native_title_checkpoint_saved && md_save_slot_exists(5)) {
+            md_preserve_audio_on_next_load();
+            restored=md_load_slot(5);
+        }
+        if(restored) {
+            native_title_scene_active=1;
+            native_title_page_mode=0;
+            native_title_compose_enabled=1;
+            native_title_input_block=0;
+            if(native_title_pending_open) {
+                native_title_pending_open=0;
+                native_title_menu_selection=native_title_pending_selection;
+                native_title_open_selected();
+            } else if(native_title_reopen_options_after_input) {
+                native_title_menu_selection=2;
+                native_title_open_selected();
+            }
+        } else {
+            native_title_pending_open=0;
+            native_title_reopen_options_after_input=0;
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican Reborn",
+                "Could not restore the branded title after the original menu sound. The current scene was left unchanged.",NULL);
+        }
+    }
+"""
+    if "if(native_title_restore_after_input)" not in hook:
+        hook_anchor="void md_frame_hook(void) {\n    static uint32_t next=0; SDL_Event e;"
+        hook=once(hook,hook_anchor,hook_anchor+"\n"+restore_title,
+                  "restore title after original one-frame menu input")
+        s=s[:hook_start]+hook+s[hook_end:]
+        hook_end=hook_start+len(hook)
+    
     if "native_title_compose_frame();" not in hook:
         shade=re.search(r"shade\s*\(\s*w\s*,\s*h\s*\)\s*;",hook)
         if not shade:
