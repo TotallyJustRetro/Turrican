@@ -987,7 +987,7 @@ pause_render=r'''static void render_native_pause_main(void) {
     native_menu_rect(bx+8,by+69,bw-16,1,0xB7,0x1D,0x9D,255);
     native_pause_draw_text(bx+8,by+76,"FM LINK ONLINE",0xC7B0D0);
     native_pause_draw_text(x+16,y+h-17,"UP / DOWN SELECT   A / ENTER OK   B / ESC RESUME",0xAAB8C7);
-}''''''
+}'''
     s=replace_function(s,"static void render_native_pause_main(void)",pause_render,"pause menu Extras row")
 
     pause_proc=r'''static void proc_pause_main(SDL_Event *e) {
@@ -1016,7 +1016,7 @@ confirm:
     case 4:native_pause_enter_confirm(1);break;
     case 5:native_pause_enter_confirm(2);break;
     }
-}''''''
+}'''
     s=replace_function(s,"static void proc_pause_main(SDL_Event *e)",pause_proc,"pause menu Extras action")
 
     # Put page functions after the pause backdrop is declared, but before menu present/event helpers.
