@@ -38,7 +38,20 @@ The Build #308 caller index found two direct call relationships:
 
 The `f_D75E` transfer descriptor appears to chain through `f_D7A0`, `f_D7B4`, and `f_D7C8` using the callback slot `$FFBC10`. It stores source pointer `$FF9A88`, length/size fields `0x50` and `0x90`, and issues VDP control/data writes. That is consistent with a small queued transfer/state machine, but the source content and owner have not yet been identified.
 
-The next static step is to inspect the helper routines called by `f_6B80`, `f_7D04`, and the `f_D75E` callback chain, then trace where `$FF0852-$FF086F`, `$FF9A86-$FF9A88`, and the source pointer at `$FFBC00` are populated. Those are better next targets than a user-triggered runtime snapshot.
+## Build #313 refinement: which transfers are actual game assets?
+
+The deeper helper bodies show why it is important not to call every VDP transfer a sprite loader:
+
+- `f_7B72` is a generic longword copy loop. It copies from A0 to A1 for a count supplied in D0; it is not itself a decompressor.
+- `f_7B8A` is a text/font helper. It maps character byte ranges to tile indices beginning around `0x530`, builds VDP tile attributes, and writes those indices to a VDP address. This is a text renderer, not an enemy sprite decoder.
+- `f_76EA` copies a ROM block beginning at `0x7FA6` into RAM at `0x1000`, then initializes and drives a VDP transfer state machine using `$FF0852-$FF0873`. It also calls the generic copy helper and VDP status/queue helpers. The exact payload class (font, title/UI graphics, or another resource block) is not yet proven.
+- `f_7360` similarly copies a ROM block beginning at `0x8040` into RAM at `0x1000` and runs a staged VDP transfer process. Since these two ROM sources are near one another and are used by UI/text helpers in the same neighborhood, treat them as probable display/font resources until their callers and byte formats prove otherwise.
+- `f_7D04` consumes a staging descriptor at `$FF0852-$FF086F`, issues VDP control/data writes, advances its source and destination pointers by 4,480 bytes, and calls a follow-up helper. It is a transfer worker, not a content definition.
+- `f_6C3E` is reached via the shared callback context, calls `f_7D04`, then invokes the callback at `$FFBC18`. This keeps it interesting for per-context graphics updates, but it is not enough to conclude that the context is a game actor.
+
+A significant structural finding remains `f_19FA`: it receives a pointer in A0, stores it at `$FFBC50`, checks a flag at offset +48, and installs numerous callbacks from offsets +4, +18, +22, +26, +30, +34, and +42 into the shared runtime dispatch table. It also follows nested pointers at +8, +10, and +38. This is a strong candidate for a structured runtime context. Its constructor/callers and the meaning of those callbacks are the next priority.
+
+The next static step is to map all callers and callers-of-callers for `f_19FA`, `f_156A`, `f_7360`, and `f_76EA`, then inspect the callback installers and object/level tables they consume. Keep graphics transfer routines separate from semantic actor definitions.
 
 The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
 
