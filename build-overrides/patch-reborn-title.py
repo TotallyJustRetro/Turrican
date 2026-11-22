@@ -322,12 +322,12 @@ static int reborn_game_options_visible(void)
     static const uint16_t exit_text[] = {0x535,0x548,0x539,0x544}; /* EXIT */
 
     const struct { int row, col; const uint16_t *tiles; size_t count; } marks[] = {
-        {2,10,heading,sizeof heading/sizeof heading[0]},
-        {7,11,game_level,sizeof game_level/sizeof game_level[0]},
-        {11,11,rapid_fire,sizeof rapid_fire/sizeof rapid_fire[0]},
-        {15,12,controls,sizeof controls/sizeof controls[0]},
-        {20,11,music_test,sizeof music_test/sizeof music_test[0]},
-        {25,14,exit_text,sizeof exit_text/sizeof exit_text[0]}
+        {3,2,heading,sizeof heading/sizeof heading[0]},
+        {8,3,game_level,sizeof game_level/sizeof game_level[0]},
+        {12,3,rapid_fire,sizeof rapid_fire/sizeof rapid_fire[0]},
+        {16,4,controls,sizeof controls/sizeof controls[0]},
+        {21,3,music_test,sizeof music_test/sizeof music_test[0]},
+        {26,6,exit_text,sizeof exit_text/sizeof exit_text[0]}
     };
 
     for (size_t m=0; m<sizeof marks/sizeof marks[0]; ++m) {
