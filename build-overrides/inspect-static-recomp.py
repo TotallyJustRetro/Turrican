@@ -770,6 +770,59 @@ if gen.exists():
     emit("  "+line[:280])
    if len(body_lines)>170: emit(f"  ... clipped {len(body_lines)-170} further source lines ...")
 
+ # Correlate object record update handler (+34), graphics/resource pointer
+ # (+30), and linked animation/context pointer (+38) by the function that
+ # initializes each record. Values may be immediate ROM data pointers or copied
+ # from a parent/template record; both forms are retained in this evidence index.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_RECORD_30_34_38_DESCRIPTOR_WRITES]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  dest=re.compile(r"\buint32_t\s+d\s*=\s*A\(([05])\)\s*\+\s*\(int32_t\)(30|34|38)")
+  write=re.compile(r"\bWR32\s*\(\s*d\s*,\s*v\s*\)")
+  val_imm=re.compile(r"\buint32_t\s+v\s*=\s*0x([0-9A-Fa-f]{3,8})u")
+  val_copy=re.compile(r"\buint32_t\s+s\s*=\s*A\(([05])\)\s*\+\s*\(int32_t\)(30|34|38);\s*uint32_t\s+v\s*=\s*RD32\(s\)")
+  current="(global)"
+  recent={}
+  writes=[]
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1); recent={}
+   dm=dest.search(line)
+   if dm:
+    recent["dest"]=(int(dm.group(1)),int(dm.group(2)),n,line.strip())
+   im=val_imm.search(line)
+   if im: recent["imm"]=(int(im.group(1),16),n)
+   cp=val_copy.search(line)
+   if cp: recent["copy"]=(int(cp.group(1)),int(cp.group(2)),n)
+   if write.search(line) and "dest" in recent:
+    reg,offset,dline,dcode=recent["dest"]
+    imm=recent.get("imm")
+    copy=recent.get("copy")
+    if imm and 0<=n-imm[1]<=5:
+     value=f"ROM_OR_CODE_0x{imm[0]:X}"
+     origin=f"immediate_at_{imm[1]}"
+    elif copy and 0<=n-copy[2]<=5:
+     value=f"COPY_FROM_A{copy[0]}_PLUS_{copy[1]}"
+     origin=f"copy_at_{copy[2]}"
+    else:
+     value="DYNAMIC_OR_REGISTER_VALUE"
+     origin="not_resolved_by_local_scan"
+    writes.append((current,reg,offset,value,origin,n,dcode,line.strip()))
+    recent.pop("dest",None)
+  # De-duplicate repeated reads of the same assignment line.
+  seen=set()
+  for fn,reg,offset,value,origin,n,dcode,code in writes:
+   key=(fn,reg,offset,n)
+   if key in seen: continue
+   seen.add(key)
+   emit(f"OBJECT_RECORD_FIELD_WRITE owner={fn} base=A{reg} offset=+{offset} value={value} origin={origin} line={n}")
+   emit(f"  destination: {dcode}")
+   emit(f"  write: {code}")
+  emit(f"OBJECT_RECORD_DESCRIPTOR_WRITE_COUNT {len(seen)}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
