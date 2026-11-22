@@ -971,9 +971,10 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_y=std::max(0,mtlb_map_cursor_y());
     g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
     g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
+    g_live_art_hash=0;
+    g_live_tile_count=0;
     g_rom_tile_start_index=-1;
     g_rom_tile_count=0;
-    append_rom_art_tiles();
     g_fade_in_frame=0;
     g_fade_out_frame=-1;
     g_exit_requested=false;
