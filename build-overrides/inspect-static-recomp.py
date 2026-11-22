@@ -92,6 +92,63 @@ for rel in FILES:
     emit(f"RENDER_AUDIO_HOOK line={n} {t[:260]}")
   if rel=="runtime/harness.c" and re.search(r"\b(?:static\s+)?(?:M68K\s*\*CPU|uint8_t\s+ram|static\s+Z80\s+zcpu|zbank|zbusreq|zreset|fm_acc|psg_acc|z80_over|long\s+frame|md_frame_hook)\b",t):
    emit(f"RUNTIME line={n} {t[:180]}")
+
+# Keep the native pause-page mapping grounded in the real SDL source instead of
+# guessed byte offsets. Emit the precise config declaration and legacy handlers
+# so subsequent patches can call the correct fields while keeping the new UI.
+sdl_path=ROOT/"runtime"/"sdl_main.c"
+if sdl_path.exists():
+ source=sdl_path.read_text(encoding="utf-8",errors="replace")
+ lines=source.splitlines()
+ emit("[SDL_NATIVE_MENU_SOURCE]")
+ m=re.search(r"static\\s+struct\\s*\\{[^}]*\\}\\s*cfg\\s*=\\s*\\{[^}]*\\};",source,re.S)
+ if m:
+  emit("CONFIG_STRUCT_SOURCE")
+  emit(m.group(0))
+ for name in (
+  "render_native_options_video","proc_options_video","adjust_video",
+  "render_native_options_audio","proc_options_audio","adjust_audio",
+  "render_native_pause_video_settings","proc_native_pause_video_settings",
+  "render_native_pause_audio_settings","proc_native_pause_audio_settings",
+  "native_menu_pause_loop","native_pause_enter_confirm","proc_native_pause_confirm",
+  "native_title_menu_sfx","native_title_menu_update","native_title_game_options_move",
+  "native_title_game_options_confirm","proc_native_title_game_options",
+ ):
+  pat=re.compile(r"(?m)^\\s*(?:(?:static|inline|extern)\\s+)*(?:void|int|bool|char|short|long|size_t|u?int(?:8|16|32|64)_t|[A-Z]\\w*)\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  hit=pat.search(source)
+  if not hit:
+   emit(f"MENU_FUNCTION_MISSING {name}")
+   continue
+  brace=source.find("{",hit.start()); depth=0; end=-1
+  for pos in range(brace,len(source)):
+   if source[pos]=="{":depth+=1
+   elif source[pos]=="}":
+    depth-=1
+    if depth==0:
+     end=pos+1;break
+  if end>brace:
+   block=source[hit.start():end]
+   emit(f"MENU_FUNCTION_SOURCE {name} lines {source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line in block.splitlines()[:150]:emit("  "+line[:260])
+ else:
+  emit("CONFIG_STRUCT_NOT_FOUND")
+# Scan generated 68000 output for accesses to the standard Mega Drive sound
+# command/mailbox and YM interfaces. Context helps identify the original SFX call.
+gen=ROOT/"recomp_gen.c"
+if gen.exists():
+ lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+ emit("[GENERATED_SOUND_WRITE_SITES]")
+ pat=re.compile(r"0xFFFFA000|0xFFFFA040|0xFFFFC000|0xA00000|0xA04000|0xC00011",re.I)
+ count=0
+ for i,line in enumerate(lines):
+  if pat.search(line):
+   emit(f"SOUND_ACCESS line={i+1} {line[:300]}")
+   for j in range(max(0,i-3),min(len(lines),i+4)):
+    emit(f"  {j+1}: {lines[j][:260]}")
+   count+=1
+   if count>=80:break
+ emit(f"SOUND_ACCESS_CONTEXTS {count}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
