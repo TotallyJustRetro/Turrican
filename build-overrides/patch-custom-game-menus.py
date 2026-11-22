@@ -261,8 +261,12 @@ static void native_title_open_selected(void) {
     native_extras_parent=0;
     native_menu_sel=0;
     if(native_title_menu_selection==2) {
-        native_title_page_mode=1;
+        /* State 13 runs inside native_menu_pause_loop: emulation and demos stop. */
+        native_title_page_mode=0;
+        native_title_compose_enabled=0;
+        native_title_input_block=1;
         native_title_game_options_focus=native_game_level_modern?1:0;
+        native_menu_state=13;
     } else if(native_title_menu_selection==3) {
         native_menu_state=11;
     } else if(native_title_menu_selection==4) {
@@ -618,6 +622,156 @@ static void proc_native_level_builder(SDL_Event *e) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(4);
     }
 }
+static void render_native_title_game_options(void) {
+    const int pw=274, ph=154;
+    int px,py;
+    native_menu_panel(pw,ph,&px,&py);
+    native_menu_title(px+(pw-str_w("GAME OPTIONS",2))/2,py+8,"GAME OPTIONS",2);
+
+    native_menu_item(px+16,py+36,"VANILLA GAME",native_title_game_options_focus==0,1);
+    native_menu_item(px+150,py+36,"MODERN",native_title_game_options_focus==1,1);
+
+    if(native_game_level_modern) {
+        native_menu_rect(px+12,py+61,pw-24,1,0x80,0xA8,0xC0,140);
+        char lives[24],continues[24],timer[24];
+        snprintf(lives,sizeof lives,"LIVES: %s",native_modern_lives?"ON":"OFF");
+        snprintf(continues,sizeof continues,"CONTINUES: %s",native_modern_continues?"ON":"OFF");
+        snprintf(timer,sizeof timer,"NO TIMER: %s",native_modern_no_timer?"ON":"OFF");
+        native_menu_item(px+15,py+78,lives,native_title_game_options_focus==2,1);
+        native_menu_item(px+96,py+78,continues,native_title_game_options_focus==3,1);
+        native_menu_item(px+197,py+78,timer,native_title_game_options_focus==4,1);
+    }
+
+    native_menu_rect(px+12,py+106,pw-24,1,0x80,0xA8,0xC0,140);
+    native_menu_item(px+(pw-str_w("EXIT",1))/2,py+119,"EXIT",
+                     native_title_game_options_focus==5,1);
+}
+
+static void native_title_game_options_exit(void) {
+    native_title_page_mode=0;
+    native_title_menu_selection=2;
+    native_title_scene_active=1;
+    native_title_compose_enabled=0;
+    native_title_input_block=0;
+    native_title_transition_guard=0;
+    native_menu_state=0;
+    native_menu_sel=0;
+}
+
+static void native_title_game_options_confirm(void) {
+    switch(native_title_game_options_focus) {
+    case 0:
+        native_game_level_modern=0;
+        native_custom_save_config();
+        native_title_game_options_focus=0;
+        break;
+    case 1:
+        native_game_level_modern=1;
+        native_custom_save_config();
+        native_title_game_options_focus=2;
+        break;
+    case 2:
+        native_modern_lives^=1;
+        native_custom_save_config();
+        break;
+    case 3:
+        native_modern_continues^=1;
+        native_custom_save_config();
+        break;
+    case 4:
+        native_modern_no_timer^=1;
+        native_custom_save_config();
+        break;
+    case 5:
+        native_title_game_options_exit();
+        break;
+    }
+}
+
+static void proc_native_title_game_options(SDL_Event *e) {
+    if(e->type==SDL_KEYDOWN && !e->key.repeat) {
+        switch(e->key.keysym.sym) {
+        case SDLK_UP:
+            if(native_title_game_options_focus==5)
+                native_title_game_options_focus=native_game_level_modern?2:1;
+            else if(native_title_game_options_focus>=2)
+                native_title_game_options_focus=1;
+            else if(native_title_game_options_focus==1)
+                native_title_game_options_focus=0;
+            break;
+        case SDLK_DOWN:
+            if(native_title_game_options_focus==0)
+                native_title_game_options_focus=1;
+            else if(native_title_game_options_focus==1)
+                native_title_game_options_focus=native_game_level_modern?2:5;
+            else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=4)
+                native_title_game_options_focus=5;
+            else
+                native_title_game_options_focus=0;
+            break;
+        case SDLK_LEFT:
+            if(native_title_game_options_focus<2)
+                native_title_game_options_focus=1-native_title_game_options_focus;
+            else if(native_title_game_options_focus<=4)
+                native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
+            break;
+        case SDLK_RIGHT:
+            if(native_title_game_options_focus<2)
+                native_title_game_options_focus=1-native_title_game_options_focus;
+            else if(native_title_game_options_focus<=4)
+                native_title_game_options_focus=2+(native_title_game_options_focus-2+1)%3;
+            break;
+        case SDLK_RETURN: case SDLK_x:
+            native_title_game_options_confirm();
+            break;
+        case SDLK_ESCAPE:
+            native_title_game_options_exit();
+            break;
+        }
+    }
+    if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+        switch(e->cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:
+            if(native_title_game_options_focus==5)
+                native_title_game_options_focus=native_game_level_modern?2:1;
+            else if(native_title_game_options_focus>=2)
+                native_title_game_options_focus=1;
+            else if(native_title_game_options_focus==1)
+                native_title_game_options_focus=0;
+            break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+            if(native_title_game_options_focus==0)
+                native_title_game_options_focus=1;
+            else if(native_title_game_options_focus==1)
+                native_title_game_options_focus=native_game_level_modern?2:5;
+            else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=4)
+                native_title_game_options_focus=5;
+            else
+                native_title_game_options_focus=0;
+            break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+            if(native_title_game_options_focus<2)
+                native_title_game_options_focus=1-native_title_game_options_focus;
+            else if(native_title_game_options_focus<=4)
+                native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
+            break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+            if(native_title_game_options_focus<2)
+                native_title_game_options_focus=1-native_title_game_options_focus;
+            else if(native_title_game_options_focus<=4)
+                native_title_game_options_focus=2+(native_title_game_options_focus-2+1)%3;
+            break;
+        case SDL_CONTROLLER_BUTTON_A:
+            native_title_game_options_confirm();
+            break;
+        case SDL_CONTROLLER_BUTTON_B:
+        case SDL_CONTROLLER_BUTTON_START:
+            native_title_game_options_exit();
+            break;
+        }
+    }
+}
+
 '''
 
 
@@ -721,7 +875,8 @@ confirm:
         "    case 9: render_native_toggle_page(9); break;\n"
         "    case 10: render_native_saves(); break;\n"
         "    case 11: render_native_level_builder(); break;\n"
-        "    case 12: render_native_toggle_page(12); break;",
+        "    case 12: render_native_toggle_page(12); break;\n"
+        "    case 13: render_native_title_game_options(); break;",
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
@@ -735,7 +890,8 @@ confirm:
         "    else if(native_menu_state==9)proc_native_toggle_page(e,9);\n"
         "    else if(native_menu_state==10)proc_native_saves(e);\n"
         "    else if(native_menu_state==11)proc_native_level_builder(e);\n"
-        "    else if(native_menu_state==12)proc_native_toggle_page(e,12);",
+        "    else if(native_menu_state==12)proc_native_toggle_page(e,12);\n"
+        "    else if(native_menu_state==13)proc_native_title_game_options(e);",
         "native Extras event routing")
 
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
@@ -958,6 +1114,11 @@ confirm:
         raise RuntimeError("Could not locate custom gameplay frame boundary hook.")
     # Match the original VDP menu's cool-blue selected treatment, not the old gold accent.
     s=s.replace("0xFF,0xAE,0x1F","0x00,0x48,0xFC")
+    s=once(s,
+        "    else if(native_menu_state==7)snprintf(hint,sizeof hint,\\"LEFT/RIGHT REBIND  ESC BACK\\");",
+        "    else if(native_menu_state==7)snprintf(hint,sizeof hint,\\"LEFT/RIGHT REBIND  ESC BACK\\");\\n"
+        "    else if(native_menu_state==13)snprintf(hint,sizeof hint,\\"ARROWS SELECT  ENTER OK  EXIT\\");",
+        "native Game Options EXIT hint")
     path.write_text(s,encoding="utf-8",newline="\n")
 
 def main() -> int:
