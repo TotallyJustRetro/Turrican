@@ -466,6 +466,49 @@ if gen.exists():
     emit(f"  {q+1}: {gen_lines[q][:300]}")
   if len(ranges)>80: emit(f"CALLBACK_TARGET_CONTEXTS_CLIPPED {len(ranges)-80}")
 
+ # Build an index of indexed reads from fixed ROM bases. This is a useful way
+ # to discover stage/object/animation pointer tables without assuming any
+ # particular structure is an actor catalogue.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[ROM_INDEXED_READ_TABLE_CANDIDATES]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  assign_base=re.compile(r"\buint32_t\s+e\s*=\s*0x([0-9A-Fa-f]{3,8})u;\s*A\(([0-7])\)\s*=\s*e;")
+  direct_base=re.compile(r"\bA\(([0-7])\)\s*=\s*0x([0-9A-Fa-f]{3,8})u")
+  indexed_read=re.compile(r"\b(?:RD8|RD16|RD32)\s*\(\s*A\(([0-7])\)\s*\+")
+  bases={}
+  records=[]
+  current="(global)"
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+    bases={}
+   am=assign_base.search(line)
+   if am:
+    value=int(am.group(1),16)
+    reg=int(am.group(2))
+    if value<0x400000: bases[reg]=value
+   dm=direct_base.search(line)
+   if dm:
+    reg=int(dm.group(1));value=int(dm.group(2),16)
+    if value<0x400000:bases[reg]=value
+   rm=indexed_read.search(line)
+   if rm:
+    reg=int(rm.group(1));base=bases.get(reg)
+    if base is not None and 0x200<=base<0x400000:
+     records.append((current,base,n,line.strip()[:280]))
+  grouped={}
+  for fn,base,n,line in records:
+   grouped.setdefault((fn,base),[]).append((n,line))
+  ranked=sorted(grouped.items(),key=lambda item:(-len(item[1]),item[0][1],item[0][0]))
+  for (fn,base),reads in ranked[:180]:
+   emit(f"ROM_INDEXED_READ function={fn} base=0x{base:X} read_sites={len(reads)} first_lines={','.join(str(n) for n,_ in reads[:12])}")
+   for n,line in reads[:6]:
+    emit(f"  {n}: {line}")
+  emit(f"ROM_INDEXED_READ_FUNCTION_BASE_PAIRS {len(grouped)}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
