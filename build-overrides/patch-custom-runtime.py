@@ -550,17 +550,18 @@ static int md_modern_is_timer_ink(uint8_t pixel) {
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* SCORE, TIME and ENERGY occupy three distinct top-row columns. TIME
-       lives in the central HUD strip; make only its foreground/window and
-       sprite pixels transparent so the normal VDP compositor reveals the
-       already-rendered background planes underneath, with no sampled texture
-       rectangle and no effect on the score or energy columns. */
+    /* TIME is the red glyph ink in the central HUD column. Remove only
+       those rendered pixels from every candidate layer. Clearing the whole
+       strip in Plane A/sprites exposes Plane B as a conspicuous rectangle;
+       clearing matching ink in all layers preserves every non-HUD pixel and
+       lets the normal compositor reveal the actual scene behind each glyph. */
     if(md_modern_timer_hud_this_frame && y>=vdp.height*3/100 && y<vdp.height*15/100) {
         int x0=W*41/100, x1=W*60/100;
         if(x1>W)x1=W;
         for(int x=x0;x<x1;x++) {
-            pa[x]=0;
-            sp[x]=0;
+            if(md_modern_is_timer_ink(pa[x]))pa[x]=0;
+            if(md_modern_is_timer_ink(pb[x]))pb[x]=0;
+            if(md_modern_is_timer_ink(sp[x]))sp[x]=0;
         }
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
