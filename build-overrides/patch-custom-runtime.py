@@ -188,6 +188,107 @@ void md_modern_runtime_frame(void) {
 extern uint32_t rt_shadow[65536];
 extern int rt_sp;
 
+/* Export a real in-game snapshot whenever the Maker is opened. This is
+ * intentionally read-only: it records the running game's RAM and VDP state
+ * so we can identify actor records and their sprite/behavior relationships
+ * before writing any level-spawn patches. */
+typedef struct MDMakerSnapshotHeader {
+    char magic[8];
+    uint32_t version;
+    uint32_t payload_bytes;
+    uint64_t frame_number;
+    uint64_t rom_hash;
+    uint32_t recomp_depth;
+    uint16_t screen_width;
+    uint16_t screen_height;
+    uint8_t stage;
+    uint8_t health_hi, health_lo;
+    uint8_t lives_hi, lives_lo;
+    uint8_t timer_hi, timer_lo;
+    uint8_t weapon_levels[3];
+    uint8_t reserved[5];
+} MDMakerSnapshotHeader;
+
+static uint32_t md_maker_snapshot_serial=0;
+
+void md_maker_capture_for_editor(void) {
+    if(!CPU || !rom || !romlen)return;
+
+#ifdef _WIN32
+    if(_mkdir("maker-diagnostics")!=0 && errno!=EEXIST)return;
+#else
+    if(mkdir("maker-diagnostics",0775)!=0 && errno!=EEXIST)return;
+#endif
+
+    MDMakerSnapshotHeader h;
+    memset(&h,0,sizeof h);
+    memcpy(h.magic,"MTMAKER1",8);
+    h.version=1;
+    h.frame_number=(uint64_t)frame;
+    h.screen_width=(uint16_t)vdp.width;
+    h.screen_height=(uint16_t)vdp.height;
+    h.stage=ram[0xBF1F];
+    h.health_hi=ram[0xBF20]; h.health_lo=ram[0xBF21];
+    h.lives_hi=ram[0xBF26]; h.lives_lo=ram[0xBF27];
+    h.timer_hi=ram[0xBF28]; h.timer_lo=ram[0xBF29];
+    h.weapon_levels[0]=ram[0xBD17];
+    h.weapon_levels[1]=ram[0xBD18];
+    h.weapon_levels[2]=ram[0xBD19];
+    h.recomp_depth=(uint32_t)(rt_sp<0?0:rt_sp>65536?65536:rt_sp);
+
+    uint64_t hash=UINT64_C(14695981039346656037);
+    for(size_t i=0;i<romlen;i++){hash^=rom[i];hash*=UINT64_C(1099511628211);}
+    h.rom_hash=hash;
+
+    uint32_t depth=h.recomp_depth;
+    h.payload_bytes=(uint32_t)(sizeof ram+sizeof vdp.vram+sizeof vdp.cram+
+        sizeof vdp.vsram+sizeof vdp.reg+sizeof vdp.fb+sizeof *CPU+
+        depth*sizeof rt_shadow[0]);
+
+    char path[192];
+    unsigned int serial=++md_maker_snapshot_serial;
+    int n=snprintf(path,sizeof path,
+        "maker-diagnostics/mt-maker-%03u-stage-%02u-frame-%08llu.bin",
+        serial,(unsigned)h.stage,(unsigned long long)h.frame_number);
+    if(n<=0 || (size_t)n>=sizeof path)return;
+
+    FILE *out=fopen(path,"wb");
+    if(!out)return;
+    int ok=fwrite(&h,sizeof h,1,out)==1 &&
+        fwrite(ram,sizeof ram,1,out)==1 &&
+        fwrite(vdp.vram,sizeof vdp.vram,1,out)==1 &&
+        fwrite(vdp.cram,sizeof vdp.cram,1,out)==1 &&
+        fwrite(vdp.vsram,sizeof vdp.vsram,1,out)==1 &&
+        fwrite(vdp.reg,sizeof vdp.reg,1,out)==1 &&
+        fwrite(vdp.fb,sizeof vdp.fb,1,out)==1 &&
+        fwrite(CPU,sizeof *CPU,1,out)==1 &&
+        fwrite(rt_shadow,sizeof rt_shadow[0],depth,out)==depth;
+    if(fclose(out)!=0)ok=0;
+    if(ok) {
+        FILE *info=fopen("maker-diagnostics/README.txt","wb");
+        if(info) {
+            fprintf(info,
+                "Mega Turrican Maker runtime capture\\r\\n"
+                "Captured automatically when Level Builder opens.\\r\\n"
+                "File: %s\\r\\n"
+                "Stage byte ($FFBF1F): %u\\r\\n"
+                "Health ($FFBF20): %u\\r\\n"
+                "Lives ($FFBF26): %u\\r\\n"
+                "Timer ($FFBF28): %u\\r\\n"
+                "Weapon tiers ($FFBD17-$FFBD19): %u, %u, %u\\r\\n"
+                "Frame: %llu\\r\\n"
+                "Payload includes full 64 KiB work RAM, VDP VRAM/CRAM/VSRAM/registers/framebuffer, M68K state, and active recompiler return stack.\\r\\n",
+                path,(unsigned)h.stage,
+                (unsigned)(((unsigned)h.health_hi<<8)|h.health_lo),
+                (unsigned)(((unsigned)h.lives_hi<<8)|h.lives_lo),
+                (unsigned)(((unsigned)h.timer_hi<<8)|h.timer_lo),
+                (unsigned)h.weapon_levels[0],(unsigned)h.weapon_levels[1],
+                (unsigned)h.weapon_levels[2],(unsigned long long)h.frame_number);
+            fclose(info);
+        }
+    }
+}
+
 extern size_t md_ym_state_size(void);
 extern void md_ym_state_save(void *dst);
 extern int md_ym_state_load(const void *src, size_t bytes);
