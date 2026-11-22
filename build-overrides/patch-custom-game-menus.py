@@ -1733,8 +1733,8 @@ confirm:
     }
 """
     if "if(native_title_reopen_options_next_frame)" not in hook:
-        hook_anchor="void md_frame_hook(void) {\\n    static uint32_t next=0; SDL_Event e;"
-        hook=once(hook,hook_anchor,hook_anchor+"\\n"+reopen_options,
+        hook_anchor="void md_frame_hook(void) {\n    static uint32_t next=0; SDL_Event e;"
+        hook=once(hook,hook_anchor,hook_anchor+"\n"+reopen_options,
                   "reopen Game Options after original navigation frame")
         s=s[:hook_start]+hook+s[hook_end:]
         hook_end=hook_start+len(hook)
