@@ -56,6 +56,8 @@ static int native_pause_sound_track=-1;
 static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
 static void native_pause_enter_confirm(int action);
 static void native_pause_audio_pump(void);
+static void native_pause_apply_control_config(void);
+static void native_custom_save_config(void);
 extern void md_set_ram_byte(uint32_t address,uint8_t value);
 extern void md_pause_fm_test_start(int track);
 extern void md_pause_fm_test_stop(void);
@@ -1030,63 +1032,54 @@ static void proc_native_pause_options(SDL_Event *e) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
         case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
         case SDLK_LEFT:case SDLK_RIGHT:
-            if(native_menu_sel==0)native_pause_rapid_fire^=1;
+            if(native_menu_sel==0) {native_pause_rapid_fire^=1;native_custom_save_config();}
             else if(native_menu_sel==1) {
                 native_pause_control_config=(native_pause_control_config+
                     (e->key.keysym.sym==SDLK_RIGHT?1:2))%3;
-                native_pause_apply_control_config();
+                native_pause_apply_control_config();native_custom_save_config();
             } else if(native_menu_sel>=2&&native_menu_sel<=5) {
                 native_pause_sound_track=native_menu_sel-2;
                 md_pause_fm_test_start(native_pause_sound_track);
             }
             break;
-        case SDLK_RETURN:case SDLK_x:
-            if(native_menu_sel==0)native_pause_rapid_fire^=1;
-            else if(native_menu_sel==1) {
-                native_pause_control_config=(native_pause_control_config+1)%3;
-                native_pause_apply_control_config();
-            } else if(native_menu_sel>=2&&native_menu_sel<=5) {
-                native_pause_sound_track=native_menu_sel-2;
-                md_pause_fm_test_start(native_pause_sound_track);
-            } else {
-                md_pause_fm_test_stop();native_pause_sound_track=-1;
-                native_menu_state=1;native_menu_sel=2;
-            }
-            break;
-        case SDLK_ESCAPE:md_pause_fm_test_stop();native_pause_sound_track=-1;native_menu_state=1;native_menu_sel=2;break;
+        case SDLK_RETURN:case SDLK_x:goto confirm;
+        case SDLK_ESCAPE:
+            md_pause_fm_test_stop();native_pause_sound_track=-1;
+            native_menu_state=1;native_menu_sel=2;break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT||e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-            if(native_menu_sel==0)native_pause_rapid_fire^=1;
+            if(native_menu_sel==0) {native_pause_rapid_fire^=1;native_custom_save_config();}
             else if(native_menu_sel==1) {
                 native_pause_control_config=(native_pause_control_config+
                     (e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT?1:2))%3;
-                native_pause_apply_control_config();
+                native_pause_apply_control_config();native_custom_save_config();
             } else if(native_menu_sel>=2&&native_menu_sel<=5) {
                 native_pause_sound_track=native_menu_sel-2;
                 md_pause_fm_test_start(native_pause_sound_track);
             }
         }
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
-            if(native_menu_sel==6) {
-                md_pause_fm_test_stop();native_pause_sound_track=-1;
-                native_menu_state=1;native_menu_sel=2;
-            } else if(native_menu_sel==0)native_pause_rapid_fire^=1;
-            else if(native_menu_sel==1) {
-                native_pause_control_config=(native_pause_control_config+1)%3;
-                native_pause_apply_control_config();
-            } else {
-                native_pause_sound_track=native_menu_sel-2;
-                md_pause_fm_test_start(native_pause_sound_track);
-            }
-        }
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A)goto confirm;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B) {
             md_pause_fm_test_stop();native_pause_sound_track=-1;
             native_menu_state=1;native_menu_sel=2;
         }
+    }
+    return;
+confirm:
+    if(native_menu_sel==0) {native_pause_rapid_fire^=1;native_custom_save_config();}
+    else if(native_menu_sel==1) {
+        native_pause_control_config=(native_pause_control_config+1)%3;
+        native_pause_apply_control_config();native_custom_save_config();
+    } else if(native_menu_sel>=2&&native_menu_sel<=5) {
+        native_pause_sound_track=native_menu_sel-2;
+        md_pause_fm_test_start(native_pause_sound_track);
+    } else {
+        md_pause_fm_test_stop();native_pause_sound_track=-1;
+        native_menu_state=1;native_menu_sel=2;
     }
 }
 static void render_native_pause_confirm(void) {
@@ -1507,7 +1500,7 @@ confirm:
     switch(native_menu_sel) {
     case 0:native_menu_state=0;break;
     case 1:native_menu_state=15;native_menu_sel=0;break;
-    case 2:native_menu_state=16;native_menu_sel=0;break;
+    case 2:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
     case 3:native_pause_enter_confirm(0);break;
     case 4:native_pause_enter_confirm(1);break;
     case 5:native_pause_enter_confirm(2);break;
