@@ -12,6 +12,7 @@ int mtlb_init(SDL_Window *window, SDL_Renderer *renderer);
 void mtlb_shutdown(void);
 void mtlb_process_event(const SDL_Event *event);
 int mtlb_render(SDL_Renderer *renderer);
+void mtlb_set_stage_texture(void *texture, int width, int height);
 
 int mtlb_map_cols(void);
 int mtlb_map_rows(void);
