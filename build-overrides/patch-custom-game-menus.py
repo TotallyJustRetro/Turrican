@@ -159,14 +159,14 @@ static void native_title_draw_text_at(int x,int y,const char *s,int selected,int
                 int sy=(dy*8+3)/6;
                 int py=y+dy;
                 if(py<0 || py>=H)continue;
-                uint32_t *row=&vdp.fb[py*320];
+                uint32_t *row=&outbuf[py*320];
                 for(int dx=0;dx<6;dx++) {
                     int sx=(dx*8+3)/6;
                     int px=x+i*7+dx;
                     if(px<0 || px>=W)continue;
                     uint8_t packed=vdp.vram[(size_t)tile*32u+(size_t)sy*4u+(size_t)(sx>>1)];
                     unsigned index=(sx&1)?(packed&15u):(packed>>4);
-                    if(index && index<4)row[px]=colors[index];
+                    if(index && index<4)row[px]=0xFF000000u|colors[index];
                 }
             }
         }
@@ -181,12 +181,12 @@ static void native_title_compose_frame(void) {
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
     if(W<256 || W>320 || H<200 || H>240)return;
 
-    /* The title's lower field is black in the cartridge art. Clear the
-       original blinking START/OPTIONS and copyright rows without touching
-       VRAM, sprites, scroll registers, or the Turrican/Reborn logo. */
+    /* Shade has already copied the cartridge frame into outbuf. Compose only
+       in the presentation buffer, leaving the VDP framebuffer and cartridge
+       planes untouched. This prevents logo motion and original-menu bleed. */
     for(int y=124;y<H;y++) {
-        uint32_t *row=&vdp.fb[y*320];
-        for(int x=0;x<W;x++)row[x]=0;
+        uint32_t *row=&outbuf[y*320];
+        for(int x=0;x<W;x++)row[x]=0xFF000000u;
     }
 
     int blink_on=(native_title_blink_ticks%120u)<60u;
@@ -207,13 +207,14 @@ static void native_title_compose_frame(void) {
         snprintf(lives,sizeof lives,"LIVES %s",native_modern_lives?"ON":"OFF");
         snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
         snprintf(timer,sizeof timer,"NO TIMER %s",native_modern_no_timer?"ON":"OFF");
+        native_title_draw_text_center("MODERN OPTIONS",180,0,blink_on);
         const char *toggles[]={lives,continues,timer};
         int widths[3],total=0;
         for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
         total+=14;
         int x=((W-total)/2)+8;
         for(int i=0;i<3;i++) {
-            native_title_draw_text_at(x,190,toggles[i],
+            native_title_draw_text_at(x,197,toggles[i],
                 native_title_game_options_focus==i+2,blink_on);
             x+=widths[i]+7;
         }
@@ -874,7 +875,7 @@ confirm:
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
 
-    # Compose title UI into the already-rendered VDP framebuffer, never into live VRAM.
+    # Compose after shade() and immediately before SDL uploads the completed frame.
     hook_start=s.find("void md_frame_hook(void)")
     if hook_start<0:
         raise RuntimeError("Could not locate md_frame_hook for title framebuffer composition.")
@@ -892,11 +893,11 @@ confirm:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
     if "native_title_compose_frame();" not in hook:
-        shade=re.search(r"(?m)^(\s*)shade\(\s*w\s*,\s*h\s*\);",hook)
-        if not shade:
-            raise RuntimeError("Could not locate the completed-frame shade call in md_frame_hook.")
-        at=shade.start()
-        hook=hook[:at]+shade.group(1)+"native_title_compose_frame();\n"+hook[at:]
+        upload=re.search(r"(?m)^(\s*)SDL_UpdateTexture\s*\(",hook)
+        if not upload:
+            raise RuntimeError("Could not locate SDL_UpdateTexture in md_frame_hook.")
+        at=upload.start()
+        hook=hook[:at]+upload.group(1)+"native_title_compose_frame();\n"+hook[at:]
         s=s[:hook_start]+hook+s[hook_end:]
 
     # Title-screen updates and first-run settings load run before md_live_mask.
