@@ -314,6 +314,114 @@ int md_load_slot(int slot) {
     free(s);free(ym_blob);free(psg_blob);
     return ok;
 }
+
+/* Native pause-menu helpers. Preserve the live soundtrack's OPN2 state while
+ * generating original FM preview sequences for the four Sound Test entries. */
+extern void ym_init(void);
+extern void ym_write(int port,uint8_t value);
+extern void ym_sample(int *outl,int *outr);
+
+void md_set_ram_byte(uint32_t address,uint8_t value) {
+    if(address<0x10000u)ram[address]=value;
+}
+
+static void *md_pause_ym_backup=NULL;
+static size_t md_pause_ym_backup_bytes=0;
+static int md_pause_ym_track=-1;
+static uint32_t md_pause_ym_sample_index=0;
+static int md_pause_ym_note_index=-1;
+
+static void md_pause_ym_register(uint8_t address,uint8_t value) {
+    ym_write(0,address);
+    ym_write(1,value);
+}
+static void md_pause_ym_note(int track,int note) {
+    static const uint16_t notes[4][8]={
+        {0x169,0x1A2,0x1D6,0x1A2,0x169,0x1F0,0x1D6,0x1A2},
+        {0x1D6,0x220,0x269,0x220,0x1D6,0x1A2,0x169,0x1A2},
+        {0x120,0x169,0x1A2,0x1D6,0x220,0x1D6,0x1A2,0x169},
+        {0x269,0x220,0x1D6,0x1A2,0x169,0x1A2,0x1D6,0x220}
+    };
+    uint16_t fnum=notes[track&3][note&7];
+    md_pause_ym_register(0xA0,(uint8_t)fnum);
+    md_pause_ym_register(0xA4,(uint8_t)(0x20u|((fnum>>8)&7u)));
+    md_pause_ym_register(0x28,0xF0);
+    md_pause_ym_note_index=note&7;
+}
+void md_pause_fm_test_stop(void) {
+    if(md_pause_ym_backup && md_pause_ym_backup_bytes)
+        md_ym_state_load(md_pause_ym_backup,md_pause_ym_backup_bytes);
+    free(md_pause_ym_backup);
+    md_pause_ym_backup=NULL;
+    md_pause_ym_backup_bytes=0;
+    md_pause_ym_track=-1;
+    md_pause_ym_sample_index=0;
+    md_pause_ym_note_index=-1;
+}
+void md_pause_fm_test_start(int track) {
+    md_pause_fm_test_stop();
+    if(track<0||track>3)return;
+    md_pause_ym_backup_bytes=md_ym_state_size();
+    if(!md_pause_ym_backup_bytes)return;
+    md_pause_ym_backup=malloc(md_pause_ym_backup_bytes);
+    if(!md_pause_ym_backup){md_pause_ym_backup_bytes=0;return;}
+    md_ym_state_save(md_pause_ym_backup);
+    ym_init();
+
+    /* Four distinct original FM test patches: metallic lead, bright pulse,
+       low arpeggio, and paired fifths. No game soundtrack is copied. */
+    md_pause_ym_register(0xB0,(uint8_t)(track==3?0x07:track==2?0x04:0x02));
+    md_pause_ym_register(0xB4,0xC0);
+    md_pause_ym_register(0x30,(uint8_t)(track==0?0x71:0x31));
+    md_pause_ym_register(0x34,(uint8_t)(track==1?0x52:0x21));
+    md_pause_ym_register(0x38,0x11);
+    md_pause_ym_register(0x3C,0x01);
+    md_pause_ym_register(0x40,(uint8_t)(track==0?0x08:0x14));
+    md_pause_ym_register(0x44,0x12);
+    md_pause_ym_register(0x48,0x1C);
+    md_pause_ym_register(0x4C,0x00);
+    md_pause_ym_register(0x50,0x1F);
+    md_pause_ym_register(0x54,0x1D);
+    md_pause_ym_register(0x58,0x18);
+    md_pause_ym_register(0x5C,0x1F);
+    md_pause_ym_register(0x60,0x08);
+    md_pause_ym_register(0x64,0x0A);
+    md_pause_ym_register(0x68,0x0C);
+    md_pause_ym_register(0x6C,0x08);
+    md_pause_ym_register(0x70,0x05);
+    md_pause_ym_register(0x74,0x07);
+    md_pause_ym_register(0x78,0x03);
+    md_pause_ym_register(0x7C,0x04);
+    md_pause_ym_register(0x80,0x0F);
+    md_pause_ym_register(0x84,0x0F);
+    md_pause_ym_register(0x88,0x0F);
+    md_pause_ym_register(0x8C,0x0F);
+    md_pause_ym_track=track;
+    md_pause_ym_sample_index=0;
+    md_pause_ym_note(0,0);
+}
+void md_pause_fm_test_render(int16_t *dst,int frames,int channels) {
+    if(!dst||frames<=0||md_pause_ym_track<0)return;
+    if(channels!=1&&channels!=2&&channels!=6)channels=2;
+    for(int i=0;i<frames;i++) {
+        uint32_t note=(md_pause_ym_sample_index/9600u)&7u;
+        if((int)note!=md_pause_ym_note_index)
+            md_pause_ym_note(md_pause_ym_track,(int)note);
+        int left=0,right=0;
+        ym_sample(&left,&right);
+        if(left>32767)left=32767;if(left< -32768)left=-32768;
+        if(right>32767)right=32767;if(right< -32768)right=-32768;
+        if(channels==1)dst[i]=(int16_t)((left+right)/2);
+        else if(channels==2) {
+            dst[i*2]=(int16_t)left;dst[i*2+1]=(int16_t)right;
+        } else {
+            dst[i*6]=(int16_t)left;dst[i*6+1]=(int16_t)right;
+            dst[i*6+2]=(int16_t)((left+right)/2);
+            dst[i*6+3]=0;dst[i*6+4]=(int16_t)left;dst[i*6+5]=(int16_t)right;
+        }
+        md_pause_ym_sample_index++;
+    }
+}
 '''
 
 def patch_audio_state(path: Path, prefix: str, symbol: str) -> None:
