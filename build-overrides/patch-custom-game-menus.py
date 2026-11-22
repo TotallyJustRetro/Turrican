@@ -38,6 +38,7 @@ static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static void native_menu_pause_loop(void);
 static int native_title_gameplay_hud_visible(void);
+static int native_editor_stage_has_gameplay(void);
 static int native_title_menu_selection=0;
 static int native_title_page_mode=0;
 static int native_title_game_options_focus=0;
@@ -199,6 +200,16 @@ static int native_title_gameplay_hud_visible(void) {
     /* SCORE, TIME and ENERGY are three separate red HUD labels in demos/levels.
        The title card has no such three-part top HUD. */
     return red[0]>12 && red[2]>12;
+}
+/* The modal renderer dims vdp.fb before presenting the editor. Inspect the
+   preserved, original frame instead so title art is not mistaken for a level. */
+static uint32_t native_editor_stage_probe_backup[320*240];
+static int native_editor_stage_has_gameplay(void) {
+    memcpy(native_editor_stage_probe_backup,vdp.fb,sizeof native_editor_stage_probe_backup);
+    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);
+    int visible=native_title_gameplay_hud_visible();
+    memcpy(vdp.fb,native_editor_stage_probe_backup,sizeof native_editor_stage_probe_backup);
+    return visible;
 }
 int md_modern_timer_hud_present(void) {
     return native_title_gameplay_hud_visible();
