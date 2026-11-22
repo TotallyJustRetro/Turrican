@@ -256,6 +256,11 @@ static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
     }
 }
 
+static void push_level_undo();
+static void undo_level_edit();
+static void redo_level_edit();
+static void draw_tool_palette();
+
 static void draw_stage_canvas()
 {
     const int cols=mtlb_map_cols(),rows=mtlb_map_rows();
@@ -472,21 +477,7 @@ static void draw_timeline_panel()
     for(int row=0;row<3;row++){ImGui::TextColored(ImVec4(.67f,.75f,.81f,1),"%s",names[row]);ImGui::SameLine(58);ImVec2 p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+w,p.y+14),IM_COL32(34,41,55,255));float play=p.x+w*(g_selected_frame/8.0f);d->AddLine(ImVec2(play,p.y-2),ImVec2(play,p.y+16),IM_COL32(255,100,70,255),2);ImGui::Dummy(ImVec2(w,15));}
     ImGui::TextDisabled("NO KEYS / NO EVENTS IN THIS TRACK",g_selected_frame+1);ImGui::EndChild();
 }
-static void draw_bottom_workspace()
-{
-    ImGui::BeginChild("##workspace_bottom",ImVec2(0,126),true);
-    if(g_mode==MODE_EVENTS||g_mode==MODE_ASSETS)draw_timeline_panel();
-    else {
-        ImGui::TextColored(ImVec4(.43f,.84f,.90f,1),"LEVEL EVENT SUMMARY");
-        ImGui::SameLine();
-        ImGui::TextDisabled("%02d NODES / %02d LINKS",g_node_count,g_link_count);
-        if(g_node_count==0)
-            ImGui::TextDisabled("NO EVENTS CREATED FOR THIS LEVEL");
-        else
-            ImGui::TextDisabled("EVENT GRAPH DATA IS STORED IN THIS LEVEL DOCUMENT");
-    }
-    ImGui::EndChild();
-}
+
 static void draw_advanced_inspector()
 {
     panel_heading(g_mode==MODE_EVENTS?"NODE PROPERTIES":"PROPERTIES","LIVE");
@@ -568,6 +559,28 @@ static void draw_advanced_asset_canvas()
     if(ImGui::IsItemHovered()&&(ImGui::IsMouseDown(0)||ImGui::IsMouseDown(1))){ImVec2 m=ImGui::GetIO().MousePos;int x=std::max(0,std::min(g_asset_size-1,(int)((m.x-p.x)/px))),y=std::max(0,std::min(g_asset_size-1,(int)((m.y-p.y)/px)));g_asset_pixels[y*32+x]=ImGui::IsMouseDown(1)?0:g_asset_color;}
     ImGui::TextDisabled("LEFT CLICK PAINT / RIGHT CLICK ERASE / 0 TRANSPARENT");ImGui::EndChild();
 }
+static void draw_tool_palette()
+{
+    ImGui::BeginChild("##maker_tool_rail",ImVec2(28,0),true);
+    const struct { const char *glyph; EditorTool tool; const char *hint; } buttons[] = {
+        {"S",TOOL_SELECT,"Select"},
+        {"B",TOOL_TILE_BRUSH,"Place / paint"},
+        {"E",TOOL_ERASER,"Erase"},
+        {"C",TOOL_COPY,"Copy"},
+        {"G",TOOL_GRAPPLE,"Grapple anchor"},
+        {"T",TOOL_TRIGGER,"Trigger"}
+    };
+    for(const auto &button:buttons) {
+        const bool active=(g_tool==button.tool);
+        if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.55f,.30f,.10f,1.0f));
+        if(ImGui::Button(button.glyph,ImVec2(22,20)))g_tool=button.tool;
+        if(active)ImGui::PopStyleColor();
+        if(ImGui::IsItemHovered())ImGui::SetTooltip("%s",button.hint);
+        ImGui::Spacing();
+    }
+    ImGui::EndChild();
+}
+
 static void draw_asset_shelf()
 {
     ImGui::BeginChild("##asset_shelf",ImVec2(0,34),true);
