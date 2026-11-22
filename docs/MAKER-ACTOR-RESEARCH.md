@@ -121,7 +121,15 @@ The pool initializer is now in the report too:
 - Starting from record memory at `$FFBF7A`, it constructs a chain using a 62-byte stride and a loop count of `0x4F` (79 records).
 - It then clears/reinitializes the auxiliary globals `$FFBC34` and `$FFBC38` and a separate block beginning at `$FFD55A`.
 
-Together with `f_5300` (take a free record, add it to the active list) and `f_5400` (return a record to the pool), we now have a credible map of the engine's object lifecycle: initialize pool → allocate a record → set up its object-specific data and +34 handler → update it through the frame list walker → release it back to the pool.
+### Exact allocator and release behavior
+
+Build #333 provides the full `f_5300` and `f_5400` bodies:
+
+- `f_5300` reads the free-list head at `$FFBC2C`. If a node exists, it removes that first node, repairs the next node's back-link, inserts the node at the head of `$FFBC28`, repairs both links, clears its +16 longword, and resets the initialization bytes at +10 through +15 and +42/+43. The allocated record is returned in A0.
+- If the free list is empty, `f_5300` returns the fallback record at `$FFBF3C`, sets D0 to -1, and performs the same state-field clearing on that fallback record.
+- `f_5400` compares the supplied A0 pointer with the fallback record. For a normal record, it unlinks the record from its current doubly-linked list using +0/+4, inserts it at the head of the free list at `$FFBC2C`, and repairs the neighboring pointers. The fallback record is not put back into a list.
+
+Together with `f_5232` (initialize the 79-record pool), `f_5300` (allocate), `f_5432/f_543C` (walk and update active records), and `f_5400` (release), we now have a direct map of the engine's object lifecycle: initialize pool → allocate a record → set up its object-specific fields and +34 handler → update it through the frame list walker → release it back to the pool.
 
 The next static pass is to find the other consumers of per-object +30 and +38, then correlate spawn routines, update routines, and ROM animation/resource pointers into verified object families. That is the step needed before exposing safe named objects in the Maker.
 
