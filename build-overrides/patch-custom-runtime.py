@@ -507,7 +507,7 @@ def patch_recompiled_continues(project: Path) -> None:
         )
         if n!=2:
             raise RuntimeError(f"Expected two generated L_1796 weapon-death blocks, found {n}")
-    path.write_text(s,encoding="utf-8",newline="\n")
+    path.write_text(s,encoding="utf-8")
 
 def patch_vdp(project: Path) -> None:
     path=project/"runtime"/"vdp.c"
@@ -540,7 +540,7 @@ static int md_modern_timer_hud_this_frame=0;
         }
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
-    path.write_text(s,encoding="utf-8",newline="\n")
+    path.write_text(s,encoding="utf-8")
 
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
