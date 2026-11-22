@@ -34,6 +34,8 @@ static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static int native_options_tool_active=0, native_options_tool_index=0;
 static int native_options_tool_row_written=0;
+static int reborn_game_options_visible(void);
+static int reborn_title_scene_visible(void);
 
 extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
