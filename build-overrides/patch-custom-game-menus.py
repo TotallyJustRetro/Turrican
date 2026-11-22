@@ -601,7 +601,7 @@ confirm:
             continue;
         }
 
-        if(!reborn_title_scene_visible() && reborn_game_options_visible()) {
+        if(native_menu_state==0 && !reborn_title_scene_visible() && reborn_game_options_visible()) {
             if(native_options_tool_active) {
                 if(e.type==SDL_KEYDOWN && !e.key.repeat) {
                     switch(e.key.keysym.sym) {
