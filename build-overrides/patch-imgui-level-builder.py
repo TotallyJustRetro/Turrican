@@ -54,7 +54,8 @@ def main() -> None:
     # Level Builder is a dedicated game screen, not a VDP-frame overlay.
     present_anchor = "static void native_menu_present_frame(void) {"
     present_patch = present_anchor + (
-        "\n    if(native_menu_state==11) {\n"
+        "\n    /* MT_LEVEL_BUILDER_STANDALONE_SCREEN: never draw the VDP/title frame beneath ImGui. */\n"
+        "    if(native_menu_state==11) {\n"
         "        SDL_SetRenderDrawColor(ren,0,0,0,255);\n"
         "        SDL_RenderClear(ren);\n"
         "        if(mtlb_render(ren)) {\n"
@@ -65,7 +66,7 @@ def main() -> None:
         "        return;\n"
         "    }\n"
     )
-    if "Level Builder is a dedicated game screen" not in s:
+    if "MT_LEVEL_BUILDER_STANDALONE_SCREEN" not in s:
         s = once(s, present_anchor, present_patch, "standalone Level Builder render state")
 
     init_anchor = "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
@@ -81,7 +82,7 @@ def main() -> None:
                  "initialize Dear ImGui before routing editor input")
 
     sdl_path.write_text(s, encoding="utf-8")
-    print("Installed custom ImGui Level Builder shell and live VDP tile-plane bridge.")
+    print("Installed standalone ImGui Level Builder screen with independent level-document storage.")
 
 
 if __name__ == "__main__":
