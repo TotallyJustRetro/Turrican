@@ -6,6 +6,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 namespace {
 enum EditorMode {
@@ -32,8 +39,12 @@ static bool g_renderer_backend = false;
 static SDL_Window *g_window = nullptr;
 static EditorMode g_mode = MODE_TILES;
 static EditorTool g_tool = TOOL_TILE_BRUSH;
-static int g_selected_x = 12;
-static int g_selected_y = 10;
+static const int kEditorMapCols = 64;
+static const int kEditorMapRows = 32;
+static std::uint16_t g_level_tiles[kEditorMapCols * kEditorMapRows] = {};
+static bool g_document_dirty = false;
+static int g_selected_x = 0;
+static int g_selected_y = 0;
 static int g_brush_tile = 1;
 static int g_last_painted_x = -1;
 static int g_last_painted_y = -1;
@@ -43,34 +54,28 @@ static bool g_layers[5] = {true, true, true, true, false};
 static int g_asset_pixels[32 * 32] = {};
 static int g_asset_color = 12;
 static bool g_asset_modern = false;
-static char g_status[160] = "LEVEL SYSTEM ONLINE  |  VANILLA VDP TILE PLANE CONNECTED";
+static char g_status[160] = "NEW LEVEL DOCUMENT  |  EMPTY 64 x 32 GRID";
 static bool g_exit_requested = false;
 static bool g_show_grid = true;
-static SDL_Texture *g_stage_texture = nullptr;
-static int g_stage_width = 320, g_stage_height = 224;
+static const int g_stage_width = 320, g_stage_height = 224;
 static int g_active_layer = 3;
 static bool g_collision_enabled = true;
 static bool g_behavior_flags[4] = {true,false,true,false};
 static int g_entity_type = 0, g_entity_count = 0, g_selected_entity = -1;
-static int g_asset_size = 16, g_selected_frame = 2, g_boss_phase = 1, g_boss_hp = 100;
-static char g_level_name[64] = "REACTOR / ZONE 01";
-static char g_speaker[40] = "CMD. BREN";
-static char g_dialogue[256] = "THE REACTOR IS STABLE, COMMANDER... FOR NOW.";
+static int g_asset_size = 16, g_selected_frame = 0, g_boss_phase = 1, g_boss_hp = 100;
+static bool g_boss_created = false;
+static char g_level_name[64] = "UNTITLED LEVEL";
+static char g_speaker[40] = "";
+static char g_dialogue[256] = "";
 static float g_dialogue_pitch = 1.0f;
 static bool g_dialogue_auto = false, g_dialogue_camera_pan = true;
 
 struct EditorEntity { float x,y; int type,hp; };
 static EditorEntity g_entities[64] = {};
 struct EventNode { int type; float x,y; char title[28]; char detail[56]; };
-static EventNode g_nodes[12] = {
- {0,18,66,"TRG_01","PLAYER ENTERS ZONE"},
- {1,178,66,"NPC DIALOGUE","CMD. BREN"},
- {3,338,66,"BOSS SPAWN","MECH-V1"},
- {2,338,205,"BLAST DOOR","OPEN ON DEFEAT"}
-};
-static int g_node_count=4, g_selected_node=1;
-static int g_link_from[12]={0,1,2}, g_link_to[12]={1,2,3}, g_link_count=3;
-
+static EventNode g_nodes[12] = {};
+static int g_node_count = 0, g_selected_node = -1;
+static int g_link_from[12] = {}, g_link_to[12] = {}, g_link_count = 0;
 
 static const char *kModeNames[MODE_COUNT] = {
     "TILES", "ENTITY PLACEMENT", "EVENT SCRIPT", "ASSET STUDIO", "BOSS / ENEMY"
@@ -575,6 +580,67 @@ static void draw_top_bar()
     ImGui::EndChild();
 }
 } // namespace
+
+extern "C" int mtlb_map_cols(void) { return kEditorMapCols; }
+extern "C" int mtlb_map_rows(void) { return kEditorMapRows; }
+extern "C" int mtlb_map_get(int x,int y)
+{
+    if(x<0||y<0||x>=kEditorMapCols||y>=kEditorMapRows)return 0;
+    return (int)g_level_tiles[y*kEditorMapCols+x];
+}
+extern "C" void mtlb_map_set(int x,int y,int tile)
+{
+    if(x<0||y<0||x>=kEditorMapCols||y>=kEditorMapRows)return;
+    const std::uint16_t value=(std::uint16_t)std::max(0,std::min(2047,tile));
+    const int index=y*kEditorMapCols+x;
+    if(g_level_tiles[index]!=value){g_level_tiles[index]=value;g_document_dirty=true;}
+}
+static bool mtlb_level_document_path(char *path,size_t capacity)
+{
+    char *base=SDL_GetBasePath();if(!base)return false;
+    char folder[4096];
+    const int folderLen=std::snprintf(folder,sizeof(folder),"%slevels",base);
+    const int pathLen=std::snprintf(path,capacity,"%s/untitled.mtlb",folder);
+    SDL_free(base);
+    if(folderLen<0||pathLen<0||(size_t)folderLen>=sizeof(folder)||(size_t)pathLen>=capacity)return false;
+#ifdef _WIN32
+    _mkdir(folder);
+#else
+    mkdir(folder,0775);
+#endif
+    return true;
+}
+extern "C" int mtlb_map_save(void)
+{
+    char path[4096];if(!mtlb_level_document_path(path,sizeof(path)))return 0;
+    FILE *file=std::fopen(path,"wb");if(!file)return 0;
+    const char magic[8]={'M','T','L','B','L','V','L',1};
+    const std::uint32_t cols=kEditorMapCols,rows=kEditorMapRows;
+    bool ok=std::fwrite(magic,1,sizeof(magic),file)==sizeof(magic)&&
+        std::fwrite(&cols,sizeof(cols),1,file)==1&&std::fwrite(&rows,sizeof(rows),1,file)==1&&
+        std::fwrite(g_level_tiles,sizeof(g_level_tiles),1,file)==1;
+    if(std::fclose(file)!=0)ok=false;
+    if(ok)g_document_dirty=false;
+    return ok?1:0;
+}
+extern "C" int mtlb_map_load(void)
+{
+    char path[4096];if(!mtlb_level_document_path(path,sizeof(path)))return 0;
+    FILE *file=std::fopen(path,"rb");if(!file)return 0;
+    char magic[8]={};std::uint32_t cols=0,rows=0;
+    std::uint16_t loaded[kEditorMapCols*kEditorMapRows]={};
+    bool ok=std::fread(magic,1,sizeof(magic),file)==sizeof(magic)&&
+        std::memcmp(magic,"MTLBLVL",7)==0&&(unsigned char)magic[7]==1&&
+        std::fread(&cols,sizeof(cols),1,file)==1&&std::fread(&rows,sizeof(rows),1,file)==1&&
+        cols==(std::uint32_t)kEditorMapCols&&rows==(std::uint32_t)kEditorMapRows&&
+        std::fread(loaded,sizeof(loaded),1,file)==1;
+    std::fclose(file);
+    if(!ok)return 0;
+    std::memcpy(g_level_tiles,loaded,sizeof(g_level_tiles));g_document_dirty=false;return 1;
+}
+extern "C" int mtlb_map_cursor_x(void) { return g_selected_x; }
+extern "C" int mtlb_map_cursor_y(void) { return g_selected_y; }
+extern "C" int mtlb_map_brush(void) { return g_brush_tile; }
 
 extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
 {
