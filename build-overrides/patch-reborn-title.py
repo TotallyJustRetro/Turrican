@@ -231,49 +231,16 @@ static void draw_reborn_title_sprite(int y, uint8_t *dst, int W)
 TITLE_HELPERS = r'''
 #define REBORN_VDP_FRAME_COUNT 12
 #define REBORN_VDP_FRAME_TICKS 4
-#define REBORN_VDP_TITLE_EXIT_FRAMES 3
+#define REBORN_VDP_TITLE_EXIT_FRAMES 1
 #define REBORN_OPTIONS_RESET_FRAMES 8
 
-/* Recognize the original title card from its MEGA letters, metallic TURRICAN/fire artwork, and copyright credit block. Do not key off START/OPTIONS selection colours: hovering either menu item changes those colours. */
+/* The custom menu patch supplies a strict VDP tilemap/copyright signature
+ * and rejects the three-part gameplay HUD. Use that single source of truth
+ * for both the Reborn sprite and the added title controls. */
+static int native_title_menu_scene_visible(void);
 static int reborn_title_scene_visible(void)
 {
-    int W = vdp.width, H = vdp.height;
-    if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
-
-    int mega = 0, fire = 0;
-    int metal[3] = {0, 0, 0};
-
-    /* Original MEGA lettering, high above the metallic Turrican wordmark. */
-    for (int y = H * 2 / 100; y < H * 15 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 28 / 100; x < W * 75 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 135 && g > 30 && r > g + 25 && g > b + 10) ++mega;
-        }
-    }
-
-    /* Metallic title wordmark and orange fire band across all three zones. */
-    for (int y = H * 12 / 100; y < H * 46 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 3 / 100; x < W * 97 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 130 && g > 25 && r > g + 35 && g > b + 10) ++fire;
-            int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
-            int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
-            if (hi > 70 && hi < 245 && hi - lo < 75 &&
-                r > 50 && g > 45 && b > 60) {
-                int zone = (x * 3) / W;
-                if (zone < 0) zone = 0;
-                if (zone > 2) zone = 2;
-                ++metal[zone];
-            }
-        }
-    }
-
-    return mega > 200 && fire > 600 &&
-           metal[0] > 500 && metal[1] > 500 && metal[2] > 500;
+    return native_title_menu_scene_visible();
 }
 
 /* Reveal once when the original title composition first appears. Keep the
