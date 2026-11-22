@@ -303,3 +303,15 @@ That gives the Maker the correct extraction architecture:
 5. Only then expose entries with user-facing names after their rendered appearance is verified.
 
 This is static ROM extraction from the ROM the launcher already loads. It does not require pausing a running stage, dumping RAM, or asking the user to reproduce an enemy/boss encounter. The ROM tables' exact per-entry encodings are still being decoded.
+
+
+## Build #345: native DMA command queue producer
+
+The common transfer path now has a clear first half:
+
+- `f_6DE` initializes fixed transfer parameters in D4/D5 (`0x4000` and `0x80`) and calls `f_6E6`.
+- `f_6E6` marks the DMA queue busy through byte `$FFBCA6`, derives transfer parameters from A0/A1 and D0, and calls `f_71C` to add one or more command records.
+- `f_71C` reads the current queue index at `$FFBCA4`, shifts it by four (16-byte queue-entry stride), and builds an entry at `$FFD2DA + index*16`. The entry begins with VDP register-command words `0x8F009400`, `0x93009600`, and `0x95009700`, then stores transfer-specific source/length/destination/control values. It increments the queue index at `$FFBCA4`.
+- The helper can append a second command record when a transfer crosses an internal address boundary. That's why `f_6E6` can call `f_71C` twice.
+
+This is a queue producer, not yet the final hardware/VBlank consumer. We now have the concrete queue locations: base `$FFD2DA`, 16 bytes per entry, write index `$FFBCA4`, and busy flag `$FFBCA6`. Build #347 adds a scan for every user of these fields to find the routine that drains the queue and writes its commands to the VDP.
