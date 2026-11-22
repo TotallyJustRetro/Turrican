@@ -1167,7 +1167,7 @@ void md_copy_cpu_state(void *dst, uint32_t bytes) {
 }
 """
         s=s.replace(marker,marker+"\n"+helper,1)
-    path.write_text(s,encoding="utf-8",newline="\n")
+    path.write_text(s,encoding="utf-8")
 
 def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
@@ -1472,7 +1472,7 @@ confirm:
            "    native_pause_skip_backdrop_restore=0;\n"
            "    if(adev)SDL_PauseAudioDevice(adev,0);",
            "pause checkpoint/title transition restore")
-    path.write_text(s,encoding="utf-8",newline="\n")
+    path.write_text(s,encoding="utf-8")
 
 def main() -> int:
     if len(sys.argv)!=2: raise SystemExit("usage: patch-custom-game-menus.py PROJECT_ROOT")
