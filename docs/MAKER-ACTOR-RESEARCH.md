@@ -59,6 +59,51 @@ Build #316 further established:
 
 The next static step is to map the data layout at ROM bases `0x20000` and `0x24000` (state/animation data) and index other ROM lookup tables used by enemy/actor constructors. In parallel, we need a distinct object-spawn/instance list. Until those links are proven, these routines are evidence of the engine's state machinery, not a ready-to-use enemy catalogue.
 
+## Build #324: the object list allocator and a five-child spawner
+
+This is the strongest object-system evidence so far.
+
+### `f_5300`: linked-list object manager
+
+The function uses two list-head fields:
+
+- `$FFBC2C`: the list from which it takes the head record.
+- `$FFBC28`: the list to which it links that record.
+
+When the source head is non-null, it removes the first node, repairs the next node's back-link, inserts that node at the destination head, and repairs the new head's back-link. It returns the record address in A0 and resets fields including +16 and several state/flag bytes (+10 through +15, +42, +43). If the source list is empty, it instead selects the fallback record at `$FFBF3C` and sets D0 to -1.
+
+This is consistent with a reusable record pool: one list appears to be a free/available list and the other a used/active list. The direction is inferred from the way call sites use the returned record; the exact internal labels for the two lists are not named in the source.
+
+The common record layout now has a credible structural interpretation:
+- +0/+4: linked-list next/back-link pointers
+- +8/+20: copied per-object context/resource fields in the common setup helper
+- +10 through +15, +42/+43: initialization flags
+- +24/+26: position coordinates
+- +28: state/substate
+- +30/+34/+38: data/handler/context pointers (the +34 field is repeatedly assigned handler routine addresses)
+- +44/+46/+48/+50/+52/+54: counters, animation/state data pointers and related per-object fields (exact widths/meanings vary by routine)
+
+### `f_BCB6` → `f_BD20`: create an object group
+
+The caller context for `f_BD20` is now visible in the generated-code report. `f_BCB6` calls the shared `f_5300` manager, then stores `0xBD20` in the returned record's +34 handler field and sets +44 to `0xB4`. It then proceeds through a descriptor/setup routine at `0xC08E` and updates the shared timer at `$FF572A`. So `f_BD20` is not an arbitrary global function: it is explicitly installed as a per-object update handler by another gameplay routine.
+
+### `f_BD20`: five child object records
+
+When that handler reaches its initialization branch, it calls `f_5300` five times. Each returned record is initialized from the parent template:
+- copy parent position at +24/+26;
+- assign child handler `0xBE16` at +34;
+- copy parent data/context fields at +30 and +38;
+- set child flags and state fields;
+- assign each child its own 8-byte auxiliary record, advancing through a table beginning at `$FF56F2`.
+
+It also clears/initializes a wider staging area beginning at `$FF5612`. This is a real parent-to-children spawn pattern backed by the native object pool, not an editor-side sprite placement trick. What the five children represent (enemy components, projectiles, an attack pattern, or a visual effect) is not identified yet; we must trace their resource pointers and the `f_BE16` state handler before naming them.
+
+### Another confirmed spawning pattern: `f_A1E8`
+
+`f_A1E8` is another A5-record state handler. It checks state and timer fields, applies the world/scroll offset to +24/+26, tests position bounds, and in one branch calls `f_5300` repeatedly to create two child records. Those children copy position/context from the parent and are assigned handler `0xA3D6`. This confirms the allocator is reused by more than one object family.
+
+The next static task is to inspect the full `f_BCB6`, `f_BE34`, `f_BE7C`, `f_BE16`, `f_A3D6`, and `f_A3A0` routines, then trace the data pointers at +30/+38/+48 into the ROM tables and graphic-transfer code. That should reveal what these spawned object families represent and how their frame/animation data is selected.
+
 ## Build #319 full work-RAM map: new candidate areas
 
 The full 64 KiB work-RAM frequency map shows several clusters outside the already understood global context:
