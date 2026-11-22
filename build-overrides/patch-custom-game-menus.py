@@ -219,13 +219,6 @@ static void native_title_draw_text_center(const char *s,int y,int selected,int b
 static void native_title_draw_text_column(const char *s,int center,int y,int selected,int blink_on) {
     native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
 }
-static void native_title_draw_text_center(const char *s,int y,int selected,int blink_on) {
-    int center=(vdp.width?vdp.width:320)/2;
-    native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
-}
-static void native_title_draw_text_column(const char *s,int center,int y,int selected,int blink_on) {
-    native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
-}
 static void native_title_compose_frame(void) {
     if(!native_title_compose_enabled)return;
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
