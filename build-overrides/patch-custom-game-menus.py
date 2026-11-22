@@ -227,8 +227,8 @@ static void native_title_compose_frame(void) {
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
     if(W<256 || W>320 || H<200 || H>240)return;
 
-    /* Clear only the menu strip beneath REBORN. Preserve the cartridge's
-       copyright lines at Window Plane rows 22-25 (pixels 176-207). */
+    /* Extra title buttons only. GAME OPTIONS is a separate modal native page,
+       rendered by state 13; no retired title-screen Modern overlay remains. */
     int clear_top=(H*465/1000)+20;
     if(clear_top<124)clear_top=124;
     if(clear_top>174)clear_top=174;
@@ -236,38 +236,14 @@ static void native_title_compose_frame(void) {
         uint32_t *row=&vdp.fb[y*320];
         for(int x=0;x<W;x++)row[x]=0;
     }
-
     int blink_on=(native_title_blink_ticks%120u)<60u;
-    int left_center=W*26/100;
-    int right_center=W*74/100;
-    if(!native_title_page_mode) {
-        native_title_draw_text_column("START",left_center,134,native_title_menu_selection==0,blink_on);
-        native_title_draw_text_column("OPTIONS",right_center,134,native_title_menu_selection==1,blink_on);
-        native_title_draw_text_column("GAME OPTIONS",left_center,148,native_title_menu_selection==2,blink_on);
-        native_title_draw_text_column("LEVEL BUILDER",right_center,148,native_title_menu_selection==3,blink_on);
-        native_title_draw_text_column("CHEATS",left_center,162,native_title_menu_selection==4,blink_on);
-        native_title_draw_text_column("SAVES",right_center,162,native_title_menu_selection==5,blink_on);
-        return;
-    }
-
-    native_title_draw_text_center("GAME OPTIONS",134,0,blink_on);
-    native_title_draw_text_column("VANILLA GAME",W*32/100,148,native_title_game_options_focus==0,blink_on);
-    native_title_draw_text_column("MODERN",W*74/100,148,native_title_game_options_focus==1,blink_on);
-    if(native_game_level_modern) {
-        char lives[20],continues[20],timer[24];
-        snprintf(lives,sizeof lives,"LIVES %s",native_modern_lives?"ON":"OFF");
-        snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
-        snprintf(timer,sizeof timer,"NO TIME %s",native_modern_no_timer?"ON":"OFF");
-        const char *toggles[]={lives,continues,timer};
-        int widths[3],total=8;
-        for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
-        int x=(W-total)/2;
-        for(int i=0;i<3;i++) {
-            native_title_draw_text_at(x,162,toggles[i],
-                native_title_game_options_focus==i+2,blink_on);
-            x+=widths[i]+4;
-        }
-    }
+    int left_center=W*26/100,right_center=W*74/100;
+    native_title_draw_text_column("START",left_center,134,native_title_menu_selection==0,blink_on);
+    native_title_draw_text_column("OPTIONS",right_center,134,native_title_menu_selection==1,blink_on);
+    native_title_draw_text_column("GAME OPTIONS",left_center,148,native_title_menu_selection==2,blink_on);
+    native_title_draw_text_column("LEVEL BUILDER",right_center,148,native_title_menu_selection==3,blink_on);
+    native_title_draw_text_column("CHEATS",left_center,162,native_title_menu_selection==4,blink_on);
+    native_title_draw_text_column("SAVES",right_center,162,native_title_menu_selection==5,blink_on);
 }
 static void native_title_open_selected(void) {
     native_extras_parent=0;
