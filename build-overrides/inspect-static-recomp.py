@@ -37,43 +37,87 @@ for rel in FILES:
     for k in range(max(0,n-4),min(len(lines),n+4)):
      emit(f"  {k+1}: {lines[k][:240]}")
 
-  # Identify generated 68k routines that touch work-RAM variables or sound
-  # chip ports. The sound-RAM upload helper alone is not enough to locate a
-  # menu SFX request; this also shows caller/callee relationships and the
-  # nearby writes to the game's shared command/state variables.
+  # Build the generated 68k call graph around the actual chip-write routines.
+  # Earlier scans found only Z80 driver uploads; a title click usually enters a
+  # shared high-level routine which queues a cue for the per-frame sound engine.
   fn_starts=[]
-  fn_re=re.compile(r"^\s*static\s+void\s+(f_[A-Za-z0-9_]+)\s*\(M68K\s*\*c\)")
+  fn_re=re.compile(r"^\\s*static\\s+void\\s+(f_[A-Za-z0-9_]+)\\s*\\(M68K\\s*\\*c\\)")
   for i,line in enumerate(lines):
    m=fn_re.match(line)
    if m: fn_starts.append((i,m.group(1)))
+  fn_data={}
+  calls_by_name={}
+  callers_by_name={}
+  for fi,(start,name) in enumerate(fn_starts):
+   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
+   body=lines[start:end]
+   fn_data[name]=(start,end,body)
+   calls=[]
+   for k,line in enumerate(body):
+    for target in re.findall(r"\\b(f_[A-Za-z0-9_]+)\\s*\\(c\\)",line):
+     if target!=name and target not in calls:calls.append(target)
+     callers_by_name.setdefault(target,[]).append((name,start+k,line))
+   calls_by_name[name]=calls
+
   sound_re=re.compile(r"0x(?:FFFF)?(?:A0400[0-3]|C00011|A000[0-9A-Fa-f]{4}|A11100|A11200)",re.I)
-  work_re=re.compile(r"0xFFFF(?:BC|BD|BE|BF)[0-9A-Fa-f]{2}",re.I)
-  relevant_names=set()
-  emit("GENERATED_SOUND_AND_WORKRAM_FUNCTIONS")
-  for fi,(start,name) in enumerate(fn_starts):
-   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
-   body=lines[start:end]
-   sound_lines=[(start+k,line) for k,line in enumerate(body) if sound_re.search(line)]
-   work_lines=[(start+k,line) for k,line in enumerate(body) if work_re.search(line)]
-   if not sound_lines and not work_lines: continue
-   relevant_names.add(name)
-   emit(f"CODE_FUNCTION name={name} declaration_line={start+1} sound_refs={len(sound_lines)} workram_refs={len(work_lines)}")
-   shown={}
-   for idx,line in sound_lines+work_lines:
-    for q in range(max(start,idx-3),min(end,idx+4)):
-     shown[q]=lines[q]
-   for q,line in sorted(shown.items()):
-    emit(f"  {q+1}: {line[:320]}")
-  emit("GENERATED_SOUND_FUNCTION_CALLERS")
-  for fi,(start,name) in enumerate(fn_starts):
-   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
-   body=lines[start:end]
-   for target in relevant_names:
-    if target==name: continue
-    pat=re.compile(r"\b"+re.escape(target)+r"\s*\(c\)")
-    hits=[(start+k,line) for k,line in enumerate(body) if pat.search(line)]
-    for idx,line in hits:
-     emit(f"CALLER {name} line={idx+1} -> {target} : {line[:260]}")
+  sound_state_re=re.compile(r"0xFFFF(?:B[0-3][0-9A-Fa-f]{2}|08[0-9A-Fa-f]{2})",re.I)
+  emit("GENERATED_SOUND_CHIP_WRITERS")
+  sound_targets=set()
+  for name,(start,end,body) in fn_data.items():
+   hits=[(start+k,line) for k,line in enumerate(body) if sound_re.search(line)]
+   if not hits:continue
+   sound_targets.add(name)
+   emit(f"CHIP_FUNCTION name={name} declaration_line={start+1} accesses={len(hits)}")
+   for idx,line in hits:
+    emit(f"  {idx+1}: {line[:360]}")
+    for q in range(max(start,idx-2),min(end,idx+3)):
+     if q!=idx:emit(f"    {q+1}: {lines[q][:300]}")
+
+  emit("GENERATED_SOUND_STATE_RAM_WRITERS")
+  for name,(start,end,body) in fn_data.items():
+   hits=[(start+k,line) for k,line in enumerate(body) if sound_state_re.search(line)]
+   writes=[(idx,line) for idx,line in hits if re.search(r"\\bWR(?:8|16|32)\\s*\\(",line)]
+   if not writes:continue
+   emit(f"SOUND_STATE_FUNCTION name={name} declaration_line={start+1} state_refs={len(hits)} writes={len(writes)}")
+   for idx,line in writes[:48]:
+    emit(f"  {idx+1}: {line[:360]}")
+    for q in range(max(start,idx-2),min(end,idx+3)):
+     if q!=idx:emit(f"    {q+1}: {lines[q][:300]}")
+
+  # Walk backwards from known YM/PSG port writers. This reveals whether a
+  # call is initialization, per-frame music service, or a higher-level cue
+  # request, and captures the RAM arguments at each call site.
+  emit("GENERATED_SOUND_CALLER_CHAINS")
+  seeds=sorted(sound_targets)
+  for seed in seeds:
+   frontier=[(seed,0,[seed])]
+   seen={seed}
+   emit(f"SOUND_CALLER_CHAIN seed={seed}")
+   while frontier:
+    target,depth,path=frontier.pop(0)
+    if depth>=6:continue
+    parents=callers_by_name.get(target,[])
+    for parent,idx,line in parents:
+     if parent in path:continue
+     emit(f"  DEPTH={depth+1} caller={parent} line={idx+1} calls={target}")
+     emit(f"    {line[:420]}")
+     if parent not in seen and depth<5:
+      seen.add(parent)
+      frontier.append((parent,depth+1,path+[parent]))
+   emit(f"  UNIQUE_CALLERS={len(seen)-1}")
+
+  # Also show controller-poll and title/menu functions that share the sound
+  # state variables, even when the request is indirect through a RAM queue.
+  emit("GENERATED_CONTROLLER_SOUND_STATE_FUNCTIONS")
+  controller_re=re.compile(r"0xA1000[0-7]|0xFFFF(?:B[0-3][0-9A-Fa-f]{2}|08[0-9A-Fa-f]{2})",re.I)
+  controller_functions=[]
+  for name,(start,end,body) in fn_data.items():
+   hits=[(start+k,line) for k,line in enumerate(body) if controller_re.search(line)]
+   if any(re.search(r"0xA1000[0-7]",line,re.I) for _,line in hits) and any(sound_state_re.search(line) for _,line in hits):
+    controller_functions.append(name)
+    emit(f"CONTROLLER_SOUND_STATE_FUNCTION name={name} declaration_line={start+1} hits={len(hits)}")
+    for idx,line in hits[:80]:emit(f"  {idx+1}: {line[:360]}")
+
  in_struct=False
  struct_depth=0
  for n,line in enumerate(lines,1):
