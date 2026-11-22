@@ -72,7 +72,7 @@ The function uses two list-head fields:
 
 When the source head is non-null, it removes the first node, repairs the next node's back-link, inserts that node at the destination head, and repairs the new head's back-link. It returns the record address in A0 and resets fields including +16 and several state/flag bytes (+10 through +15, +42, +43). If the source list is empty, it instead selects the fallback record at `$FFBF3C` and sets D0 to -1.
 
-This is consistent with a reusable record pool: one list appears to be a free/available list and the other a used/active list. The direction is inferred from the way call sites use the returned record; the exact internal labels for the two lists are not named in the source.
+This is consistent with a reusable record pool. The interpretation of `$FFBC28` as the active/used list is strengthened by `f_1BDE`, which walks nodes from that head during stage-context refresh and reads each node's fields. `$FFBC2C` is the list from which `f_5300` takes a new node, so it is the likely free/available list. The source does not give either list a human-readable name, so those labels remain inferred from their behavior.
 
 The common record layout now has a credible structural interpretation:
 - +0/+4: linked-list next/back-link pointers
