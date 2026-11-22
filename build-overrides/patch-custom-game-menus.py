@@ -48,6 +48,7 @@ static int native_title_last_selection=-1, native_title_last_page=-1, native_tit
 static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
+static int native_pause_keep_title_audio=0;
 static int native_title_checkpoint_saved=0;
 static int native_pause_achievement_first=0;
 static uint8_t native_pause_font_cache[43][32];
