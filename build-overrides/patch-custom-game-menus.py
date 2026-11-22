@@ -485,21 +485,29 @@ static void proc_native_toggle_page(SDL_Event *e,int state) {
 }
 
 static void render_native_saves(void) {
-    int pw=246,ph=188,px,py; native_menu_panel(pw,ph,&px,&py);
+    int pw=246,ph=198,px,py;
+    native_menu_panel(pw,ph,&px,&py);
     native_menu_title(px+(pw-str_w("SAVE SLOTS",2))/2,py+7,"SAVE SLOTS",2);
-    for(int i=0;i<7;i++) {
+    for(int i=0;i<8;i++) {
         char row[64];
+        int y=py+29+i*18;
         if(i<6) {
             int slot=i/2+1,save=(i%2)==0;
             snprintf(row,sizeof row,"%s SLOT %d  %s",save?"SAVE":"LOAD",slot,
                      md_save_slot_exists(slot)?"SAVED":"EMPTY");
-        } else snprintf(row,sizeof row,"BACK");
-        native_menu_item(px+10,py+30+i*20,row,i==native_menu_sel,2);
+            native_menu_item(px+10,y,row,i==native_menu_sel,2);
+        } else if(i==6) {
+            snprintf(row,sizeof row,"AUTO CHECKPOINT: %s",
+                     md_save_slot_exists(4)?"READY":"EMPTY");
+            native_menu_item(px+10,y,row,i==native_menu_sel,1);
+        } else {
+            native_menu_item(px+10,y,"BACK",i==native_menu_sel,2);
+        }
     }
-    native_menu_title(px+10,py+174,"LOAD REQUIRES SAME ROM",1);
+    native_menu_title(px+10,py+181,"LOAD REQUIRES SAME ROM",1);
 }
 static void proc_native_saves(SDL_Event *e) {
-    const int n=7;
+    const int n=8;
     if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
@@ -516,14 +524,18 @@ static void proc_native_saves(SDL_Event *e) {
     }
     return;
 confirm:
-    if(native_menu_sel==6){native_custom_page_back(3);return;}
+    if(native_menu_sel==7){native_custom_page_back(3);return;}
+    if(native_menu_sel==6) {
+        int success=md_save_slot_exists(4) && md_load_slot(4);
+        if(success && native_menu_state>0)memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);
+        return;
+    }
     {
         int slot=native_menu_sel/2+1;
         int success=(native_menu_sel%2)==0?md_save_slot(slot):md_load_slot(slot);
         if(success && native_menu_state>0)memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);
     }
 }
-
 static int native_level_cols(void) {
     static const int sizes[4]={32,64,64,128}; return sizes[vdp.reg[16]&3];
 }
