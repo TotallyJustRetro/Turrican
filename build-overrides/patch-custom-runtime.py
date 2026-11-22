@@ -528,14 +528,15 @@ static int md_modern_timer_hud_this_frame=0;
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* Plane B is already fully rendered with the correct scroll, window geometry,
-       flips and tile attributes. Replace only the timer widget's foreground
-       layers with these real background pixels; never sample raw VRAM here. */
-    if(md_modern_timer_hud_this_frame && y>=vdp.height*2/100 && y<vdp.height*27/100) {
-        int x0=W*41/100, x1=W*61/100;
+    /* The timer sits on the foreground plane/sprite layer in the top-center
+       HUD column. Clear that entire column and leave the rendered parallax
+       background (Plane B) untouched. The side HUD labels remain visible and
+       provide a stable presence signal, so this mask does not oscillate. */
+    if(md_modern_timer_hud_this_frame && y>=vdp.height*4/100 && y<vdp.height*41/100) {
+        int x0=W*30/100, x1=W*70/100;
         if(x1>W)x1=W;
         for(int x=x0;x<x1;x++) {
-            pa[x]=pb[x];
+            pa[x]=0;
             sp[x]=0;
         }
     }"""
