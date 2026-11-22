@@ -55,6 +55,33 @@ for rel in FILES:
   emit("RAM_FUNCTION_ADDRESS_SUMMARY")
   for name,addresses in sorted(fn_summary.items(),key=lambda item:(-len(item[1]),item[0])):
    emit(f"RAM_FUNCTION {name} unique_addresses={len(addresses)} addresses={','.join(sorted(addresses))}")
+
+  # Include bounded source excerpts for the most RAM-connected routines. These
+  # reveal relative-pointer accesses and call edges omitted by the address-only
+  # index, without exporting the full decrypted game source bundle.
+  targets=set(name for name,_ in sorted(fn_summary.items(),
+      key=lambda item:(-len(item[1]),item[0]))[:8])
+  definition=re.compile(r"^\s*(?:(?:static|inline)\s+)*(?:void|int|bool|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\([^;]*\)\s*\{")
+  emitted=set()
+  for n,line in enumerate(lines):
+   match=definition.match(line)
+   if not match: continue
+   name=match.group(1)
+   if name not in targets or name in emitted: continue
+   depth=0; end=-1; opened=False
+   for q in range(n,len(lines)):
+    if "{" in lines[q]: opened=True
+    if opened:
+     depth+=lines[q].count("{")-lines[q].count("}")
+     if depth==0:
+      end=q+1; break
+   if end<=n: continue
+   emitted.add(name)
+   emit(f"RAM_FUNCTION_BODY {name} source_lines={n+1}-{end}")
+   limit=min(end,n+700)
+   for q in range(n,limit):
+    emit(f"  {q+1}: {lines[q][:280]}")
+   if limit<end: emit(f"  ... clipped {end-limit} further source lines ...")
  in_struct=False
  struct_depth=0
  for n,line in enumerate(lines,1):
