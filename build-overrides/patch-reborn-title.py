@@ -242,7 +242,6 @@ static int reborn_title_scene_visible(void)
 
     int mega = 0, fire = 0;
     int metal[3] = {0, 0, 0};
-    int credits_white = 0;
 
     /* Original MEGA lettering, high above the metallic Turrican wordmark. */
     for (int y = H * 2 / 100; y < H * 15 / 100; ++y) {
@@ -273,19 +272,8 @@ static int reborn_title_scene_visible(void)
         }
     }
 
-    /* The multi-line copyright/license block exists only on the title screen. */
-    for (int y = H * 78 / 100; y < H * 99 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 2 / 100; x < W * 98 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 130 && g > 130 && b > 140) ++credits_white;
-        }
-    }
-
     return mega > 200 && fire > 600 &&
-           metal[0] > 500 && metal[1] > 500 && metal[2] > 500 &&
-           credits_white > 400;
+           metal[0] > 500 && metal[1] > 500 && metal[2] > 500;
 }
 
 /* Reveal once when the original title composition first appears. Keep the
