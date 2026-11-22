@@ -638,7 +638,7 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
     const savedNativeConfig = new Map();
     try {
       const savedText = fs.readFileSync(configPath, 'utf8');
-      for (const line of savedText.split(/\\r?\\n/)) {
+      for (const line of savedText.split(/\r?\n/)) {
         const at = line.indexOf('=');
         if (at > 0) savedNativeConfig.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
       }
@@ -663,7 +663,7 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
     }
   }
 '''
-        main = main.replace(write_anchor, preserve_code + "\\n  " + write_anchor, 1)
+        main = main.replace(write_anchor, preserve_code + "\n  " + write_anchor, 1)
 
     exit_anchor = "child.once('exit', (code, signal) => {"
     if "syncControllerSettingsFromConfig(configPath)" not in main:
