@@ -9,12 +9,11 @@
 extern "C" {
 #endif
 
-/* Dear ImGui is rasterized at the game's native VDP resolution and composited
-   into the same framebuffer used by the cartridge and native pause menus. */
-int mtlb_init(SDL_Window *window, int width, int height);
+/* Dear ImGui is rendered at the PC window resolution over the processed game frame. */
+int mtlb_init(SDL_Window *window, SDL_Renderer *renderer);
 void mtlb_shutdown(void);
 void mtlb_process_event(const SDL_Event *event);
-int mtlb_render_to_framebuffer(uint32_t *framebuffer, int width, int height, int pitch_pixels);
+int mtlb_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height);
 void mtlb_update_vdp_resources(const uint8_t *vram, const uint16_t *cram, const uint8_t *regs);
 
 int mtlb_map_cols(void);
