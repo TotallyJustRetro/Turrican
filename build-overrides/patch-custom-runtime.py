@@ -32,31 +32,133 @@ int md_infinite_continues_enabled = 0;
 static int md_cheat_energy = 0;
 static int md_cheat_lives = 0;
 static int md_cheat_timer = 0;
-static int md_modern_lives = 0;
-static int md_modern_no_timer = 0;
+static int md_modern_hide_timer_hud = 0;
+static int md_modern_checkpoints = 0;
+static int md_modern_iframes = 0;
+int md_modern_persistent_weapon_enabled = 0;
+
+static uint16_t md_modern_last_health = 0;
+static uint16_t md_modern_iframe_health = 0;
+static unsigned int md_modern_iframe_frames = 0;
+static unsigned int md_modern_flash_frames = 0;
+static int md_modern_health_initialized = 0;
+static int md_modern_stage_initialized = 0;
+static uint8_t md_modern_last_stage = 0;
+static uint8_t md_modern_pending_stage = 0;
+static unsigned int md_modern_stage_stable_frames = 0;
+static int md_modern_stage_save_pending = 0;
+
+int md_save_slot(int slot);
 
 void md_set_custom_gameplay_options(int energy,int lives,int timer,
-                                    int modern_lives,int modern_continues,
-                                    int modern_timer) {
+                                    int modern_continues,int hide_timer_hud,
+                                    int persistent_weapon,int checkpoints,
+                                    int hit_iframes) {
     md_cheat_energy = energy ? 1 : 0;
     md_cheat_lives = lives ? 1 : 0;
     md_cheat_timer = timer ? 1 : 0;
-    md_modern_lives = modern_lives ? 1 : 0;
-    md_modern_no_timer = modern_timer ? 1 : 0;
     md_infinite_continues_enabled = modern_continues ? 1 : 0;
+    md_modern_hide_timer_hud = hide_timer_hud ? 1 : 0;
+    md_modern_persistent_weapon_enabled = persistent_weapon ? 1 : 0;
+    md_modern_checkpoints = checkpoints ? 1 : 0;
+    md_modern_iframes = hit_iframes ? 1 : 0;
 }
 
-/* Published USA-ROM RAM locations, translated through this core's
- * 0xE00000-0xE0FFFF work-RAM window. Values are reasserted once per frame. */
+/* Infinite time is deliberately not reasserted for Modern Mode: NO TIMER HUD
+ * removes the timer artwork in the display path while the game clock continues. */
 void md_apply_custom_gameplay_options(void) {
     if (md_cheat_energy) {
         ram[0xBF20] = 0x00; ram[0xBF21] = 0x40;
     }
-    if (md_cheat_lives || md_modern_lives) {
+    if (md_cheat_lives) {
         ram[0xBF26] = 0x00; ram[0xBF27] = 0x03;
     }
-    if (md_cheat_timer || md_modern_no_timer) {
+    if (md_cheat_timer) {
         ram[0xBF28] = 0x00; ram[0xBF29] = 0x72;
+    }
+}
+
+static void md_modern_flash_frame(void) {
+    if(!md_modern_flash_frames)return;
+    for(int y=0;y<vdp.height;y++) {
+        uint32_t *row=&vdp.fb[y*320];
+        for(int x=0;x<vdp.width;x++) {
+            uint32_t p=row[x];
+            unsigned r=(p>>16)&255,g=(p>>8)&255,b=p&255;
+            r=r+(255-r)/5; g=g+(255-g)/5; b=b+(255-b)/5;
+            row[x]=(r<<16)|(g<<8)|b;
+        }
+    }
+    md_modern_flash_frames--;
+}
+
+/* The first hit still lands. For the next 45 frames, repeated hazard/enemy
+ * drains are ignored, preventing a single overlap from emptying the energy bar. */
+static void md_modern_apply_hit_iframes(void) {
+    uint16_t hp=(uint16_t)(((uint16_t)ram[0xBF20]<<8)|ram[0xBF21]);
+    if(!md_modern_iframes) {
+        md_modern_health_initialized=0;
+        md_modern_iframe_frames=0;
+        md_modern_flash_frames=0;
+        return;
+    }
+    if(!md_modern_health_initialized) {
+        md_modern_last_health=hp;
+        md_modern_health_initialized=1;
+    } else if(hp>0 && md_modern_last_health>hp && md_modern_iframe_frames==0) {
+        md_modern_iframe_health=hp;
+        md_modern_iframe_frames=45;
+        md_modern_flash_frames=2;
+    }
+    if(md_modern_iframe_frames>0) {
+        if(hp>0 && hp<md_modern_iframe_health) {
+            ram[0xBF20]=(uint8_t)(md_modern_iframe_health>>8);
+            ram[0xBF21]=(uint8_t)md_modern_iframe_health;
+            hp=md_modern_iframe_health;
+        }
+        md_modern_iframe_frames--;
+    }
+    md_modern_last_health=hp;
+    md_modern_flash_frame();
+}
+
+/* The ROM's stage modifier at $FFBF1F identifies the loaded stage (0-6).
+ * An autosave is written to a separate hidden slot after the new stage settles. */
+static void md_modern_stage_autosave(void) {
+    uint8_t stage=ram[0xBF1F];
+    if(stage>6)return;
+    if(!md_modern_stage_initialized) {
+        md_modern_last_stage=stage;
+        md_modern_stage_initialized=1;
+        return;
+    }
+    if(stage!=md_modern_last_stage) {
+        if(!md_modern_stage_save_pending || md_modern_pending_stage!=stage) {
+            md_modern_pending_stage=stage;
+            md_modern_stage_stable_frames=0;
+            md_modern_stage_save_pending=1;
+        }
+    }
+    if(md_modern_stage_save_pending) {
+        if(stage!=md_modern_pending_stage) {
+            md_modern_pending_stage=stage;
+            md_modern_stage_stable_frames=0;
+        } else if(++md_modern_stage_stable_frames>=90) {
+            if(md_save_slot(4))md_modern_last_stage=stage;
+            md_modern_stage_save_pending=0;
+            md_modern_stage_stable_frames=0;
+        }
+    }
+}
+
+void md_modern_runtime_frame(void) {
+    md_apply_custom_gameplay_options();
+    md_modern_apply_hit_iframes();
+    if(md_modern_checkpoints)md_modern_stage_autosave();
+    else {
+        md_modern_stage_initialized=0;
+        md_modern_stage_save_pending=0;
+        md_modern_stage_stable_frames=0;
     }
 }
 
@@ -112,7 +214,7 @@ static int md_reborn_save_dir(void) {
 }
 
 static int md_reborn_slot_path(char *dst,size_t cap,int slot,int temporary) {
-    if(slot<1||slot>3) return 0;
+    if(slot<1||slot>4) return 0;
     int n=snprintf(dst,cap,"saves/slot%d.%s",slot,temporary?"tmp":"mts");
     return n>0 && (size_t)n<cap;
 }
@@ -247,7 +349,12 @@ def patch_harness(project: Path) -> None:
                    "portable save directory header")
         api=RUNTIME_API
         s=s.rstrip()+"\n\n"+api+"\n"
-        path.write_text(s,encoding="utf-8")
+        if "void md_modern_runtime_frame(void);" not in s:
+        s=once(s,"void md_frame_hook(void);","void md_frame_hook(void); void md_modern_runtime_frame(void);",
+               "Modern runtime frame hook declaration")
+    s=once(s,"void md_frame_hook(void){}","void md_frame_hook(void){ md_modern_runtime_frame(); }",
+           "Modern runtime per-frame hook")
+    path.write_text(s,encoding="utf-8")
     # Assert that the state globals used by the snapshot are actually declared.
     for name in ["ram[0x10000]","zram[0x2000]","static M68K *CPU","static Z80 zcpu",
                  "zbank","zbusreq","zreset","fm_acc","psg_acc","z80_over"]:
@@ -259,7 +366,9 @@ def patch_recompiled_continues(project: Path) -> None:
     if "extern int md_infinite_continues_enabled;" not in s:
         m=re.search(r'(?m)^#include [^\n]+\n',s)
         if not m: raise RuntimeError("Could not find generated recomp include section.")
-        s=s[:m.end()]+"extern int md_infinite_continues_enabled;\n"+s[m.end():]
+        s=s[:m.end()]+"extern int md_infinite_continues_enabled;\nextern int md_modern_persistent_weapon_enabled;\n"+s[m.end():]
+    if "extern int md_modern_persistent_weapon_enabled;" not in s:
+        s=s.replace("extern int md_infinite_continues_enabled;","extern int md_infinite_continues_enabled;\nextern int md_modern_persistent_weapon_enabled;",1)
     pattern=re.compile(
         r'(L_192C:\s*\{\s*RT_POLL\(0x192C\);\s*)'
         r'D\(1\)=\(uint32_t\)\(int32_t\)\(int8_t\)1;'
@@ -271,7 +380,16 @@ def patch_recompiled_continues(project: Path) -> None:
             s
         )
         if n!=2: raise RuntimeError(f"Expected two generated L_192C blocks, found {n}")
-    path.write_text(s,encoding="utf-8",newline="\n")
+    # Game Genie BAMT-AA60 decodes to ROM word 0x001796:0x6008:
+    # BRA.s $17A0, bypassing the weapon downgrade-on-death instruction.
+    weapon_pattern=re.compile(r'(L_1796:\\s*\\{\\s*RT_POLL\\(0x1796\\);)')
+    if "md_modern_persistent_weapon_enabled" not in s:
+        s,n=weapon_pattern.subn(
+            r'\\g<1>if(md_modern_persistent_weapon_enabled)goto L_17A0; ',
+            s
+        )
+        if n<1: raise RuntimeError("Could not find generated L_1796 instruction for persistent weapon-level patch.")
+    path.write_text(s,encoding="utf-8",newline="\\n")
 
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
