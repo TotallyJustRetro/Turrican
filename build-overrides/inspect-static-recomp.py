@@ -83,6 +83,37 @@ for rel in FILES:
   for fn,slot,pc,line_no in indirect:
    emit(f"RAM_CALLBACK function={fn} slot=$FF{slot} call_pc=0x{pc or '?'} source_line={line_no}")
 
+  # Resolve constant assignments into the callback slots. This reveals which
+  # generated ROM routines can occupy a given dispatcher slot without needing
+  # to sample a running level. Values copied from another structure remain
+  # explicitly marked dynamic rather than guessed.
+  assignment=[]
+  current_fn="(global)"
+  fn_def=re.compile(r"^\s*(?:(?:static|inline)\s+)*(?:void|int|bool|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\(")
+  slot_pat=re.compile(r"(?:d|e)\s*=\s*0xFFFF(BC[0-9A-Fa-f]{2})u")
+  target_pat=re.compile(r"(?:v|r)\s*=\s*0x([0-9A-Fa-f]{3,6})u")
+  for n,line in enumerate(lines,1):
+   fm=fn_def.search(line)
+   if fm: current_fn=fm.group(1)
+   if "WR32" not in line: continue
+   sm=slot_pat.search(line)
+   if not sm: continue
+   vm=target_pat.search(line)
+   slot=sm.group(1).upper()
+   target=vm.group(1).upper() if vm else "DYNAMIC"
+   row=(current_fn,slot,target,n,line.strip()[:260])
+   if row not in assignment: assignment.append(row)
+  emit("CALLBACK_SLOT_STATIC_ASSIGNMENTS")
+  for fn,slot,target,n,code in assignment:
+   handler=("f_"+target) if target!="DYNAMIC" else "dynamic/copied"
+   emit(f"CALLBACK_SLOT_WRITE function={fn} slot=$FF{slot} target={target} handler={handler} source_line={n} code={code}")
+  emit("CALLBACK_SLOT_TARGET_SUMMARY")
+  slot_summary={}
+  for fn,slot,target,n,code in assignment:
+   slot_summary.setdefault(slot,set()).add(target)
+  for slot,targets in sorted(slot_summary.items()):
+   emit(f"CALLBACK_SLOT $FF{slot} possible_static_targets={','.join(sorted(targets))}")
+
   # Include bounded source excerpts for the most RAM-connected routines. These
   # reveal relative-pointer accesses and call edges omitted by the address-only
   # index, without exporting the full decrypted game source bundle.
