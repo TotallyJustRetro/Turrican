@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the Dear ImGui Level Builder into the native VDP framebuffer path."""
+"""Install the Dear ImGui Level Builder as a high-resolution PC overlay."""
 from __future__ import annotations
 
 import shutil
@@ -49,8 +49,8 @@ def main() -> None:
     if "ImGui owns pointer/keyboard interaction" not in s:
         s = once(s, route_anchor, route_patch, "Level Builder SDL event routing")
 
-    # Render ImGui into vdp.fb BEFORE shade(), texture upload and normal
-    # presentation. This is the same cartridge/pause-menu graphics path.
+    # The game keeps its native-resolution video pipeline. Dear ImGui is
+    # drawn afterward on the PC renderer at the actual game viewport size.
     frame_anchor = (
         "static void native_menu_present_frame(void) {\n"
         "    int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;\n"
@@ -59,45 +59,52 @@ def main() -> None:
     frame_patch = (
         "static void native_menu_present_frame(void) {\n"
         "    int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;\n"
-        "    if(native_menu_state==11) {\n"
-        "        mtlb_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg);\n"
-        "        if(mtlb_render_to_framebuffer(vdp.fb,w,h,320)) {\n"
-        "            mtlb_shutdown();\n"
-        "            if(native_level_builder_from_pause) {\n"
-        "                native_level_builder_from_pause=0;\n"
-        "                native_menu_state=1; native_menu_sel=7;\n"
-        "            } else {\n"
-        "                native_custom_enter_parent();\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
+        "    /* MT_LEVEL_BUILDER_PC_OVERLAY: refresh live cartridge assets. */\n"
+        "    if(native_menu_state==11) mtlb_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg);\n"
         "    ws_update();"
     )
-    if "MT_LEVEL_BUILDER_VDP_FRAMEBUFFER" not in s:
-        s = once(s, frame_anchor,
-            frame_patch.replace("    if(native_menu_state==11", 
-                "    /* MT_LEVEL_BUILDER_VDP_FRAMEBUFFER: composite ImGui before shade(). */\n"
-                "    if(native_menu_state==11"),
-            "native VDP framebuffer integration")
+    if "MT_LEVEL_BUILDER_PC_OVERLAY" not in s:
+        s = once(s, frame_anchor, frame_patch, "PC-resolution Maker asset refresh")
 
-    # Initialize the offscreen software renderer at the current VDP dimensions.
+        present_anchor = (
+            "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
+            "    SDL_RenderPresent(ren);"
+        )
+        present_patch = (
+            "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
+            "    int native_maker_closed=0;\n"
+            "    if(native_menu_state==11)\n"
+            "        native_maker_closed=mtlb_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h);\n"
+            "    SDL_RenderPresent(ren);\n"
+            "    if(native_maker_closed) {\n"
+            "        mtlb_shutdown();\n"
+            "        if(native_level_builder_from_pause) {\n"
+            "            native_level_builder_from_pause=0;\n"
+            "            native_menu_state=1; native_menu_sel=7;\n"
+            "        } else {\n"
+            "            native_custom_enter_parent();\n"
+            "        }\n"
+            "    }"
+        )
+        s = once(s, present_anchor, present_patch, "PC-resolution Maker screen overlay")
+
+    # Initialize Dear ImGui against the actual PC game renderer, not a
+    # software surface constrained to 320x224.
     init_anchor = "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
     init_patch = init_anchor + (
-        "\n    if(native_menu_state==11 && "
-        "!mtlb_init(SDL_RenderGetWindow(ren),vdp.width?vdp.width:320,"
-        "vdp.height?vdp.height:224)) {\n"
+        "\n    if(native_menu_state==11 && !mtlb_init(SDL_RenderGetWindow(ren),ren)) {\n"
         "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn\","
         "\"Could not initialize the Level Builder renderer.\",NULL);\n"
         "        native_custom_enter_parent();\n"
         "    }"
     )
-    if "initialize Dear ImGui native-resolution framebuffer renderer" not in s:
+    if "initialize Dear ImGui PC-resolution renderer" not in s:
         s = once(s, init_anchor,
-            init_patch + "\n    /* initialize Dear ImGui native-resolution framebuffer renderer */",
-            "initialize Dear ImGui native-resolution framebuffer renderer")
+            init_patch + "\n    /* initialize Dear ImGui PC-resolution renderer */",
+            "initialize Dear ImGui PC-resolution renderer")
 
     sdl_path.write_text(s, encoding="utf-8")
-    print("Installed Dear ImGui into the native VDP framebuffer before game video processing.")
+    print("Installed Dear ImGui at PC output resolution above the processed game frame.")
 
 
 if __name__ == "__main__":
