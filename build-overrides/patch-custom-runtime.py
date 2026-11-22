@@ -342,10 +342,10 @@ def patch_harness(project: Path) -> None:
         s=add_system_include(s,"errno.h")
         s=add_system_include(s,"sys/stat.h")
         if "#include <direct.h>" not in s:
-            s=once(s,'#include <sys/stat.h>\\n',
-                   '#include <sys/stat.h>\\n#ifdef _WIN32\\n#include <direct.h>\\n#endif\\n',
+            s=once(s,'#include <sys/stat.h>\n',
+                   '#include <sys/stat.h>\n#ifdef _WIN32\n#include <direct.h>\n#endif\n',
                    "portable save directory header")
-        s=s.rstrip()+"\\n\\n"+RUNTIME_API+"\\n"
+        s=s.rstrip()+"\n\n"+RUNTIME_API+"\n"
 
     if "void md_modern_runtime_frame(void);" not in s:
         s=once(s,"void md_frame_hook(void);",
