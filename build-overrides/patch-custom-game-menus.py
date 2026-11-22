@@ -176,7 +176,7 @@ static int native_title_gameplay_hud_visible(void) {
     }
     /* SCORE, TIME and ENERGY are three separate red HUD labels in demos/levels.
        The title card has no such three-part top HUD. */
-    return red[0]>12 && red[1]>8 && red[2]>12;
+    return red[0]>12 && red[2]>12;
 }
 int md_modern_timer_hud_present(void) {
     return native_title_gameplay_hud_visible();
