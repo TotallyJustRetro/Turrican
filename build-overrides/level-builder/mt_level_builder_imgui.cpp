@@ -56,6 +56,8 @@ static int g_asset_color = 12;
 static bool g_asset_modern = false;
 static char g_status[160] = "NEW LEVEL DOCUMENT  |  EMPTY 64 x 32 GRID";
 static bool g_exit_requested = false;
+static int g_fade_in_frame = 0;
+static int g_fade_out_frame = -1;
 static bool g_show_grid = true;
 static const int g_stage_width = 320, g_stage_height = 224;
 static int g_active_layer = 3;
@@ -658,10 +660,11 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
     const ImGuiIO &io=ImGui::GetIO();
-    if(!io.WantTextInput&&ImGui::IsKeyPressed(ImGuiKey_Escape,false))g_exit_requested=true;
+    if(!g_exit_requested&&!io.WantTextInput&&ImGui::IsKeyPressed(ImGuiKey_Escape,false))
+        g_exit_requested=true;
+
     const ImVec2 display=io.DisplaySize;
     const float height=std::max(560.0f,display.y);
-
     ImGui::SetNextWindowPos(ImVec2(0,0));
     ImGui::SetNextWindowSize(display);
     ImGui::SetNextWindowBgAlpha(1.0f);
@@ -677,12 +680,10 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     const float left_width=g_mode==MODE_EVENTS?252.0f:88.0f;
     const float right_width=224.0f;
     const float center_width=std::max(360.0f,display.x-left_width-right_width-46.0f);
-
     ImGui::BeginChild("##tools",ImVec2(left_width,work_height),true);
     draw_tool_palette();
     ImGui::EndChild();
     ImGui::SameLine();
-
     ImGui::BeginChild("##center_column",ImVec2(center_width,work_height),false);
     draw_layer_bar();
     ImGui::PushStyleColor(ImGuiCol_ChildBg,ImVec4(.025f,.038f,.052f,1));
@@ -692,11 +693,9 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     ImGui::PopStyleColor();
     ImGui::EndChild();
     ImGui::SameLine();
-
     ImGui::BeginChild("##inspector",ImVec2(right_width,work_height),true);
     draw_inspector();
     ImGui::EndChild();
-
     ImGui::Spacing();
     draw_bottom_workspace();
     ImGui::TextColored(ImVec4(.39f,.81f,.88f,1),"SYSTEM");
@@ -707,7 +706,31 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     ImGui::PopStyleVar();
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),renderer);
-    const bool exit_requested=g_exit_requested;
-    if(exit_requested)g_exit_requested=false;
-    return exit_requested?1:0;
+
+    // Pixel-mosaic reveal on entry and the same effect in reverse on exit.
+    int outputW=0,outputH=0;
+    SDL_GetRendererOutputSize(renderer,&outputW,&outputH);
+    const int gridW=20,gridH=15,total=gridW*gridH,frames=12;
+    const bool closing=g_exit_requested;
+    if(closing&&g_fade_out_frame<0)g_fade_out_frame=0;
+    const int revealed=std::min(total,g_fade_in_frame*total/frames);
+    const int covered=closing?std::min(total,g_fade_out_frame*total/frames):0;
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(renderer,0,0,0,255);
+    for(int i=0;i<total;i++){
+        const int rank=(i*73+19)%total;
+        const bool black=closing?(rank<covered):(rank>=revealed);
+        if(!black)continue;
+        const int x=i%gridW,y=i/gridW;
+        SDL_Rect block={x*outputW/gridW,y*outputH/gridH,
+            (x+1)*outputW/gridW-x*outputW/gridW,
+            (y+1)*outputH/gridH-y*outputH/gridH};
+        SDL_RenderFillRect(renderer,&block);
+    }
+    if(closing){
+        if(g_fade_out_frame<frames)g_fade_out_frame++;
+        return g_fade_out_frame>frames;
+    }
+    if(g_fade_in_frame<frames)g_fade_in_frame++;
+    return 0;
 }
