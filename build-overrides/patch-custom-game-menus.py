@@ -175,7 +175,7 @@ static int native_title_menu_scene_visible(void) {
 }
 static int native_title_text_width(const char *s) {
     int n=(int)strlen(s);
-    return n>0 ? n*9-1 : 0; /* native 8x8 glyph plus one pixel tracking */
+    return n>0 ? n*8 : 0; /* exact original 8-pixel character cells */
 }
 static uint32_t native_title_cram_rgb(int palette,unsigned index) {
     uint16_t color=vdp.cram[(palette&3)*16+(index&15u)];
@@ -193,7 +193,7 @@ static void native_title_draw_text_at(int x,int y,const char *s,int selected,int
                 if(py<0 || py>=H)continue;
                 uint32_t *row=&vdp.fb[py*320];
                 for(int sx=0;sx<8;sx++) {
-                    int px=x+i*9+sx;
+                    int px=x+i*8+sx;
                     if(px<0 || px>=W)continue;
                     uint8_t packed=vdp.vram[(size_t)tile*32u+(size_t)sy*4u+(size_t)(sx>>1)];
                     unsigned index=(sx&1)?(packed&15u):(packed>>4);
@@ -247,13 +247,13 @@ static void native_title_compose_frame(void) {
         snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
         snprintf(timer,sizeof timer,"NO TIME %s",native_modern_no_timer?"ON":"OFF");
         const char *toggles[]={lives,continues,timer};
-        int widths[3],total=14;
+        int widths[3],total=8;
         for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
         int x=(W-total)/2;
         for(int i=0;i<3;i++) {
             native_title_draw_text_at(x,162,toggles[i],
                 native_title_game_options_focus==i+2,blink_on);
-            x+=widths[i]+7;
+            x+=widths[i]+4;
         }
     }
 }
