@@ -268,7 +268,7 @@ void md_maker_capture_for_editor(void) {
         FILE *info=fopen("maker-diagnostics/README.txt","wb");
         if(info) {
             fprintf(info,
-                "Mega Turrican Maker runtime capture\\r\\n"
+                "Mega Turrican Maker runtime capture\r\n"
                 "Captured automatically when Level Builder opens.\\r\\n"
                 "File: %s\\r\\n"
                 "Stage byte ($FFBF1F): %u\\r\\n"
