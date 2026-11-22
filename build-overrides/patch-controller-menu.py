@@ -644,7 +644,7 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
             main = main.replace(controller_anchor, portable_definition + controller_anchor, 1)
     main = main.replace("app.getPath('userData')", "portableConfigDirectory")
     main = main.replace('app.getPath("userData")', "portableConfigDirectory")
-    config_decl = re.compile(r'(\\b(?:const|let|var)\\s+configPath\\s*=\\s*)[^;]+;')
+    config_decl = re.compile(r'(\b(?:const|let|var)\s+configPath\s*=\s*)[^;]+;')
     config_matches = list(config_decl.finditer(main))
     if len(config_matches) != 1:
         raise RuntimeError(f"Expected one native configPath declaration, found {len(config_matches)}.")
