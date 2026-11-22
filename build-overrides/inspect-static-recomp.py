@@ -41,7 +41,7 @@ for rel in FILES:
   # Earlier scans found only Z80 driver uploads; a title click usually enters a
   # shared high-level routine which queues a cue for the per-frame sound engine.
   fn_starts=[]
-  fn_re=re.compile(r"^\\s*static\\s+void\\s+(f_[A-Za-z0-9_]+)\\s*\\(M68K\\s*\\*c\\)")
+  fn_re=re.compile(r"^\s*static\s+void\s+(f_[A-Za-z0-9_]+)\s*\(M68K\s*\*c\)")
   for i,line in enumerate(lines):
    m=fn_re.match(line)
    if m: fn_starts.append((i,m.group(1)))
@@ -54,7 +54,7 @@ for rel in FILES:
    fn_data[name]=(start,end,body)
    calls=[]
    for k,line in enumerate(body):
-    for target in re.findall(r"\\b(f_[A-Za-z0-9_]+)\\s*\\(c\\)",line):
+    for target in re.findall(r"\b(f_[A-Za-z0-9_]+)\s*\(c\)",line):
      if target!=name and target not in calls:calls.append(target)
      callers_by_name.setdefault(target,[]).append((name,start+k,line))
    calls_by_name[name]=calls
@@ -76,7 +76,7 @@ for rel in FILES:
   emit("GENERATED_SOUND_STATE_RAM_WRITERS")
   for name,(start,end,body) in fn_data.items():
    hits=[(start+k,line) for k,line in enumerate(body) if sound_state_re.search(line)]
-   writes=[(idx,line) for idx,line in hits if re.search(r"\\bWR(?:8|16|32)\\s*\\(",line)]
+   writes=[(idx,line) for idx,line in hits if re.search(r"\bWR(?:8|16|32)\s*\(",line)]
    if not writes:continue
    emit(f"SOUND_STATE_FUNCTION name={name} declaration_line={start+1} state_refs={len(hits)} writes={len(writes)}")
    for idx,line in writes[:48]:
