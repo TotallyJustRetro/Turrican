@@ -49,6 +49,17 @@ static uint16_t g_live_cram[64] = {};
 static uint32_t g_live_art_hash = 0;
 static int g_live_tile_ids[256] = {};
 static int g_live_tile_count = 0;
+static uint8_t g_live_regs[32] = {};
+struct LiveSpritePart {
+    uint16_t tile_attr;
+    uint8_t width_tiles;
+    uint8_t height_tiles;
+    int16_t x;
+    int16_t y;
+};
+static LiveSpritePart g_live_sprites[80] = {};
+static int g_live_sprite_count = 0;
+static int g_selected_sprite = -1;
 static int g_selected_palette = 0;
 static int g_selected_asset_slot = 0;
 static bool g_left_was_down = false;
@@ -91,7 +102,12 @@ static char g_dialogue[256] = "";
 static float g_dialogue_pitch = 1.0f;
 static bool g_dialogue_auto = false, g_dialogue_camera_pan = true;
 
-struct EditorEntity { float x,y; int type,hp; };
+struct EditorEntity {
+    float x,y;
+    int type,hp;
+    uint16_t tile_attr;
+    uint8_t width_tiles,height_tiles;
+};
 static EditorEntity g_entities[64] = {};
 struct EventNode { int type; float x,y; char title[28]; char detail[56]; };
 static EventNode g_nodes[12] = {};
@@ -256,6 +272,26 @@ static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
     }
 }
 
+static void draw_vdp_sprite(ImDrawList *draw,ImVec2 pos,float tileSize,
+                            uint16_t tileAttr,int widthTiles,int heightTiles)
+{
+    const int base=tileAttr&0x07FF;
+    const bool hflip=(tileAttr&0x0800)!=0;
+    const bool vflip=(tileAttr&0x1000)!=0;
+    const int attributes=tileAttr&0xF800;
+    for(int row=0;row<heightTiles;row++){
+        for(int col=0;col<widthTiles;col++){
+            const int tileRow=vflip?(heightTiles-1-row):row;
+            const int tileCol=hflip?(widthTiles-1-col):col;
+            const int tile=(base+tileRow*widthTiles+tileCol)&0x07FF;
+            draw_vdp_tile(draw,
+                ImVec2(pos.x+col*tileSize,pos.y+row*tileSize),
+                tileSize,attributes|tile);
+        }
+    }
+}
+
+
 static void push_level_undo();
 static void undo_level_edit();
 static void redo_level_edit();
@@ -306,9 +342,34 @@ static void draw_stage_canvas()
             if(!g_left_was_down&&(g_tool==TOOL_TILE_BRUSH||g_tool==TOOL_ERASER))push_level_undo();
             if(g_tool==TOOL_TILE_BRUSH&&g_brush_tile>0)mtlb_map_set(mx,my,g_brush_tile);
             else if(g_tool==TOOL_ERASER)mtlb_map_set(mx,my,0);
+        }else if(g_mode==MODE_ENTITY&&ImGui::IsMouseClicked(ImGuiMouseButton_Left)&&
+                 g_selected_sprite>=0&&g_selected_sprite<g_live_sprite_count&&g_entity_count<64){
+            const LiveSpritePart &sprite=g_live_sprites[g_selected_sprite];
+            EditorEntity &entity=g_entities[g_entity_count++];
+            entity.x=(m.x-origin.x)/w;
+            entity.y=(m.y-origin.y)/h;
+            entity.type=g_entity_type;
+            entity.hp=100;
+            entity.tile_attr=sprite.tile_attr;
+            entity.width_tiles=sprite.width_tiles;
+            entity.height_tiles=sprite.height_tiles;
+            g_selected_entity=g_entity_count-1;
+            g_document_dirty=true;
+            std::snprintf(g_status,sizeof(g_status),"PLACED LIVE SPRITE PART");
         }
     }
     g_left_was_down=mouseDown;
+    for(int i=0;i<g_entity_count;i++){
+        const EditorEntity &entity=g_entities[i];
+        const ImVec2 p(origin.x+entity.x*w,origin.y+entity.y*h);
+        if(entity.width_tiles&&entity.height_tiles)
+            draw_vdp_sprite(d,p,cell,entity.tile_attr,entity.width_tiles,entity.height_tiles);
+        else
+            d->AddCircleFilled(p,3.0f,IM_COL32(255,190,76,255));
+        if(i==g_selected_entity)
+            d->AddRect(p,ImVec2(p.x+entity.width_tiles*cell,p.y+entity.height_tiles*cell),
+                       IM_COL32(255,190,76,255),0.0f,2.0f);
+    }
     if(g_mode==MODE_TILES){
         int sx=g_selected_x-g_map_origin_x,sy=g_selected_y-g_map_origin_y;
         ImVec2 a(origin.x+sx*cell,origin.y+sy*cell),b(a.x+cell,a.y+cell);
@@ -674,27 +735,56 @@ static void draw_top_bar()
 }
 } // namespace
 
-extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cram)
+extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cram,const uint8_t *regs)
 {
-    if(!vram||!cram)return;
-    // Hash first so the small art catalog is rebuilt only when the game's
-    // VRAM/CRAM changes, not on every editor frame.
+    if(!vram||!cram||!regs)return;
     uint32_t hash=2166136261u;
     for(size_t i=0;i<65536;i++)hash=(hash^vram[i])*16777619u;
     for(size_t i=0;i<64;i++){
         hash=(hash^(uint8_t)(cram[i]&255u))*16777619u;
         hash=(hash^(uint8_t)(cram[i]>>8))*16777619u;
     }
+    for(size_t i=0;i<32;i++)hash=(hash^regs[i])*16777619u;
     if(hash==g_live_art_hash)return;
     g_live_art_hash=hash;
     std::memcpy(g_live_vram,vram,sizeof(g_live_vram));
     std::memcpy(g_live_cram,cram,sizeof(g_live_cram));
+    std::memcpy(g_live_regs,regs,sizeof(g_live_regs));
+
     g_live_tile_count=0;
     for(int tile=1;tile<2048&&g_live_tile_count<256;tile++){
         const uint8_t *pattern=&g_live_vram[tile*32];
         bool visible=false;
         for(int i=0;i<32;i++)if(pattern[i]){visible=true;break;}
         if(visible)g_live_tile_ids[g_live_tile_count++]=tile;
+    }
+
+    // Genesis VDP register 5 points to a linked Sprite Attribute Table.
+    g_live_sprite_count=0;
+    const uint32_t satBase=(uint32_t)(g_live_regs[5]&0x7Fu)<<9;
+    bool visited[128]={};
+    unsigned link=0;
+    for(int n=0;n<80&&link<128&&!visited[link];n++){
+        visited[link]=true;
+        const uint32_t at=(satBase+link*8u)&0xFFFFu;
+        const uint8_t size=g_live_vram[(at+2u)&0xFFFFu];
+        const unsigned next=g_live_vram[(at+3u)&0xFFFFu]&0x7Fu;
+        const uint16_t attr=(uint16_t)(((uint16_t)g_live_vram[(at+4u)&0xFFFFu]<<8)|
+                                        g_live_vram[(at+5u)&0xFFFFu]);
+        const int width=(size&3u)+1;
+        const int height=((size>>2)&3u)+1;
+        if((attr&0x07FFu)!=0&&g_live_sprite_count<80){
+            LiveSpritePart &sprite=g_live_sprites[g_live_sprite_count++];
+            sprite.tile_attr=attr;
+            sprite.width_tiles=(uint8_t)width;
+            sprite.height_tiles=(uint8_t)height;
+            const uint16_t yword=(uint16_t)(((uint16_t)g_live_vram[at]<<8)|g_live_vram[(at+1u)&0xFFFFu]);
+            const uint16_t xword=(uint16_t)(((uint16_t)g_live_vram[(at+6u)&0xFFFFu]<<8)|g_live_vram[(at+7u)&0xFFFFu]);
+            sprite.x=(int16_t)((xword&0x01FFu)-128);
+            sprite.y=(int16_t)((yword&0x03FFu)-128);
+        }
+        if(next==0)break;
+        link=next;
     }
 }
 extern "C" int mtlb_map_cols(void) { return kEditorMapCols; }
@@ -730,11 +820,14 @@ extern "C" int mtlb_map_save(void)
 {
     char path[4096];if(!mtlb_level_document_path(path,sizeof(path)))return 0;
     FILE *file=std::fopen(path,"wb");if(!file)return 0;
-    const char magic[8]={'M','T','L','B','L','V','L',1};
+    const char magic[8]={'M','T','L','B','L','V','L',2};
     const std::uint32_t cols=kEditorMapCols,rows=kEditorMapRows;
+    const std::uint32_t entityCount=(std::uint32_t)g_entity_count;
     bool ok=std::fwrite(magic,1,sizeof(magic),file)==sizeof(magic)&&
         std::fwrite(&cols,sizeof(cols),1,file)==1&&std::fwrite(&rows,sizeof(rows),1,file)==1&&
-        std::fwrite(g_level_tiles,sizeof(g_level_tiles),1,file)==1;
+        std::fwrite(g_level_tiles,sizeof(g_level_tiles),1,file)==1&&
+        std::fwrite(&entityCount,sizeof(entityCount),1,file)==1&&
+        std::fwrite(g_entities,sizeof(EditorEntity),g_entity_count,file)==(size_t)g_entity_count;
     if(std::fclose(file)!=0)ok=false;
     if(ok)g_document_dirty=false;
     return ok?1:0;
@@ -746,13 +839,25 @@ extern "C" int mtlb_map_load(void)
     char magic[8]={};std::uint32_t cols=0,rows=0;
     std::uint16_t loaded[kEditorMapCols*kEditorMapRows]={};
     bool ok=std::fread(magic,1,sizeof(magic),file)==sizeof(magic)&&
-        std::memcmp(magic,"MTLBLVL",7)==0&&(unsigned char)magic[7]==1&&
+        std::memcmp(magic,"MTLBLVL",7)==0&&
+        ((unsigned char)magic[7]==1||(unsigned char)magic[7]==2)&&
         std::fread(&cols,sizeof(cols),1,file)==1&&std::fread(&rows,sizeof(rows),1,file)==1&&
         cols==(std::uint32_t)kEditorMapCols&&rows==(std::uint32_t)kEditorMapRows&&
         std::fread(loaded,sizeof(loaded),1,file)==1;
+    std::uint32_t entityCount=0;
+    EditorEntity loadedEntities[64]={};
+    if(ok&&(unsigned char)magic[7]==2){
+        ok=std::fread(&entityCount,sizeof(entityCount),1,file)==1&&entityCount<=64&&
+           std::fread(loadedEntities,sizeof(EditorEntity),entityCount,file)==entityCount;
+    }
     std::fclose(file);
     if(!ok)return 0;
-    std::memcpy(g_level_tiles,loaded,sizeof(g_level_tiles));g_document_dirty=false;return 1;
+    std::memcpy(g_level_tiles,loaded,sizeof(g_level_tiles));
+    std::memcpy(g_entities,loadedEntities,sizeof(g_entities));
+    g_entity_count=(unsigned char)magic[7]==2?(int)entityCount:0;
+    g_selected_entity=-1;
+    g_document_dirty=false;
+    return 1;
 }
 extern "C" int mtlb_map_cursor_x(void) { return g_selected_x; }
 extern "C" int mtlb_map_cursor_y(void) { return g_selected_y; }
