@@ -383,10 +383,19 @@ static void native_custom_apply(void) {
         native_game_level_modern && native_modern_iframes);
 }
 static int native_custom_config_file_path(char *dst,size_t capacity) {
-    char *base=SDL_GetPrefPath("TotallyJustRetro","MegaTurrican");
+    /* Portable settings live beside the launcher. The Electron parent passes
+       this folder to the native process; SDL_GetBasePath is a safe fallback. */
+    const char *base=getenv("MEGATURRICAN_CONFIG_DIR");
+    char *fallback=NULL;
+    if(!base || !base[0]) {
+        fallback=SDL_GetBasePath();
+        base=fallback;
+    }
     if(!base)return 0;
-    int n=snprintf(dst,capacity,"%scustom-game-options.ini",base);
-    SDL_free(base);
+    size_t length=strlen(base);
+    const char *separator=(length && (base[length-1]=='/' || base[length-1]=='\\')) ? "" : "/";
+    int n=snprintf(dst,capacity,"%s%scustom-game-options.ini",base,separator);
+    if(fallback)SDL_free(fallback);
     return n>0 && (size_t)n<capacity;
 }
 static void native_custom_save_config(void) {
@@ -1483,6 +1492,10 @@ def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
     s=path.read_text(encoding="utf-8-sig")
     s=ensure_sdl_headers(s)
+    if "#include <stdlib.h>" not in s:
+        include=re.search(r"(?m)^#include <stdio\\.h>\\s*$",s)
+        if not include: raise RuntimeError("Could not add stdlib.h for portable config-directory lookup.")
+        s=s[:include.end()]+"\\n#include <stdlib.h>"+s[include.end():]
     if "pad_up=%d\\n" not in s:
         old_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\n"'
         new_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\npad_up=%d\\npad_down=%d\\npad_left=%d\\npad_right=%d\\npad_a=%d\\npad_b=%d\\npad_c=%d\\npad_start=%d\\n"'
@@ -1593,6 +1606,8 @@ confirm:
     # Put page functions after the pause backdrop is declared, but before menu present/event helpers.
     anchor="static int native_menu_resume_guard=0;"
     s=once(s,anchor,anchor+"\n"+CUSTOM_PAGES,"Extras/Cheats/Modern/Saves/Level Builder pages")
+    if "native pause root gameplay-only gate" not in s:
+        s=once(s,"static void native_menu_pause_loop(void) {\n    if(native_menu_state<=0)return;","static void native_menu_pause_loop(void) {\n    /* State 1 is the global pause root. Reject it until gameplay HUD labels\n       are present; title/intro modals use their own states and remain usable. */\n    if(native_menu_state==1 && !native_title_gameplay_hud_visible()) {\n        native_menu_state=0;\n        return;\n    }\n    if(native_menu_state<=0)return;","native pause root gameplay-only gate")
 
     # Extend VDP framebuffer menu drawing dispatch.
     s=once(s,"    case 7: render_native_controller_options(); break;",
@@ -1776,14 +1791,13 @@ confirm:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
     pause_call="    native_menu_pause_loop();"
+    # Pause gating belongs inside native_menu_pause_loop, after the event has
+    # selected state 1. Keep frame-hook calls unconditional so title modals
+    # (states 9-22) continue to work, while the loop rejects only root pause.
     pause_guard="    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();"
-    pause_call_count=hook.count(pause_call)
-    if pause_call_count<1:
+    hook=hook.replace(pause_guard,pause_call)
+    if hook.count(pause_call)<1:
         raise RuntimeError("Could not locate native pause-loop calls inside md_frame_hook.")
-    if pause_guard not in hook:
-        hook=hook.replace(pause_call,pause_guard)
-        s=s[:hook_start]+hook+s[hook_end:]
-        hook_end=hook_start+len(hook)
     restore_arm=r"""
     if(native_title_restore_after_input)native_title_restore_ready=1;
 """
