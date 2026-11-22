@@ -630,17 +630,27 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
             "launcher controller-settings round-trip on game exit"
         )
 
-    # Keep all portable-launcher settings next to the launcher executable,
-    # not in Electron's per-user AppData directory.
-    main = main.replace("app.getPath('userData')", "path.dirname(app.getPath('exe'))")
-    main = main.replace('app.getPath("userData")', "path.dirname(app.getPath('exe'))")
-    config_decl = re.compile(r'(\b(?:const|let|var)\s+configPath\s*=\s*)[^;]+;')
+    # electron-builder's portable wrapper exposes the true outer EXE folder.
+    # It differs from app.getPath('exe') when the app is unpacked to a temp folder.
+    portable_anchor = "const romSettingsFile = path.join(app.getPath('userData'), 'rom-settings.json');"
+    portable_definition = "const portableConfigDirectory = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));\\n"
+    if "const portableConfigDirectory =" not in main:
+        if portable_anchor in main:
+            main = main.replace(portable_anchor, portable_definition + portable_anchor, 1)
+        else:
+            controller_anchor = "const controllerSettingsFile = path.join(app.getPath('userData'), 'controller-settings.json');"
+            if controller_anchor not in main:
+                raise RuntimeError("Could not find settings-file anchor for portable config directory.")
+            main = main.replace(controller_anchor, portable_definition + controller_anchor, 1)
+    main = main.replace("app.getPath('userData')", "portableConfigDirectory")
+    main = main.replace('app.getPath("userData")', "portableConfigDirectory")
+    config_decl = re.compile(r'(\\b(?:const|let|var)\\s+configPath\\s*=\\s*)[^;]+;')
     config_matches = list(config_decl.finditer(main))
     if len(config_matches) != 1:
         raise RuntimeError(f"Expected one native configPath declaration, found {len(config_matches)}.")
     match = config_matches[0]
-    main = main[:match.start()] + match.group(1) + "path.join(path.dirname(app.getPath('exe')), 'config.ini');" + main[match.end():]
-    if "path.join(path.dirname(app.getPath('exe')), 'config.ini')" not in main:
+    main = main[:match.start()] + match.group(1) + "path.join(portableConfigDirectory, 'config.ini');" + main[match.end():]
+    if "path.join(portableConfigDirectory, 'config.ini')" not in main:
         raise RuntimeError("Native config.ini is not configured beside the portable launcher.")
     path.write_text(main, encoding="utf-8")
 
