@@ -1358,12 +1358,17 @@ static void proc_native_pause_info_back(SDL_Event *e) {
 
 static void native_title_menu_sfx(int confirm) {
     if(!adev)return;
+    /* The FM core is shared with the title music callback. Quiesce that callback
+       while the short cue is rendered, restore the exact YM state, then queue
+       the samples and resume immediately. */
+    int was_paused=(SDL_GetAudioDeviceStatus(adev)==SDL_AUDIO_PAUSED);
+    SDL_PauseAudioDevice(adev,1);
     int16_t samples[2400*2];
     md_pause_fm_test_start(confirm?2:0);
     md_pause_fm_test_render(samples,2400,2);
     md_pause_fm_test_stop();
     SDL_QueueAudio(adev,samples,(Uint32)sizeof samples);
-    SDL_PauseAudioDevice(adev,0);
+    if(!was_paused)SDL_PauseAudioDevice(adev,0);
 }
 
 static int native_pause_audio_active=0;
