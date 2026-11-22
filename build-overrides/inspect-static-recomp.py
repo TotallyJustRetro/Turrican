@@ -663,6 +663,32 @@ if gen.exists():
     for q in range(lo,hi):
      emit(f"    {q+1}: {gen_lines[q][:280]}")
   emit(f"OBJECT_POOL_CALLER_COUNT {len(grouped)} total_calls={len(call_sites)}")
+  emit("[ALLOCATED_OBJECT_INITIAL_HANDLER_ASSIGNMENTS]")
+  current="(global)"
+  allocation_lines=[]
+  for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if re.search(r"\bf_5300\s*\(c\)",line):
+    allocation_lines.append((current,i))
+  assignments=[]
+  for i,line in enumerate(gen_lines):
+   if not re.search(r"WR32\s*\(\s*d\s*,\s*v\s*\)",line): continue
+   if "A(0)+(int32_t)34" not in line: continue
+   vm=re.search(r"uint32_t\s+v\s*=\s*0x([0-9A-Fa-f]+)u",line)
+   if not vm: continue
+   candidates=[(fn,at) for fn,at in allocation_lines if fn==current and 0<=i-at<=24]
+   if not candidates: continue
+   fn,at=candidates[-1]
+   handler=int(vm.group(1),16)
+   assignments.append((fn,handler,at+1,i+1))
+  emitted=set()
+  for fn,handler,alloc_line,assign_line in assignments:
+   row=(fn,handler)
+   if row in emitted: continue
+   emitted.add(row)
+   emit(f"OBJECT_SPAWN_HANDLER owner={fn} handler=0x{handler:X} allocator_line={alloc_line} assign_line={assign_line}")
+
   emit("[OBJECT_POOL_CALLER_FUNCTION_BODIES]")
   for fn,sites in sorted(grouped.items(),key=lambda item:(-len(item[1]),item[0]))[:48]:
    pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(fn)+r"\s*\([^;{}]*\)\s*\{")
