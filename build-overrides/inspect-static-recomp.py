@@ -36,6 +36,25 @@ for rel in FILES:
     emit(f"RAM_WRITE line={n} {line[:300]}")
     for k in range(max(0,n-4),min(len(lines),n+4)):
      emit(f"  {k+1}: {lines[k][:240]}")
+
+  # Keep a source-level cross-reference from each absolute game-RAM address
+  # to the generated 68000 routine using it. This is the static half of actor
+  # discovery; live snapshots provide the corresponding runtime values.
+  ram_ref=re.compile(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})",re.I)
+  fn_ref=re.compile(r"\b(?:static\s+)?(?:void|int|bool|uint8_t|uint16_t|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\(")
+  current_fn="(global)"
+  fn_summary={}
+  emit("RAM_ABSOLUTE_REFERENCES_BY_FUNCTION")
+  for n,line in enumerate(lines,1):
+   fm=fn_ref.search(line)
+   if fm: current_fn=fm.group(1)
+   refs=sorted(set(m.group(1).upper() for m in ram_ref.finditer(line)))
+   if not refs: continue
+   fn_summary.setdefault(current_fn,set()).update(refs)
+   emit(f"RAM_REF line={n} function={current_fn} addresses={','.join(refs)} code={line[:280]}")
+  emit("RAM_FUNCTION_ADDRESS_SUMMARY")
+  for name,addresses in sorted(fn_summary.items(),key=lambda item:(-len(item[1]),item[0])):
+   emit(f"RAM_FUNCTION {name} unique_addresses={len(addresses)} addresses={','.join(sorted(addresses))}")
  in_struct=False
  struct_depth=0
  for n,line in enumerate(lines,1):
