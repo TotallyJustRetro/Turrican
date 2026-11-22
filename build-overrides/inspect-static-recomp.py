@@ -403,7 +403,7 @@ for rel,needles in {
  for i,line in enumerate(src):
   if any(n in line for n in needles):
    a=max(0,i-5);b=min(len(src),i+16)
-   if any(a<y<b for y in spans):continue
+   if any(a<y1 and y0<b for y0,y1 in spans):continue
    spans.append((a,b))
  for a,b in spans:
   emit(f"RUNTIME_LINES {a+1}-{b}")
