@@ -1376,8 +1376,11 @@ static void proc_native_pause_info_back(SDL_Event *e) {
 
 static int native_title_menu_sfx(int confirm) {
     /* These are the original ROM sound-table indices called by its title
-       state handler: 3 for movement and 2 for selection/confirmation. */
+       state handler: 3 for movement and 2 for selection/confirmation.
+       Run the ROM's sound service and pump PCM now; the native Options page
+       is modal and must not wait for another emulated game frame. */
     md_play_reborn_sfx(confirm?2u:3u);
+    audio_pump();
     return 1;
 }
 
