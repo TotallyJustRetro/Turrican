@@ -565,8 +565,11 @@ static int md_modern_is_timer_ink(uint8_t pixel) {
             red_b+=md_modern_is_timer_ink(pb[x]);
             red_s+=md_modern_is_timer_ink(sp[x]);
         }
-        if(red_a)for(int x=x0;x<x1;x++)pa[x]=pb[x];
-        if(red_b)for(int x=x0;x<x1;x++)pb[x]=0;
+        if(red_a>=red_b && red_a) {
+            for(int x=x0;x<x1;x++)pa[x]=pb[x];
+        } else if(red_b) {
+            for(int x=x0;x<x1;x++)pb[x]=pa[x];
+        }
         if(red_s)for(int x=x0;x<x1;x++)sp[x]=0;
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
