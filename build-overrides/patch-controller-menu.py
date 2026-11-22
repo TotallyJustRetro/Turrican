@@ -634,7 +634,7 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
     # not in Electron's per-user AppData directory.
     main = main.replace("app.getPath('userData')", "path.dirname(app.getPath('exe'))")
     main = main.replace('app.getPath("userData")', "path.dirname(app.getPath('exe'))")
-    config_decl = re.compile(r'(\\b(?:const|let|var)\\s+configPath\\s*=\\s*)[^;]+;')
+    config_decl = re.compile(r'(\b(?:const|let|var)\s+configPath\s*=\s*)[^;]+;')
     config_matches = list(config_decl.finditer(main))
     if len(config_matches) != 1:
         raise RuntimeError(f"Expected one native configPath declaration, found {len(config_matches)}.")
