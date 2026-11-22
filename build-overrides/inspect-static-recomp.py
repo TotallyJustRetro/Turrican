@@ -1091,6 +1091,80 @@ if gen.exists():
    if constants:
     emit(f"OBJECT_FAMILY_CONST function={current} line={n} values="+",".join(f"0x{x:X}" for x in constants)+" code={line.strip()[:300]}")
 
+ # Summarize the spawn-family helper bodies together with the ROM table bases
+ # loaded immediately before each call. This lets the internal manifest distinguish
+ # independent templates from later state transitions and visual child effects.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[SPAWN_FAMILY_CALLER_TABLE_SETUP]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  family_helpers={
+   "f_3DB4","f_3FA4","f_419A","f_4626","f_4E52","f_59EE","f_5A9E",
+   "f_5BB4","f_5CA4","f_5FCA","f_60EE","f_62FA","f_951C",
+   "f_A1B6","f_A3A0","f_A556","f_A67C","f_A708","f_AC58",
+   "f_B05C","f_B460","f_B4AA","f_B4C4","f_B6A2","f_BACA",
+   "f_BD20","f_C2E4","f_C310","f_C32E","f_C34E","f_DC78"
+  }
+  current="(global)"
+  recent=[]
+  call_rows=[]
+  const_re=re.compile(r"\b(?:uint32_t|uint16_t|int32_t)\s+([a-zA-Z_]\w*)\s*=\s*0x([0-9A-Fa-f]{4,8})u")
+  move_re=re.compile(r"\bA\(([0-7])\)\s*=\s*(?:([a-zA-Z_]\w*)|0x([0-9A-Fa-f]{4,8})u)")
+  for n,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+    recent=[]
+   cm=const_re.search(line)
+   if cm:
+    recent.append((n,cm.group(1),int(cm.group(2),16)))
+   mm=move_re.search(line)
+   if mm:
+    reg=int(mm.group(1)); symbol=mm.group(2); literal=mm.group(3)
+    value=None
+    if literal: value=int(literal,16)
+    elif symbol:
+     for q,name,val in reversed(recent):
+      if name==symbol: value=val;break
+    if value is not None and value<0x400000:
+     recent.append((n,f"A{reg}_BASE",value))
+   called=sorted(set(re.findall(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)",line)) & family_helpers)
+   if called:
+    bases=[(q,name,val) for q,name,val in recent if n-q<=24]
+    call_rows.append((current,called,n,bases))
+  for owner,called,n,bases in call_rows:
+   emit(f"SPAWN_FAMILY_CALL owner={owner} targets={','.join(called)} line={n+1}")
+   if bases:
+    emit("  recent_bases="+",".join(f"{name}=0x{val:X}@{q+1}" for q,name,val in bases[-12:]))
+  emit(f"SPAWN_FAMILY_CALL_COUNT {len(call_rows)}")
+
+  emit("[OBJECT_INITIALIZER_FULL_FUNCTIONS]")
+  helper_set={
+   "f_3DB4","f_3FA4","f_419A","f_4626","f_4E52","f_59EE","f_5A9E",
+   "f_5BB4","f_5CA4","f_5FCA","f_60EE","f_62FA","f_951C",
+   "f_A1B6","f_A3A0","f_A556","f_A67C","f_A708","f_AC58",
+   "f_B05C","f_B460","f_B4AA","f_B4C4","f_B6A2","f_BACA",
+   "f_BD20","f_C2E4","f_C310","f_C32E","f_C34E","f_DC78"
+  }
+  definition=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
+  source="\n".join(gen_lines)
+  for name in sorted(helper_set):
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
+   hit=pat.search(source)
+   if not hit: continue
+   brace=source.find("{",hit.start());depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{":depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:end=pos+1;break
+   if end<=brace:continue
+   block=source[hit.start():end].splitlines()
+   emit(f"OBJECT_INITIALIZER_BODY {name} lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line in block[:200]:emit("  "+line[:300])
+   if len(block)>200:emit(f"  ... clipped {len(block)-200} additional lines ...")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
