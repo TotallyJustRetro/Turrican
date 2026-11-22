@@ -362,7 +362,9 @@ if gen.exists():
   "f_66F4","f_5400","f_C88A","f_C8A6","f_C93A","f_BE16",
   "f_BCB6","f_BE34","f_BE7C","f_BE1E","f_C034","f_C08E",
   "f_A3A0","f_A3D6","f_BF50","f_BFF2","f_C008","f_C01A",
-  "f_A18A","f_A932","f_A490","f_A3C","f_A2A"
+  "f_A18A","f_A932","f_A490","f_A3C","f_A2A",
+  "f_5432","f_543C","f_5444","f_5448","f_544A",
+  "f_552A","f_5578","f_558C","f_5232","f_5D8A"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -835,14 +837,14 @@ if gen.exists():
    if lm:
     recent.append((n,int(lm.group(1)),int(lm.group(2)),line.strip()[:280]))
    if indirect.search(line):
-    nearby=[x for x in recent if n-x[0]<=24]
+    nearby=[x for x in recent if n-x[0]<=48]
     if nearby:
-     emit(f"OBJECT_CALLBACK_DISPATCH function={current} call_line={n} fields_loaded="+",".join(f"A{reg}+{off}@{ln}" for ln,reg,off,_ in nearby[-6:]))
-     for ln,reg,off,code in nearby[-6:]:
+     emit(f"OBJECT_CALLBACK_DISPATCH function={current} call_line={n} fields_loaded="+",".join(f"A{reg}+{off}@{ln}" for ln,reg,off,_ in nearby[-10:]))
+     for ln,reg,off,code in nearby[-10:]:
       emit(f"  field_load line={ln}: {code}")
      emit(f"  indirect_call: {line.strip()[:320]}")
      callback_call_count+=1
-    recent=[x for x in recent if n-x[0]<=24]
+    recent=[x for x in recent if n-x[0]<=48]
   emit(f"OBJECT_RECORD_INDIRECT_CALLBACK_CALL_COUNT {callback_call_count}")
 
 report="\n".join(OUT)+"\n"
