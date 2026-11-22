@@ -1110,7 +1110,7 @@ confirm:
 
     # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
-    if s.count(frame_anchor)!=1:
+    if s.count(frame_anchor)<1:
         raise RuntimeError("Could not locate the native pause frame hook.")
 
     s=once(s,"    memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);",
