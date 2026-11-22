@@ -452,20 +452,17 @@ static void native_toggle_option(int state,int item) {
         else if(item==1)native_cheat_lives^=1;
         else if(item==2)native_cheat_timer^=1;
     } else if(state==12) {
-        if(item==0)native_modern_lives^=1;
-        else if(item==1)native_modern_continues^=1;
-        else if(item==2)native_modern_no_timer^=1;
+        if(item==0)native_modern_map^=1;
+        else if(item==1)native_modern_no_timer_hud^=1;
+        else if(item==2)native_modern_persistent_weapon^=1;
     }
     native_custom_save_config();
 }
 static void render_native_toggle_page(int state) {
     const char *title=state==9?"CHEATS":"MODERN OPTIONS";
-    const char *labels[4]={"INFINITE ENERGY","INFINITE LIVES","NO TIMER","BACK"};
-    if(state==12) {
-        labels[0]="INFINITE LIVES";
-        labels[1]="INFINITE CONTINUES";
-        labels[2]="NO TIMER";
-    }
+    const char *cheat_labels[4]={"INFINITE ENERGY","INFINITE LIVES","NO TIMER","BACK"};
+    const char *modern_labels[4]={"MAP KEY M","HIDE TIMER HUD","KEEP WEAPON LEVELS","BACK"};
+    const char **labels=state==9?cheat_labels:modern_labels;
     int pw=234,ph=144,px,py;
     native_menu_panel(pw,ph,&px,&py);
     native_menu_title(px+(pw-str_w(title,2))/2,py+8,title,2);
@@ -474,7 +471,7 @@ static void render_native_toggle_page(int state) {
         if(i==3)snprintf(row,sizeof row,"BACK");
         else {
             int on=state==9?(i==0?native_cheat_energy:i==1?native_cheat_lives:native_cheat_timer):
-                (i==0?native_modern_lives:i==1?native_modern_continues:native_modern_no_timer);
+                (i==0?native_modern_map:i==1?native_modern_no_timer_hud:native_modern_persistent_weapon);
             snprintf(row,sizeof row,"%s: %s",labels[i],on?"ON":"OFF");
         }
         native_menu_item(px+10,py+36+i*23,row,i==native_menu_sel,2);
