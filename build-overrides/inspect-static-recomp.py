@@ -330,6 +330,52 @@ if gen.exists():
   for line in block_lines[:180]: emit("  "+line[:280])
   if len(block_lines)>180: emit(f"  ... clipped {len(block_lines)-180} further lines ...")
 
+ # Inspect the small routines called by the VDP transfer helpers. These often
+ # own the RAM staging buffer fill, pointer advancement, or decompression step.
+ emit("[VDP_TRANSFER_SUPPORT_ROUTINES]")
+ support_names=[
+  "f_6BD6","f_763C","f_76EA","f_72E2","f_7360","f_D0004","f_D0008",
+  "f_DC4","f_6DE","f_4BA","f_4FE","f_12976","f_D0014","f_D0018",
+  "f_6C3E","f_D75E","f_D7A0","f_D7B4","f_D7C8"
+ ]
+ support_def=re.compile(r"(?m)^\\s*static\\s+void\\s+(f_[0-9A-Fa-f]+)\\s*\\([^;{}]*\\)\\s*\\{")
+ support_emitted=set()
+ for name in support_names:
+  pat=re.compile(r"(?m)^\\s*static\\s+void\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  hit=pat.search(source)
+  if not hit:
+   emit(f"TRANSFER_SUPPORT_MISSING {name}")
+   continue
+  brace=source.find("{",hit.start()); depth=0; end=-1
+  for pos in range(brace,len(source)):
+   if source[pos]=="{": depth+=1
+   elif source[pos]=="}":
+    depth-=1
+    if depth==0: end=pos+1; break
+  if end<=brace: continue
+  block=source[hit.start():end]
+  block_lines=block.splitlines()
+  support_emitted.add(name)
+  emit(f"TRANSFER_SUPPORT_BODY {name} source_lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+  for line in block_lines[:220]: emit("  "+line[:280])
+  if len(block_lines)>220: emit(f"  ... clipped {len(block_lines)-220} further lines ...")
+
+ # For transfer helper/support functions, list fixed ROM pointers and static
+ # RAM buffers used as sources or destinations.
+ emit("[TRANSFER_SUPPORT_FIXED_POINTERS]")
+ support_set=set(support_names)
+ current_support=""
+ ptr_pat=re.compile(r"0x([0-9A-Fa-f]{4,6})u")
+ support_start=re.compile(r"^\\s*static\\s+void\\s+(f_[0-9A-Fa-f]+)\\s*\\(")
+ for n,line in enumerate(lines,1):
+  sm=support_start.search(line)
+  if sm: current_support=sm.group(1)
+  if current_support not in support_set: continue
+  values=sorted(set(int(m.group(1),16) for m in ptr_pat.finditer(line)))
+  if not values: continue
+  emit(f"TRANSFER_POINTER function={current_support} line={n} values="+",".join(f"0x{x:X}" for x in values)+" code={line[:280]}")
+
+
 
  # Locate direct call sites and immediate setup for each transfer helper.
  # A helper body is not enough: its callers reveal which asset/job class feeds it.
