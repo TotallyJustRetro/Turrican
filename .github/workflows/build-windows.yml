@@ -162,7 +162,12 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/build-overrides"
           windres MegaTurrican.rc -O coff -o "$(cygpath -u "$MEGATURRICAN_PROJECT")/MegaTurrican-icon.o"
           cd "$(cygpath -u "$MEGATURRICAN_PROJECT")"
-          pkg-config --atleast-version=2.0.17 sdl2 || { echo 'Dear ImGui SDL_Renderer2 backend requires SDL 2.0.17 or newer.'; exit 1; }
+          sdl_version="$(sdl2-config --version)"
+          IFS=. read -r sdl_major sdl_minor sdl_patch <<< "$sdl_version"
+          if (( sdl_major < 2 || (sdl_major == 2 && (sdl_minor < 0 || (sdl_minor == 0 && sdl_patch < 17))) )); then
+            echo "Dear ImGui SDL_Renderer2 backend requires SDL 2.0.17 or newer (found $sdl_version)."
+            exit 1
+          fi
           mkdir -p _objects
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c recomp_gen.c -o _objects/recomp_gen.o
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/harness.c -o _objects/harness.o
