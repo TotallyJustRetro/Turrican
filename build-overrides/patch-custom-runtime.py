@@ -479,14 +479,23 @@ def patch_harness(project: Path) -> None:
     s=path.read_text(encoding="utf-8-sig")
     s=add_system_include(s,"string.h")
     sfx_bridge=r"""
-/* Queue a real Mega Turrican sound-table effect from the native UI.
- * f_D0008 is the ROM's own sound-effect API (D0 = sound-table index).
- * Run it as a nested recompiled call with a sentinel return frame, then
- * restore all CPU/timing state. The sound-driver queue in work RAM is
- * intentionally retained for the normal per-frame sound service. */
+/* Queue and service a real Mega Turrican sound-table effect from the native UI.
+ * f_D0008 is the ROM's sound-effect request API (D0 = sound-table index).
+ * f_D000C is its normal per-frame sound service. The native title/options UI
+ * can be modal, so service the request immediately instead of waiting for a
+ * gameplay frame that will not run while the page is open. */
+static void md_reborn_call_sound_routine(uint32_t address) {
+    const uint32_t sentinel=0x00FFFFFEu;
+    CPU->a[7]-=4u;
+    WR32(CPU->a[7],sentinel);
+    rt_shadow[rt_sp++]=sentinel;
+    rt_call_addr(CPU,address);
+}
 void md_play_reborn_sfx(unsigned int cue) {
-    if(!CPU || cue>0xFFFFu || rt_sp<0 || rt_sp>=65535) return;
-    if(CPU->a[7]<4u || CPU->a[7]>0x00FFFFFFu) return;
+    /* The Genesis stack lives at $FFFFxxxx in this harness; do not reject it
+       using a 24-bit upper bound. Only guard underflow and shadow-stack room. */
+    if(!CPU || cue>0xFFFFu || rt_sp<0 || rt_sp>65533) return;
+    if(CPU->a[7]<4u) return;
 
     M68K saved_cpu=*CPU;
     const int saved_rt_sp=rt_sp;
@@ -497,17 +506,13 @@ void md_play_reborn_sfx(unsigned int cue) {
     uint32_t saved_trace[64];
     memcpy(saved_trace,rt_trace,sizeof saved_trace);
 
-    const uint32_t sentinel=0x00FFFFFEu;
     CPU->d[0]=cue;
-    CPU->a[7]-=4u;
-    WR32(CPU->a[7],sentinel);
-    rt_shadow[rt_sp++]=sentinel;
-
-    /* This routine is short. Prevent its RT_POLLs from re-entering the frame
-       hook or servicing an interrupt in the middle of the native menu event. */
+    /* These ROM routines are short; suppress RT_POLL frame callbacks and
+       IRQ service so the native UI event cannot re-enter the live game loop. */
     rt_budget=0x3FFFFFFF;
     rt_irq_pending=0;
-    rt_call_addr(CPU,0x00D0008u);
+    md_reborn_call_sound_routine(0x00D0008u);
+    md_reborn_call_sound_routine(0x00D000Cu);
 
     *CPU=saved_cpu;
     rt_sp=saved_rt_sp;
