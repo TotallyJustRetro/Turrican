@@ -1530,7 +1530,10 @@ confirm:
         "    case 11: render_native_level_builder(); break;\n"
         "    case 12: render_native_toggle_page(12); break;\n"
         "    case 13: render_native_title_game_options(); break;\n"
-        "    case 14: render_native_area_map(); break;",
+        "    case 14: render_native_area_map(); break;\n"
+        "    case 15: render_native_suit_status(); break;\n"
+        "    case 16: render_native_pause_options(); break;\n"
+        "    case 17: render_native_pause_confirm(); break;",
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
@@ -1546,7 +1549,10 @@ confirm:
         "    else if(native_menu_state==11)proc_native_level_builder(e);\n"
         "    else if(native_menu_state==12)proc_native_toggle_page(e,12);\n"
         "    else if(native_menu_state==13)proc_native_title_game_options(e);\n"
-        "    else if(native_menu_state==14)proc_native_area_map(e);",
+        "    else if(native_menu_state==14)proc_native_area_map(e);\n"
+        "    else if(native_menu_state==15)proc_native_suit_status(e);\n"
+        "    else if(native_menu_state==16)proc_native_pause_options(e);\n"
+        "    else if(native_menu_state==17)proc_native_pause_confirm(e);",
         "native Extras event routing")
 
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
@@ -1701,8 +1707,25 @@ confirm:
         "native Game Options EXIT hint")
     s=once(s,
         "    draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
-        "    if(native_menu_state!=13 && native_menu_state!=14)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
+        "    if(native_menu_state<15)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
         "hide generic footer on full-screen title Game Options page")
+    # Add the game-native subpages, pause animation and sound-test pumping.
+    s=once(s,"static void native_menu_draw_frame(const uint32_t *backdrop) {",
+           "static void native_menu_draw_frame(const uint32_t *backdrop) {\\n    native_pause_anim_ticks++;",
+           "pause animation tick")
+    s=once(s,"        while(SDL_PollEvent(&e))native_menu_route_event(&e);",
+           "        while(SDL_PollEvent(&e))native_menu_route_event(&e);\\n        native_pause_audio_pump();",
+           "pause FM sound-test pump")
+    s=once(s,
+           "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\\n    if(adev)SDL_PauseAudioDevice(adev,0);",
+           "    native_pause_audio_pump();\\n"
+           "    if(native_pause_request_title) {\\n"
+           "        native_pause_request_title=0; md_boot(); native_pause_skip_backdrop_restore=1;\\n"
+           "    }\\n"
+           "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\\n"
+           "    native_pause_skip_backdrop_restore=0;\\n"
+           "    if(adev)SDL_PauseAudioDevice(adev,0);",
+           "pause checkpoint/title transition restore")
     path.write_text(s,encoding="utf-8",newline="\n")
 
 def main() -> int:
