@@ -627,19 +627,6 @@ static void draw_asset_shelf()
     }
     ImGui::EndChild();
 }
-static void draw_top_bar()
-{
-    ImGui::BeginChild("##topbar",ImVec2(0,22),true);
-    ImDrawList *d=ImGui::GetWindowDrawList();
-    ImVec2 p=ImGui::GetWindowPos();
-    d->AddRectFilled(p,ImVec2(p.x+ImGui::GetWindowWidth(),p.y+22),IM_COL32(7,11,18,255));
-    ImGui::TextColored(ImVec4(1.0f,.66f,.22f,1),"MEGA TURRICAN");
-    ImGui::SameLine();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"MAKER");
-    ImGui::SameLine();ImGui::TextDisabled("/ %s",g_level_name);
-    ImGui::EndChild();
-}
-} // namespace
-
 static void push_level_undo()
 {
     if(g_undo_count>=12){
@@ -673,6 +660,20 @@ static void redo_level_edit()
     g_document_dirty=true;
     std::snprintf(g_status,sizeof(g_status),"REDONE");
 }
+
+static void draw_top_bar()
+{
+    ImGui::BeginChild("##topbar",ImVec2(0,22),true);
+    ImDrawList *d=ImGui::GetWindowDrawList();
+    ImVec2 p=ImGui::GetWindowPos();
+    d->AddRectFilled(p,ImVec2(p.x+ImGui::GetWindowWidth(),p.y+22),IM_COL32(7,11,18,255));
+    ImGui::TextColored(ImVec4(1.0f,.66f,.22f,1),"MEGA TURRICAN");
+    ImGui::SameLine();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"MAKER");
+    ImGui::SameLine();ImGui::TextDisabled("/ %s",g_level_name);
+    ImGui::EndChild();
+}
+} // namespace
+
 extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cram)
 {
     if(!vram||!cram)return;
