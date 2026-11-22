@@ -156,9 +156,9 @@ static void native_options_set_row_palette(int row,int col,int count,int palette
 static void native_options_tools_draw(void) {
     if(reborn_game_options_visible()) {
         if(native_options_tool_active)
-            native_options_set_row_palette(7,11,10,1);
+            native_options_set_row_palette(8,3,10,1);
         else if(native_options_tool_restore_gamelevel) {
-            native_options_set_row_palette(7,11,10,2);
+            native_options_set_row_palette(8,3,10,2);
             native_options_tool_restore_gamelevel=0;
         }
         native_options_write_text(4,1,"LEVEL BUILDER",
@@ -642,10 +642,10 @@ confirm:
                 }
             } else if((e.type==SDL_KEYDOWN && !e.key.repeat &&
                        e.key.keysym.sym==SDLK_UP &&
-                       native_options_item_selected(7,11)) ||
+                       native_options_item_selected(8,3)) ||
                       (e.type==SDL_CONTROLLERBUTTONDOWN &&
                        e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP &&
-                       native_options_item_selected(7,11))) {
+                       native_options_item_selected(8,3))) {
                 /* UP from the first original option focuses the added tools row. */
                 native_options_tool_active=1;
                 native_options_tool_restore_gamelevel=1;
