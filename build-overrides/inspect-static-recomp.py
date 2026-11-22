@@ -335,7 +335,7 @@ if gen.exists():
  # A helper body is not enough: its callers reveal which asset/job class feeds it.
  emit("[VDP_TRANSFER_HELPER_CALLERS]")
  helper_names=set(candidates)
- call_re=re.compile(r"\\b(f_[0-9A-Fa-f]+)\\s*\\(c\\)")
+ call_re=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)")
  caller=""
  for n,line in enumerate(lines,1):
   fnm=definition.match(line)
