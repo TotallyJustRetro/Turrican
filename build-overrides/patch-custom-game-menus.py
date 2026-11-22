@@ -607,7 +607,7 @@ confirm:
                     switch(e.key.keysym.sym) {
                     case SDLK_LEFT: native_options_tool_index=(native_options_tool_index+2)%3; break;
                     case SDLK_RIGHT: native_options_tool_index=(native_options_tool_index+1)%3; break;
-                    case SDLK_DOWN: case SDLK_ESCAPE: native_options_tool_active=0; break;
+                    case SDLK_DOWN: case SDLK_ESCAPE: native_options_tool_active=0; native_menu_resume_guard=1; break;
                     case SDLK_RETURN: case SDLK_x: native_options_open_tool(); break;
                     }
                     continue;
@@ -620,6 +620,7 @@ confirm:
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN ||
                        e.cbutton.button==SDL_CONTROLLER_BUTTON_B)
                         native_options_tool_active=0;
+                        native_menu_resume_guard=1;
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A)
                         native_options_open_tool();
                     continue;
