@@ -330,6 +330,22 @@ if gen.exists():
   for line in block_lines[:180]: emit("  "+line[:280])
   if len(block_lines)>180: emit(f"  ... clipped {len(block_lines)-180} further lines ...")
 
+
+ # Locate direct call sites and immediate setup for each transfer helper.
+ # A helper body is not enough: its callers reveal which asset/job class feeds it.
+ emit("[VDP_TRANSFER_HELPER_CALLERS]")
+ helper_names=set(candidates)
+ call_re=re.compile(r"\\b(f_[0-9A-Fa-f]+)\\s*\\(c\\)")
+ caller=""
+ for n,line in enumerate(lines,1):
+  fnm=definition.match(line)
+  if fnm: caller=fnm.group(1)
+  called=sorted(set(m.group(1) for m in call_re.finditer(line)) & helper_names)
+  for target in called:
+   emit(f"VDP_HELPER_CALL caller={caller or '(global)'} target={target} line={n} code={line[:280]}")
+   for q in range(max(1,n-5),min(len(lines),n+5)+1):
+    emit(f"  {q}: {lines[q-1][:240]}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
