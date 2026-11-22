@@ -32,12 +32,14 @@ def main() -> None:
 
     s = sdl_path.read_text(encoding="utf-8-sig")
 
-    include = '#include "mt_level_builder_imgui.h"
-
-extern void md_maker_capture_for_editor(void);'
+    include = '#include "mt_level_builder_imgui.h"'
     if include not in s:
         anchor = "#include <SDL.h>\n"
         s = once(s, anchor, anchor + include + "\n", "ImGui framebuffer bridge include")
+    if "extern void md_maker_capture_for_editor(void);" not in s:
+        s = once(s, include + "\n",
+            include + "\nextern void md_maker_capture_for_editor(void);\n",
+            "Maker runtime snapshot API declaration")
 
     # ImGui receives the same SDL input events as the native pause screen.
     route_anchor = (
