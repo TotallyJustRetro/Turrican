@@ -380,7 +380,8 @@ if gen.exists():
   "f_3BD8","f_3D12","f_3C7A","f_5D8A","f_5DB2","f_D0010",
   "f_3E5C","f_406E","f_439E","f_4466","f_46B2",
   "f_4AC0","f_6212","f_6334","f_34E2","f_53D6","f_543C",
-  "f_582","f_99A","f_9B2","f_4FE","f_546","f_6C08","f_D638"
+  "f_582","f_99A","f_9B2","f_4FE","f_546","f_6C08","f_D638",
+  "f_897A","f_8A22","f_4AFC","f_894","f_652","f_D000C","f_538"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -1302,6 +1303,42 @@ if gen.exists():
    if not re.search(r"0xFFFF(?:D2DA|BCA4|BCA6)",neighbors,re.I):continue
    emit(f"VDP_QUEUE_PORT_WRITE function={current} line={n} code={line.strip()[:300]}")
    for q in range(lo,hi):emit(f"  {q+1}: {gen_lines[q][:250]}")
+
+ # Follow the asynchronous resource transfer path that installs f_8A22 as
+ # the callback at $FFBC10. Extract the initializer, callback, and helper
+ # bodies together with the caller context so its source format can be decoded.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  source="\n".join(gen_lines)
+  emit("[ASYNC_ROM_RESOURCE_TRANSFER_CHAIN]")
+  names={"f_897A","f_8A22","f_4AFC","f_894","f_652","f_D000C","f_538"}
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  current="(global)"
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if any(f"{name}(c)" in line for name in names):
+    emit(f"ASYNC_TRANSFER_CALLER function={current} line={n} code={line.strip()[:300]}")
+    lo=max(0,n-8);hi=min(len(gen_lines),n+10)
+    for q in range(lo,hi):emit(f"  {q+1}: {gen_lines[q][:280]}")
+  for name in sorted(names):
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
+   hit=pat.search(source)
+   if not hit:
+    emit(f"ASYNC_TRANSFER_BODY_MISSING {name}")
+    continue
+   brace=source.find("{",hit.start());depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{":depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:end=pos+1;break
+   if end<=brace:continue
+   block=source[hit.start():end].splitlines()
+   emit(f"ASYNC_TRANSFER_BODY {name} lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line2 in block[:240]:emit("  "+line2[:300])
+   if len(block)>240:emit(f"  ... clipped {len(block)-240} lines ...")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
