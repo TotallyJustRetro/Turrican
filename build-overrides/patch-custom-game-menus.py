@@ -1590,7 +1590,8 @@ confirm:
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
-           "if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_title_menu_update();\n"
+           "if(!native_custom_cfg_loaded)native_custom_load_config();\n"
+           "    if(!native_title_restore_after_input)native_title_menu_update();\n"
            "    md_live_mask = (native_menu_state==0 && (native_title_input_passthrough || !native_menu_resume_guard) && (native_title_input_passthrough || !native_title_input_block)) ? (readpad() | native_title_forced_mask) : 0;\n"
            "    native_title_input_passthrough=0;\n"
            "    native_title_forced_mask=0;\n"
@@ -1749,8 +1750,19 @@ confirm:
     if hook_end<0:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
-    restore_title=r"""
-    if(native_title_restore_after_input) {
+    restore_arm=r"""
+    if(native_title_restore_after_input)native_title_restore_ready=1;
+"""
+    if "if(native_title_restore_after_input)native_title_restore_ready=1;" not in hook:
+        hook_anchor="void md_frame_hook(void) {\n    static uint32_t next=0; SDL_Event e;"
+        hook=once(hook,hook_anchor,hook_anchor+"\n"+restore_arm,
+                  "arm title restoration after the one-frame original input")
+        s=s[:hook_start]+hook+s[hook_end:]
+        hook_end=hook_start+len(hook)
+
+    restore_after_pump=r"""
+    if(native_title_restore_ready) {
+        native_title_restore_ready=0;
         native_title_restore_after_input=0;
         int restored=0;
         if(native_title_checkpoint_saved && md_save_slot_exists(5)) {
@@ -1762,10 +1774,12 @@ confirm:
             native_title_page_mode=0;
             native_title_compose_enabled=1;
             native_title_input_block=0;
+            native_title_menu_update();
             if(native_title_pending_open) {
                 native_title_pending_open=0;
                 native_title_menu_selection=native_title_pending_selection;
                 native_title_open_selected();
+                if(native_menu_state>0)native_menu_pause_loop();
             } else if(native_title_reopen_options_after_input) {
                 native_title_menu_selection=2;
                 native_title_open_selected();
@@ -1778,20 +1792,26 @@ confirm:
         }
     }
 """
-    if "if(native_title_restore_after_input)" not in hook:
-        hook_anchor="void md_frame_hook(void) {\n    static uint32_t next=0; SDL_Event e;"
-        hook=once(hook,hook_anchor,hook_anchor+"\n"+restore_title,
-                  "restore title after original one-frame menu input")
+    if "if(native_title_restore_ready)" not in hook:
+        hook=once(hook,"    audio_pump();","    audio_pump();\n"+restore_after_pump,
+                  "restore the title only after original YM/PSG samples are pumped")
         s=s[:hook_start]+hook+s[hook_end:]
         hook_end=hook_start+len(hook)
-    
+
     if "native_title_compose_frame();" not in hook:
-        shade=re.search(r"shade\s*\(\s*w\s*,\s*h\s*\)\s*;",hook)
+        shade=re.search(r"shade\\s*\\(\\s*w\\s*,\\s*h\\s*\\)\\s*;",hook)
         if not shade:
             raise RuntimeError("Could not locate shade(w,h) in md_frame_hook.")
         at=shade.start()
         hook=hook[:at]+"native_title_compose_frame(); native_modern_apply_frame_features(); "+hook[at:]
         s=s[:hook_start]+hook+s[hook_end:]
+
+    # Keep the custom title menu latched while the hidden cartridge menu runs
+    # its one frame to produce the authentic SFX. Rebuild it after the checkpoint
+    # restore, which happens only after audio_pump() above.
+    s=once(s,"    reborn_title_update();",
+           "    if(!native_title_restore_after_input)reborn_title_update();",
+           "hold Reborn title overlay during the SFX pass-through frame")
 
     # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
