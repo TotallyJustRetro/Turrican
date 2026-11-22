@@ -819,6 +819,8 @@ extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cr
     std::memcpy(g_live_regs,regs,sizeof(g_live_regs));
 
     g_live_tile_count=0;
+    g_rom_tile_start_index=-1;
+    g_rom_tile_count=0;
     for(int tile=1;tile<2048&&g_live_tile_count<256;tile++){
         const uint8_t *pattern=&g_live_vram[tile*32];
         bool visible=false;
