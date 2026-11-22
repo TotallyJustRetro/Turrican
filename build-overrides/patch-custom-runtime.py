@@ -477,6 +477,51 @@ int {prefix}_state_load(const void *src,size_t bytes) {{
 def patch_harness(project: Path) -> None:
     path=project/"runtime"/"harness.c"
     s=path.read_text(encoding="utf-8-sig")
+    s=add_system_include(s,"string.h")
+    sfx_bridge=r"""
+/* Queue a real Mega Turrican sound-table effect from the native UI.
+ * f_D0008 is the ROM's own sound-effect API (D0 = sound-table index).
+ * Run it as a nested recompiled call with a sentinel return frame, then
+ * restore all CPU/timing state. The sound-driver queue in work RAM is
+ * intentionally retained for the normal per-frame sound service. */
+void md_play_reborn_sfx(unsigned int cue) {
+    if(!CPU || cue>0xFFFFu || rt_sp<0 || rt_sp>=65535) return;
+    if(CPU->a[7]<4u || CPU->a[7]>0x00FFFFFFu) return;
+
+    M68K saved_cpu=*CPU;
+    const int saved_rt_sp=rt_sp;
+    const int saved_budget=rt_budget;
+    const int saved_irq_pending=rt_irq_pending;
+    const unsigned int saved_rt_ti=rt_ti;
+    const unsigned int saved_irq_count=rt_irq_count;
+    uint32_t saved_trace[64];
+    memcpy(saved_trace,rt_trace,sizeof saved_trace);
+
+    const uint32_t sentinel=0x00FFFFFEu;
+    CPU->d[0]=cue;
+    CPU->a[7]-=4u;
+    WR32(CPU->a[7],sentinel);
+    rt_shadow[rt_sp++]=sentinel;
+
+    /* This routine is short. Prevent its RT_POLLs from re-entering the frame
+       hook or servicing an interrupt in the middle of the native menu event. */
+    rt_budget=0x3FFFFFFF;
+    rt_irq_pending=0;
+    rt_call_addr(CPU,0x00D0008u);
+
+    *CPU=saved_cpu;
+    rt_sp=saved_rt_sp;
+    rt_budget=saved_budget;
+    rt_irq_pending=saved_irq_pending;
+    rt_ti=saved_rt_ti;
+    rt_irq_count=saved_irq_count;
+    memcpy(rt_trace,saved_trace,sizeof saved_trace);
+}
+"""
+    bridge_anchor="#endif\nvoid rt_exception(M68K*c,int vec,uint32_t ret){"
+    if "void md_play_reborn_sfx(unsigned int cue)" not in s:
+        s=once(s,bridge_anchor,"#endif\n"+sfx_bridge+"\nvoid rt_exception(M68K*c,int vec,uint32_t ret){",
+               "safe native UI sound-effect bridge")
     s=add_system_include(s,"setjmp.h")
     if "static jmp_buf md_title_reset_env;" not in s:
         includes=list(re.finditer(r"(?m)^#include [^\n]+\n",s))
