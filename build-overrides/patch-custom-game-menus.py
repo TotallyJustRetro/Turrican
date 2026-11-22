@@ -1116,7 +1116,7 @@ confirm:
     s=s.replace("0xFF,0xAE,0x1F","0x00,0x48,0xFC")
     s=once(s,
         '    else if(native_menu_state==7)snprintf(hint,sizeof hint,"LEFT/RIGHT REBIND  ESC BACK");',
-        '    else if(native_menu_state==7)snprintf(hint,sizeof hint,"LEFT/RIGHT REBIND  ESC BACK");\\n'
+        '    else if(native_menu_state==7)snprintf(hint,sizeof hint,"LEFT/RIGHT REBIND  ESC BACK");\n'
         '    else if(native_menu_state==13)snprintf(hint,sizeof hint,"ARROWS SELECT  ENTER OK  EXIT");',
         "native Game Options EXIT hint")
     path.write_text(s,encoding="utf-8",newline="\n")
