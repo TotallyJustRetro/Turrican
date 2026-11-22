@@ -350,10 +350,12 @@ static void native_custom_save_config(void) {
     if(!f)return;
     fprintf(f,"game_level=%d\ncheat_energy=%d\ncheat_lives=%d\ncheat_timer=%d\n"
               "modern_continues=%d\nmodern_map=%d\nmodern_no_timer_hud=%d\n"
-              "modern_persistent_weapon=%d\nmodern_checkpoints=%d\nmodern_iframes=%d\n",
+              "modern_persistent_weapon=%d\nmodern_checkpoints=%d\nmodern_iframes=%d\n"
+              "pause_rapid_fire=%d\npause_control_config=%d\n",
         native_game_level_modern,native_cheat_energy,native_cheat_lives,native_cheat_timer,
         native_modern_continues,native_modern_map,native_modern_no_timer_hud,
-        native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes);
+        native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes,
+        native_pause_rapid_fire,native_pause_control_config);
     if(fclose(f)!=0){remove("custom-game-options.ini.tmp");return;}
     remove("custom-game-options.ini");
     rename("custom-game-options.ini.tmp","custom-game-options.ini");
@@ -376,6 +378,8 @@ static void native_custom_load_config(void) {
             else if(!strcmp(line,"modern_persistent_weapon"))native_modern_persistent_weapon=!!v;
             else if(!strcmp(line,"modern_checkpoints"))native_modern_checkpoints=!!v;
             else if(!strcmp(line,"modern_iframes"))native_modern_iframes=!!v;
+            else if(!strcmp(line,"pause_rapid_fire"))native_pause_rapid_fire=!!v;
+            else if(!strcmp(line,"pause_control_config"))native_pause_control_config=(v%3+3)%3;
         }
         fclose(f);
     }
@@ -837,14 +841,8 @@ static uint32_t native_map_plane_b_pixel(int x,int y) {
     return native_title_cram_rgb((int)palette,index);
 }
 static void native_modern_apply_frame_features(void) {
-    if(!native_game_level_modern || !native_modern_no_timer_hud ||
-       !native_title_gameplay_hud_visible())return;
-    int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
-    int x0=W*41/100,x1=W*61/100,y0=H*2/100,y1=H*27/100;
-    for(int y=y0;y<y1;y++) {
-        uint32_t *row=&vdp.fb[y*320];
-        for(int x=x0;x<x1;x++)row[x]=native_map_plane_b_pixel(x,y);
-    }
+    /* Disabled until timer suppression is moved into the real VDP plane/sprite
+       composition path. Never sample arbitrary VRAM tiles into the framebuffer. */
 }
 static void render_native_area_map(void) {
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
