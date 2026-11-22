@@ -48,8 +48,6 @@ static int g_live_tile_ids[256] = {};
 static int g_live_tile_count = 0;
 static int g_selected_palette = 0;
 static int g_selected_asset_slot = 0;
-static bool g_show_grid = true;
-static bool g_collision_enabled = true;
 static bool g_left_was_down = false;
 static int g_undo_count = 0;
 static int g_redo_count = 0;
@@ -565,6 +563,39 @@ static void draw_top_bar()
 }
 } // namespace
 
+static void push_level_undo()
+{
+    if(g_undo_count>=12){
+        std::memmove(g_undo_stack,g_undo_stack+1,sizeof(g_undo_stack[0])*11);
+        g_undo_count=11;
+    }
+    std::memcpy(g_undo_stack[g_undo_count++],g_level_tiles,sizeof(g_level_tiles));
+    g_redo_count=0;
+}
+static void undo_level_edit()
+{
+    if(g_undo_count<=0)return;
+    if(g_redo_count>=12){
+        std::memmove(g_redo_stack,g_redo_stack+1,sizeof(g_redo_stack[0])*11);
+        g_redo_count=11;
+    }
+    std::memcpy(g_redo_stack[g_redo_count++],g_level_tiles,sizeof(g_level_tiles));
+    std::memcpy(g_level_tiles,g_undo_stack[--g_undo_count],sizeof(g_level_tiles));
+    g_document_dirty=true;
+    std::snprintf(g_status,sizeof(g_status),"UNDONE");
+}
+static void redo_level_edit()
+{
+    if(g_redo_count<=0)return;
+    if(g_undo_count>=12){
+        std::memmove(g_undo_stack,g_undo_stack+1,sizeof(g_undo_stack[0])*11);
+        g_undo_count=11;
+    }
+    std::memcpy(g_undo_stack[g_undo_count++],g_level_tiles,sizeof(g_level_tiles));
+    std::memcpy(g_level_tiles,g_redo_stack[--g_redo_count],sizeof(g_level_tiles));
+    g_document_dirty=true;
+    std::snprintf(g_status,sizeof(g_status),"REDONE");
+}
 extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cram)
 {
     if(!vram||!cram)return;
@@ -598,7 +629,7 @@ extern "C" int mtlb_map_get(int x,int y)
 extern "C" void mtlb_map_set(int x,int y,int tile)
 {
     if(x<0||y<0||x>=kEditorMapCols||y>=kEditorMapRows)return;
-    const std::uint16_t value=(std::uint16_t)std::max(0,std::min(2047,tile));
+    const std::uint16_t value=(std::uint16_t)std::max(0,std::min(65535,tile));
     const int index=y*kEditorMapCols+x;
     if(g_level_tiles[index]!=value){g_level_tiles[index]=value;g_document_dirty=true;}
 }
