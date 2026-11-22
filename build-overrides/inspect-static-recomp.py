@@ -156,7 +156,7 @@ if gen.exists():
  # or by a routine that writes gameplay/title sound commands.
  function_starts=[]
  for i,line in enumerate(lines):
-  if re.match(r"^\\s*(?:static\\s+)?(?:void|int)\\s+f_[A-Za-z0-9_]+\\s*\\(",line):
+  if re.match(r"^\s*(?:static\s+)?(?:void|int)\s+f_[A-Za-z0-9_]+\s*\(",line):
    function_starts.append(i)
  function_hits={}
  for i in hits:
@@ -165,7 +165,7 @@ if gen.exists():
    if start<=i:
     owner=start;break
   if owner is not None:
-   name=re.search(r"\\b(f_[A-Za-z0-9_]+)\\s*\\(",lines[owner]).group(1)
+   name=re.search(r"\b(f_[A-Za-z0-9_]+)\s*\(",lines[owner]).group(1)
    function_hits.setdefault((owner,name),[]).append(i)
  emit("[GENERATED_Z80_SOUND_FUNCTIONS]")
  for (owner,name),indices in function_hits.items():
