@@ -621,6 +621,50 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
             raise RuntimeError("Could not find the vsync line for controller config injection.")
         main = main.replace(config_anchor, config_anchor + "\n" + "\n".join(lines), 1)
 
+    # The game writes native Video/Audio options to config.ini on exit.
+    # The launcher used to rebuild config.ini from stale UI defaults on every
+    # launch, immediately undoing those changes. Merge the existing file into
+    # the generated cfg array before it is written: saved values win, and any
+    # native/forward-compatible keys missing from the current launcher array
+    # are retained at the end of the file.
+    preserve_marker = "// preserve-native-config-before-launch"
+    if preserve_marker not in main:
+        write_anchor = "fs.writeFileSync(configPath,"
+        if main.count(write_anchor) != 1:
+            raise RuntimeError(f"Expected one config.ini write site, found {main.count(write_anchor)}.")
+        preserve_code = r'''
+  // preserve-native-config-before-launch
+  if (Array.isArray(cfg)) {
+    const savedNativeConfig = new Map();
+    try {
+      const savedText = fs.readFileSync(configPath, 'utf8');
+      for (const line of savedText.split(/\\r?\\n/)) {
+        const at = line.indexOf('=');
+        if (at > 0) savedNativeConfig.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+      }
+    } catch (_) {
+      // First launch: there is no existing config.ini yet.
+    }
+    if (savedNativeConfig.size) {
+      const retainedKeys = new Set();
+      const mergedConfig = cfg.map(entry => {
+        const line = String(entry);
+        const at = line.indexOf('=');
+        if (at <= 0) return entry;
+        const key = line.slice(0, at).trim();
+        if (!savedNativeConfig.has(key)) return entry;
+        retainedKeys.add(key);
+        return key + '=' + savedNativeConfig.get(key);
+      });
+      for (const [key, value] of savedNativeConfig) {
+        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);
+      }
+      cfg.splice(0, cfg.length, ...mergedConfig);
+    }
+  }
+'''
+        main = main.replace(write_anchor, preserve_code + "\\n  " + write_anchor, 1)
+
     exit_anchor = "child.once('exit', (code, signal) => {"
     if "syncControllerSettingsFromConfig(configPath)" not in main:
         main = replace_once(
