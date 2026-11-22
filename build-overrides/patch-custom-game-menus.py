@@ -260,7 +260,6 @@ static void native_title_open_selected(void) {
         native_title_compose_enabled=0;
         native_title_input_block=1;
         native_title_game_options_focus=native_game_level_modern?1:0;
-        native_title_reopen_options_after_input=0;
         /* Preserve the real title frame before an attract demo can advance. */
         memcpy(native_title_options_backdrop,vdp.fb,sizeof native_title_options_backdrop);
         native_title_options_backdrop_valid=1;
