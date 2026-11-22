@@ -437,7 +437,7 @@ static void native_toggle_option(int state,int item) {
 static void render_native_toggle_page(int state) {
     const char *title=state==9?"CHEATS":"MODERN OPTIONS";
     const char *cheat_labels[4]={"INFINITE ENERGY","INFINITE LIVES","NO TIMER","BACK"};
-    const char *modern_labels[4]={"MAP KEY M","HIDE TIMER HUD","KEEP WEAPON LEVELS","BACK"};
+    const char *modern_labels[4]={"MAP KEY M","HIDE TIMER HUD","ONE-TIER DROP","BACK"};
     const char **labels=state==9?cheat_labels:modern_labels;
     int pw=234,ph=144,px,py;
     native_menu_panel(pw,ph,&px,&py);
@@ -631,7 +631,7 @@ static void proc_native_level_builder(SDL_Event *e) {
     }
 }
 static const char *native_modern_option_labels[6]={
-    "MAP (M KEY)","HIDE TIMER HUD","PERSISTENT WEAPON","CHECKPOINT AUTO-SAVE",
+    "MAP (M KEY)","HIDE TIMER HUD","ONE-TIER WEAPON LOSS","CHECKPOINT AUTO-SAVE",
     "HIT I-FRAMES","UNLIMITED CONTINUES"
 };
 static int native_modern_option_value(int item) {
