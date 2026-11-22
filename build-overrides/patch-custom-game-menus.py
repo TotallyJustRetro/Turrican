@@ -576,8 +576,8 @@ confirm:
         "    case 12: render_native_toggle_page(12); break;",
         "native Extras page render dispatch")
 
-    s=once(s,"md_live_mask = (overlay_state==0) ? readpad() : 0;",
-           "md_live_mask = (overlay_state==0 && native_menu_state==0 && !native_options_tool_active) ? readpad() : 0;",
+    s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\\n    native_menu_resume_guard=0;",
+           "md_live_mask = (native_menu_state==0 && !native_menu_resume_guard && !native_options_tool_active) ? readpad() : 0;\\n    native_menu_resume_guard=0;",
            "pause gamepad polling while native menus or the tools row have focus")
 
     # Route the new page states.
