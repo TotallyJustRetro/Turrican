@@ -218,3 +218,17 @@ The next reports extend this work by capturing the installer routine bodies and 
 
 - Build #299 (safe pause-menu and capture cleanup): successful Windows build.
 - Build #295: do not use for further testing; it contains the removed live snapshot experiment.
+
+
+## Build #342: a ROM-selected object-family setup dispatcher
+
+The generated code exposes a second selection mechanism separate from the 62-byte active-object record walker:
+
+- `f_3BD8` reads a selector byte from `$FFBD0E` and dispatches through an address calculation beginning at ROM `0x3C6E` (the stubs are `f_3C6E`, `f_3C72`, and `f_3C76`). The selector is multiplied by four before the indirect call, so it chooses among adjacent routine-pointer entries.
+- Those three stubs call three distinct setup routines: `f_3DB4`, `f_3FA4`, and `f_419A`. They all use the current stage/object index at `$FFBD0F`, common per-stage fields such as `$FFBD22`, and the shared setup helper `f_3C7A`.
+- `f_3DB4` selects words from ROM tables near `0x3E44`/`0x3E46` and `0x3E50`, selects a 32-bit render-data pointer from the table at `0x3F98`, and sets the active object update handler at +34 to `0x3E5C`. It also initializes the object's +24 position, +28 state and additional per-object flags/timers.
+- `f_3FA4` selects a 32-bit source pointer from the table beginning at `0x4040`, uses related tables at `0x4152` and `0x4182`, and installs update handler `0x406E`. It configures the object's position/state and uses table-driven offsets. The code has a small loop (one or two iterations depending on a stage flag), so it can prepare more than one record from a selected entry.
+- `f_419A` reads a table of pointer pairs beginning at `0x42DE`, then calls the common record-creation helper multiple times. Two created records receive handler `0x4466` and successive render-data pointers from that table; a further record receives handler `0x439E` and a separate state/position setup. This is a genuine grouped-object recipe rather than one isolated sprite.
+- `f_3BD8` has another branch which calls `f_4626`. That routine allocates/configures an object, reads render data from ROM table `0x48B4`, and assigns handler `0x46B2`. It is a separate additional family candidate.
+
+These are not yet named enemies or bosses. They are verified engine setup families with ROM-backed render-data tables and real update routines. The immediate next task is to inspect `f_5382` and `f_3C7A` (the shared setup/record helpers), then map the table entries at `0x3F98`, `0x4040`, `0x4152`, `0x4182`, `0x42DE`, and `0x48B4` to their data formats. No live gameplay snapshot is needed for that work.
