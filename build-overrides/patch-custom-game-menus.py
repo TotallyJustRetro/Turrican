@@ -37,6 +37,7 @@ static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static void native_menu_pause_loop(void);
+static int native_title_gameplay_hud_visible(void);
 static int native_title_menu_selection=0;
 static int native_title_page_mode=0;
 static int native_title_game_options_focus=0;
