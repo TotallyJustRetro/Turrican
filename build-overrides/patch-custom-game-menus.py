@@ -47,6 +47,7 @@ static int native_title_options_backdrop_valid=0;
 
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
+static void native_menu_pause_loop(void);
 
 extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
@@ -272,6 +273,7 @@ static void native_title_open_selected(void) {
         memcpy(native_title_options_backdrop,vdp.fb,sizeof native_title_options_backdrop);
         native_title_options_backdrop_valid=1;
         native_menu_state=13;
+        native_menu_pause_loop();
     } else if(native_title_menu_selection==3) {
         native_menu_state=11;
     } else if(native_title_menu_selection==4) {
