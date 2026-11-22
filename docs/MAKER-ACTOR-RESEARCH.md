@@ -262,3 +262,30 @@ The generated code exposes a second selection mechanism separate from the 62-byt
 - `f_3BD8` has another branch which calls `f_4626`. That routine allocates/configures an object, reads render data from ROM table `0x48B4`, and assigns handler `0x46B2`. It is a separate additional family candidate.
 
 These are not yet named enemies or bosses. They are verified engine setup families with ROM-backed render-data tables and real update routines. The immediate next task is to inspect `f_5382` and `f_3C7A` (the shared setup/record helpers), then map the table entries at `0x3F98`, `0x4040`, `0x4152`, `0x4182`, `0x42DE`, and `0x48B4` to their data formats. No live gameplay snapshot is needed for that work.
+
+
+## Build #345: what the second-list object handlers actually do
+
+The handlers assigned by the ROM-selected families reveal that the `$FFBC30` list is a renderer-backed object class, not just another invisible bookkeeping list.
+
+- `0x3E5C` updates a record's position relative to the camera/world scroll (`$FFDFD8/$FFDFDA`), then applies per-record motion values at +44/+46. It uses +48 and +50 as state/timer fields, can adjust direction/position, and releases the record through `f_5400` when it crosses the visible bounds. It also dispatches to a per-index routine table at `0x3EFC + 2 * index`, where the index comes from the stage/object selection state. This is a moving, state-driven object family; its visual identity is not yet known.
+- `0x406E` reads the object's camera-relative position and state/flags, updates its coordinates, and emits a renderer record into the shared output stream at `$FFBC54/$FFBC58`. It copies the object's +30 data pointer into that stream. It also tests screen bounds and releases the record when it leaves the visible area. This is direct evidence that the second-list object handler feeds the same renderer-facing output queue.
+- `0x4466` performs a similar camera-relative update and emits per-object data from +30 to the shared output queue. It dispatches through a small state table at `0x449A + 2 * state` and releases the record when it no longer needs to be active.
+- `0x439E` updates position/flags/timers, and in one branch allocates a record through `f_5300` (the first active list), copies the parent's position to it, then releases the current second-list record. This is a confirmed cross-list creation path: a secondary-list object can generate a primary-list object.
+- `0x46B2` is another stateful position/motion handler, using per-object flags and counters. Its semantic actor identity is still unresolved.
+
+This proves the two active lists are not unrelated: the second list has its own moving/render-backed families, and at least one of those can spawn a record into the first list. We still must not name these routines as specific enemies or bosses without matching their ROM table entries to actual artwork/behavior.
+
+## ROM-backed assets: no gameplay capture required
+
+The native harness confirms that the generated game code does not, by itself, contain a semantic sprite catalogue. `md_load_rom(path)` opens the selected ROM file, reads up to `0x400000` bytes into the harness's `rom` buffer, validates the Mega Drive header at offset `0x100`, and keeps the bytes available to the emulated memory bus. The game then reads its graphics and tables from those ROM addresses; VDP DMA reads through that same bus.
+
+That gives the Maker the correct extraction architecture:
+
+1. Use the ROM bytes already loaded by the game at startup.
+2. Parse the known setup tables (currently `0x3F98`, `0x4040`, `0x4152`, `0x4182`, `0x42DE`, and `0x48B4`) into typed object-family descriptors.
+3. Resolve each family to its update/state handlers and the per-object render data at +30 / +38.
+4. Decode those data tables into editor thumbnails and animation previews, preserving their link back to the native spawn recipe.
+5. Only then expose entries with user-facing names after their rendered appearance is verified.
+
+This is static ROM extraction from the ROM the launcher already loads. It does not require pausing a running stage, dumping RAM, or asking the user to reproduce an enemy/boss encounter. The ROM tables' exact per-entry encodings are still being decoded.
