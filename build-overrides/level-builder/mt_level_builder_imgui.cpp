@@ -333,22 +333,18 @@ static void draw_advanced_layers()
 }
 static void draw_advanced_tool_palette()
 {
-    panel_heading(g_mode==MODE_EVENTS?"COMMS / DIALOGUE":"TOOL DECK","01");
+    panel_heading(g_mode==MODE_EVENTS?"SCRIPT TOOLBOX":"TOOL DECK","01");
     if(g_mode==MODE_EVENTS) {
-        ImDrawList *d=ImGui::GetWindowDrawList();ImVec2 p=ImGui::GetCursorScreenPos();
-        ImVec2 a(p.x+2,p.y+3),b(a.x+68,a.y+96);
-        d->AddRectFilled(a,b,IM_COL32(8,14,22,255),4);d->AddRect(a,b,IM_COL32(111,139,157,255),4.0f,2.0f);
-        d->AddEllipseFilled(ImVec2(a.x+34,a.y+43),ImVec2(25,31),IM_COL32(74,96,112,255));
-        d->AddRectFilled(ImVec2(a.x+14,a.y+17),ImVec2(a.x+54,a.y+47),IM_COL32(151,166,173,255),9);
-        d->AddRectFilled(ImVec2(a.x+22,a.y+29),ImVec2(a.x+47,a.y+37),IM_COL32(23,67,88,255),2);
-        d->AddText(ImVec2(a.x+9,a.y+76),IM_COL32(119,220,230,255),"CMD BREN");
-        ImGui::Dummy(ImVec2(1,105));
-        ImGui::TextColored(ImVec4(.95f,.68f,.28f,1),"SPEAKER");ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##speaker",g_speaker,sizeof(g_speaker));
-        ImGui::TextColored(ImVec4(.54f,.82f,.87f,1),"DIALOGUE TEXT");ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextMultiline("##dialogue_text",g_dialogue,sizeof(g_dialogue),ImVec2(-1,112));
-        ImGui::SliderFloat("BLIP PITCH",&g_dialogue_pitch,.5f,2,"%.2fx");
-        ImGui::Checkbox("AUTO ADVANCE",&g_dialogue_auto);ImGui::Checkbox("CAMERA PAN",&g_dialogue_camera_pan);
+        ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"EVENT BLOCKS");
+        ImGui::TextWrapped("Create a node in the event canvas, then select it to edit its parameters.");
+        ImGui::Separator();
+        ImGui::TextDisabled("WHEN / TRIGGER");
+        ImGui::BulletText("Player enters zone");
+        ImGui::BulletText("Enemy defeated");
+        ImGui::BulletText("Timer reaches value");
+        ImGui::Separator();
+        ImGui::TextDisabled("NPC / DIALOGUE");
+        ImGui::TextDisabled("Dialogue portraits appear only after a dialogue node is created.");
         return;
     }
     const char **items=kTileTools;int count=6;
@@ -356,70 +352,44 @@ static void draw_advanced_tool_palette()
     else if(g_mode==MODE_ASSETS){items=kAssetTools;count=5;}
     else if(g_mode==MODE_BOSS)items=kBossTools;
     for(int i=0;i<count;i++) {
-        bool active=(g_mode==MODE_TILES&&(int)g_tool==i)||(g_mode==MODE_ENTITY&&g_entity_type==i);
+        bool active=(g_mode==MODE_TILES&&(int)g_tool==i)||
+                    (g_mode==MODE_ENTITY&&g_entity_type==i);
         if(active)ImGui::PushStyleColor(ImGuiCol_Header,ImVec4(.38f,.21f,.10f,1));
-        const char *glyph=g_mode==MODE_TILES?(i==0?"[T]":i==1?"[/]":i==2?"[C]":i==3?"[G]":i==4?"[TR]":"[W]"):
-            g_mode==MODE_ENTITY?(i==0?"[SEL]":i==1?"[EN]":i==2?"[IT]":i==3?"[P1]":i==4?"[PATH]":"[DEL]"):
-            g_mode==MODE_BOSS?(i==0?"[CORE]":i==1?"[TUR]":i==2?"[SHD]":i==3?"[WP]":i==4?"[ATK]":"[PH]"):
+        const char *glyph=g_mode==MODE_TILES?
+            (i==0?"[T]":i==1?"[/]":i==2?"[C]":i==3?"[G]":i==4?"[TR]":"[W]"):
+            g_mode==MODE_ENTITY?
+            (i==0?"[SEL]":i==1?"[EN]":i==2?"[IT]":i==3?"[P1]":i==4?"[PATH]":"[DEL]"):
+            g_mode==MODE_BOSS?
+            (i==0?"[CORE]":i==1?"[TUR]":i==2?"[SHD]":i==3?"[WP]":i==4?"[ATK]":"[PH]"):
             (i==0?"[P]":i==1?"[E]":i==2?"[F]":i==3?"[I]":"[S]");
         char label[64];std::snprintf(label,sizeof(label),"%s  %s",glyph,items[i]);
         if(ImGui::Selectable(label,active,0,ImVec2(0,33))) {
             if(g_mode==MODE_TILES)g_tool=(EditorTool)i;
             else if(g_mode==MODE_ENTITY)g_entity_type=i;
             else if(g_mode==MODE_BOSS)g_selected_entity=i;
-            else g_tool=(EditorTool)(i%6);
         }
         if(active)ImGui::PopStyleColor();
     }
     ImGui::Separator();
-    if(g_mode==MODE_TILES){ImGui::TextDisabled("BRUSH TILE");ImGui::SetNextItemWidth(-1);ImGui::InputInt("##brush_tile",&g_brush_tile);g_brush_tile=std::max(0,std::min(2047,g_brush_tile));}
-    else if(g_mode==MODE_ENTITY){ImGui::TextDisabled("PLACEMENT");ImGui::Text("SNAP  8 PX");ImGui::Text("OBJECTS  %02d",g_entity_count);}
-    else if(g_mode==MODE_BOSS){ImGui::TextDisabled("ASSEMBLY");ImGui::Text("PARTS  04");ImGui::Text("PIVOT  GRID");}
-    else {ImGui::TextDisabled("ASSET TOOLS");ImGui::Text("CANVAS %d x %d",g_asset_size,g_asset_size);}
-}
-
-
-
-
-static void draw_stage_canvas()
-{
-    int cols=std::max(1,mtlb_map_cols()),rows=std::max(1,mtlb_map_rows());
-    g_selected_x=std::max(0,std::min(cols-1,g_selected_x));g_selected_y=std::max(0,std::min(rows-1,g_selected_y));
-    g_map_origin_x=std::max(0,std::min(cols-16,g_selected_x-8));g_map_origin_y=std::max(0,std::min(rows-16,g_selected_y-8));
-    ImGui::TextColored(ImVec4(.38f,.83f,.89f,1),"%s",g_level_name);
-    ImGui::SameLine();ImGui::TextDisabled(" / SECTOR 04 / VDP PLANE A / %d x %d",cols,rows);
-    ImGui::SameLine();ImGui::SetCursorPosX(ImGui::GetWindowWidth()-164);
-    if(ImGui::SmallButton(g_show_grid?"GRID ON":"GRID OFF"))g_show_grid=!g_show_grid;
-    ImGui::SameLine();if(ImGui::SmallButton("CENTER")){g_selected_x=cols/2;g_selected_y=rows/2;}
-    ImGui::BeginChild("##stage_canvas",ImVec2(0,0),true);
-    ImVec2 avail=ImGui::GetContentRegionAvail();float aspect=(float)g_stage_width/(float)std::max(1,g_stage_height);
-    float w=std::max(240.0f,avail.x-12),h=w/aspect;if(h>avail.y-12){h=std::max(140.0f,avail.y-12);w=h*aspect;}
-    ImVec2 origin=ImGui::GetCursorScreenPos();origin.x+=(avail.x-w)*.5f;
-    ImVec2 finish(origin.x+w,origin.y+h);ImDrawList *d=ImGui::GetWindowDrawList();
-    d->AddRectFilled(ImVec2(origin.x-5,origin.y-5),ImVec2(finish.x+5,finish.y+5),IM_COL32(4,7,12,255),3);
-    d->AddRectFilled(origin,finish,IM_COL32(12,18,27,255));
-    d->AddRect(origin,finish,IM_COL32(123,151,169,255),1.0f,2.0f);
-    if(g_layers[2]&&g_show_grid){for(int i=0;i<=16;i++){float x=origin.x+i*w/16;float y=origin.y+i*h/16;d->AddLine(ImVec2(x,origin.y),ImVec2(x,finish.y),IM_COL32(112,156,169,95));d->AddLine(ImVec2(origin.x,y),ImVec2(finish.x,y),IM_COL32(112,156,169,95));}}
-    if(g_layers[4])for(int i=0;i<8;i++){float x=origin.x+i*w/8;d->AddLine(ImVec2(x,origin.y),ImVec2(x-18,finish.y),IM_COL32(80,203,212,65));}
-    ImGui::SetCursorScreenPos(origin);
-    ImGui::InvisibleButton("##stage_surface",ImVec2(w,h),ImGuiButtonFlags_MouseButtonLeft|ImGuiButtonFlags_MouseButtonRight);
-    if(ImGui::IsItemHovered()){
-        ImVec2 m=ImGui::GetIO().MousePos;int cx=std::max(0,std::min(15,(int)((m.x-origin.x)/(w/16)))),cy=std::max(0,std::min(15,(int)((m.y-origin.y)/(h/16))));
-        int mx=g_map_origin_x+cx,my=g_map_origin_y+cy;
-        if(g_mode==MODE_TILES){g_selected_x=mx;g_selected_y=my;
-            if(ImGui::IsMouseClicked(ImGuiMouseButton_Right)){g_brush_tile=mtlb_map_get(mx,my);std::snprintf(g_status,sizeof(g_status),"SAMPLED TILE %03X / CELL %d,%d",g_brush_tile,mx,my);}
-            if(ImGui::IsMouseDown(ImGuiMouseButton_Left)&&g_tool==TOOL_TILE_BRUSH){mtlb_map_set(mx,my,g_brush_tile);std::snprintf(g_status,sizeof(g_status),"PAINTED TILE %03X / CELL %d,%d",g_brush_tile,mx,my);}
-        }else if(g_mode==MODE_ENTITY&&ImGui::IsMouseClicked(ImGuiMouseButton_Left)&&g_entity_count<64){EditorEntity &e=g_entities[g_entity_count++];e.x=(m.x-origin.x)/w;e.y=(m.y-origin.y)/h;e.type=g_entity_type;e.hp=100;g_selected_entity=g_entity_count-1;}
-        else if(g_mode==MODE_BOSS&&ImGui::IsMouseClicked(ImGuiMouseButton_Left)){g_selected_entity=(int)(m.x-origin.x)*5/(int)w;}
+    if(g_mode==MODE_TILES){
+        ImGui::TextDisabled("BRUSH TILE");ImGui::SetNextItemWidth(-1);
+        ImGui::InputInt("##brush_tile",&g_brush_tile,1,16);
+        g_brush_tile=std::max(1,std::min(2047,g_brush_tile));
+    }else if(g_mode==MODE_ENTITY){
+        ImGui::TextDisabled("PLACEMENT");ImGui::Text("SNAP 8 PX");
+        ImGui::Text("OBJECTS %02d",g_entity_count);
+    }else if(g_mode==MODE_BOSS){
+        ImGui::TextDisabled("ASSEMBLY");ImGui::Text("%s",g_boss_created?"CORE CREATED":"NO BOSS CREATED");
+        ImGui::Text("PIVOT GRID");
+    }else{
+        ImGui::TextDisabled("ASSET TOOLS");ImGui::Text("CANVAS %d x %d",g_asset_size,g_asset_size);
     }
-    for(int i=0;i<g_entity_count;i++){EditorEntity &e=g_entities[i];ImVec2 p(origin.x+e.x*w,origin.y+e.y*h);d->AddCircleFilled(p,7,IM_COL32(245,157,48,240));d->AddCircle(p,10,IM_COL32(255,224,147,255),16,2);}
-    if(g_mode==MODE_TILES||g_mode==MODE_ENTITY)draw_bren_marker(d,ImVec2(origin.x+w*.53f,origin.y+h*.76f),.95f);
-    if(g_mode==MODE_BOSS){ImVec2 bp(origin.x+w*.69f,origin.y+h*.67f);draw_boss_mech(d,bp,1.05f);draw_bren_marker(d,ImVec2(origin.x+w*.28f,origin.y+h*.76f),.85f);d->AddRect(ImVec2(bp.x-74,bp.y-77),ImVec2(bp.x+138,bp.y+61),IM_COL32(243,151,48,235),2.0f,2.0f);d->AddText(ImVec2(bp.x-66,bp.y-96),IM_COL32(255,206,112,255),"PHASE_01_CORE");d->AddText(ImVec2(bp.x+34,bp.y+20),IM_COL32(220,232,237,255),"ARM_L_CANNON");}
-    if(g_mode==MODE_TILES){int sx=g_selected_x-g_map_origin_x,sy=g_selected_y-g_map_origin_y;ImVec2 a(origin.x+sx*w/16,origin.y+sy*h/16),b(origin.x+(sx+1)*w/16,origin.y+(sy+1)*h/16);d->AddRect(a,b,IM_COL32(255,179,62,255),0.0f,3.0f);d->AddRect(ImVec2(a.x+3,a.y+3),ImVec2(b.x-3,b.y-3),IM_COL32(255,234,175,225));}
-    ImGui::SetCursorScreenPos(ImVec2(origin.x,finish.y+5));
-    ImGui::TextDisabled("CURSOR X:%03d Y:%03d / SNAP 8 PX / BRUSH %03X / %s",g_selected_x,g_selected_y,g_brush_tile,g_collision_enabled?"COLLISION ON":"COLLISION OFF");
-    ImGui::EndChild();
 }
+
+
+
+
+
 static void add_event_node(int type)
 {
     if(g_node_count>=12)return;EventNode &n=g_nodes[g_node_count];n.type=type;n.x=18+(g_node_count%3)*160;n.y=62+(g_node_count/3)*112;
@@ -434,6 +404,7 @@ static void draw_node_graph()
     ImGui::TextColored(ImVec4(.43f,.84f,.90f,1),"SCRIPT / EVENT FLOW");ImGui::SameLine();ImGui::TextDisabled("%02d NODES / %02d LINKS",g_node_count,g_link_count);
     ImGui::SameLine();if(ImGui::SmallButton("+ WHEN"))add_event_node(0);ImGui::SameLine();if(ImGui::SmallButton("+ DIALOGUE"))add_event_node(1);ImGui::SameLine();if(ImGui::SmallButton("+ ACTION"))add_event_node(2);ImGui::SameLine();if(ImGui::SmallButton("+ BOSS"))add_event_node(3);
     ImGui::BeginChild("##node_canvas",ImVec2(0,0),true);
+    if(g_node_count==0)ImGui::TextDisabled("EMPTY EVENT GRAPH / ADD A WHEN, ACTION OR DIALOGUE NODE");
     ImVec2 p=ImGui::GetCursorScreenPos(),sz=ImGui::GetContentRegionAvail(),end(p.x+sz.x,p.y+sz.y);ImDrawList *d=ImGui::GetWindowDrawList();
     d->AddRectFilled(p,end,IM_COL32(13,18,27,255));
     for(float x=p.x;x<end.x;x+=24)d->AddLine(ImVec2(x,p.y),ImVec2(x,end.y),IM_COL32(57,74,88,95));
@@ -447,7 +418,7 @@ static void draw_timeline_panel()
     ImGui::BeginChild("##sequencer",ImVec2(0,0),true);
     ImGui::TextColored(ImVec4(.43f,.84f,.90f,1),"ANIMATION / EVENT SEQUENCER");ImGui::SameLine();
     if(ImGui::SmallButton("||"))g_selected_frame=(g_selected_frame+1)%9;ImGui::SameLine();if(ImGui::SmallButton("STOP"))g_selected_frame=0;
-    ImGui::SameLine();ImGui::TextDisabled("CLIP BREN / PLASMA-ROPE / 60 FPS");ImGui::SameLine();if(ImGui::SmallButton("+ FRAME"))g_selected_frame=std::min(8,g_selected_frame+1);
+    ImGui::SameLine();ImGui::TextDisabled("NO CLIP SELECTED");ImGui::SameLine();if(ImGui::SmallButton("+ FRAME"))g_selected_frame=std::min(8,g_selected_frame+1);
     for(int i=0;i<9;i++){if(i)ImGui::SameLine(0,3);ImGui::PushID(i);ImVec2 p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton("##frame",ImVec2(60,45));if(ImGui::IsItemClicked())g_selected_frame=i;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+60,p.y+45),i==g_selected_frame?IM_COL32(52,77,90,255):IM_COL32(22,30,41,255));d->AddRect(p,ImVec2(p.x+60,p.y+45),i==g_selected_frame?IM_COL32(255,161,51,255):IM_COL32(85,103,118,255),0.0f,1.5f);d->AddText(ImVec2(p.x+17,p.y+17),IM_COL32(94,115,129,255),"EMPTY");char num[8];std::snprintf(num,sizeof(num),"%02d",i+1);d->AddText(ImVec2(p.x+3,p.y+2),IM_COL32(182,198,208,255),num);ImGui::PopID();}
     const char *names[3]={"POSE","FX","SOUND"};const ImU32 colors[3]={IM_COL32(130,139,166,255),IM_COL32(60,163,216,255),IM_COL32(177,160,95,255)};
     for(int row=0;row<3;row++){ImGui::TextColored(ImVec4(.67f,.75f,.81f,1),"%s",names[row]);ImGui::SameLine(58);ImVec2 p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+w,p.y+14),IM_COL32(34,41,55,255));d->AddRectFilled(ImVec2(p.x+w*(row==0?.05f:row==1?.25f:.45f),p.y+2),ImVec2(p.x+w*(row==0?.48f:row==1?.63f:.82f),p.y+12),colors[row],2);float play=p.x+w*(g_selected_frame/8.0f);d->AddLine(ImVec2(play,p.y-2),ImVec2(play,p.y+16),IM_COL32(255,100,70,255),2);ImGui::Dummy(ImVec2(w,15));}
@@ -458,14 +429,13 @@ static void draw_bottom_workspace()
     ImGui::BeginChild("##workspace_bottom",ImVec2(0,126),true);
     if(g_mode==MODE_EVENTS||g_mode==MODE_ASSETS)draw_timeline_panel();
     else {
-        ImGui::TextColored(ImVec4(.43f,.84f,.90f,1),g_mode==MODE_BOSS?"BOSS / ACTION FLOW":"SCRIPT / EVENT FLOW");
-        ImGui::SameLine();ImGui::TextDisabled(" STAGE LOGIC / LIVE GRAPH PREVIEW");
-        ImVec2 p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;ImDrawList *d=ImGui::GetWindowDrawList();
-        const float bw=116,bh=50,gap=62,total=4*bw+3*gap,start=p.x+std::max(3.0f,(w-total)*.5f),y=p.y+3;
-        const char *name[4]={"TRG_01","NPC DIALOGUE","BOSS SPAWN","OPEN DOOR"};const char *detail[4]={"AREA ENTER","CMD. BREN","MECH-V1","ON DEFEAT"};
-        const ImU32 col[4]={IM_COL32(225,201,54,255),IM_COL32(70,164,234,255),IM_COL32(222,74,80,255),IM_COL32(65,188,164,255)};
-        for(int i=0;i<3;i++){float x1=start+i*(bw+gap)+bw,x2=start+(i+1)*(bw+gap);d->AddLine(ImVec2(x1,y+24),ImVec2(x2,y+24),IM_COL32(139,154,163,230),3);d->AddTriangleFilled(ImVec2(x2-3,y+19),ImVec2(x2+4,y+24),ImVec2(x2-3,y+29),IM_COL32(139,154,163,230));}
-        for(int i=0;i<4;i++){ImVec2 a(start+i*(bw+gap),y),b(a.x+bw,a.y+bh);d->AddRectFilled(a,b,IM_COL32(5,10,17,255),3);d->AddRect(a,b,col[i],3.0f,2.0f);d->AddText(ImVec2(a.x+8,a.y+6),col[i],name[i]);d->AddText(ImVec2(a.x+8,a.y+29),IM_COL32(179,195,205,255),detail[i]);}
+        ImGui::TextColored(ImVec4(.43f,.84f,.90f,1),"LEVEL EVENT SUMMARY");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%02d NODES / %02d LINKS",g_node_count,g_link_count);
+        if(g_node_count==0)
+            ImGui::TextDisabled("NO EVENTS CREATED FOR THIS LEVEL");
+        else
+            ImGui::TextDisabled("EVENT GRAPH DATA IS STORED IN THIS LEVEL DOCUMENT");
     }
     ImGui::EndChild();
 }
@@ -488,18 +458,45 @@ static void draw_advanced_inspector()
         else ImGui::TextWrapped("Choose an entity tool, then click the stage to place an enemy, pickup or spawn marker.");
         ImGui::Separator();ImGui::Checkbox("SNAP TO GRID",&g_show_grid);ImGui::Text("PLACEMENT PLANE 2D");ImGui::Text("GRAPPLE ANCHORS ENABLED");
     }else if(g_mode==MODE_EVENTS){
-        g_selected_node=std::max(0,std::min(g_node_count-1,g_selected_node));EventNode &n=g_nodes[g_selected_node];
-        ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"SELECTED NODE");ImGui::Text("NODE_%02d",g_selected_node+1);ImGui::Text("TYPE %s",n.type==0?"TRIGGER":n.type==1?"DIALOGUE":n.type==3?"BOSS":"ACTION");ImGui::Separator();
-        ImGui::Text("NODE NAME");ImGui::SetNextItemWidth(-1);ImGui::InputText("##node_title",n.title,sizeof(n.title));ImGui::Text("PARAMETER / TARGET");ImGui::SetNextItemWidth(-1);ImGui::InputText("##node_detail",n.detail,sizeof(n.detail));
-        ImGui::Separator();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"LOGIC LINKS");ImGui::Text("OUTGOING %d",g_link_count);
-        if(ImGui::Button("LINK TO NEXT NODE",ImVec2(-1,30))&&g_selected_node+1<g_node_count&&g_link_count<12){g_link_from[g_link_count]=g_selected_node;g_link_to[g_link_count]=g_selected_node+1;g_link_count++;}
+        if(g_node_count==0){
+            ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"NO NODE SELECTED");
+            ImGui::TextWrapped("Create the first node from the event canvas. This new level has no preloaded scripts.");
+        }else{
+            g_selected_node=std::max(0,std::min(g_node_count-1,g_selected_node));
+            EventNode &n=g_nodes[g_selected_node];
+            ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"SELECTED NODE");
+            ImGui::Text("NODE_%02d",g_selected_node+1);
+            ImGui::Text("TYPE %s",n.type==0?"TRIGGER":n.type==1?"DIALOGUE":n.type==3?"BOSS":"ACTION");
+            ImGui::Separator();
+            ImGui::Text("NODE NAME");ImGui::SetNextItemWidth(-1);
+            ImGui::InputText("##node_title",n.title,sizeof(n.title));
+            ImGui::Text("PARAMETER / TARGET");ImGui::SetNextItemWidth(-1);
+            ImGui::InputText("##node_detail",n.detail,sizeof(n.detail));
+            ImGui::Separator();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"LOGIC LINKS");
+            ImGui::Text("OUTGOING %d",g_link_count);
+            if(ImGui::Button("LINK TO NEXT NODE",ImVec2(-1,30))&&g_selected_node+1<g_node_count&&g_link_count<12){
+                g_link_from[g_link_count]=g_selected_node;g_link_to[g_link_count]=g_selected_node+1;g_link_count++;
+            }
+        }
     }else if(g_mode==MODE_ASSETS){
         ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"ASSET DOCUMENT");ImGui::Text("CANVAS %d x %d",g_asset_size,g_asset_size);ImGui::Checkbox("MODERN RGBA",&g_asset_modern);ImGui::SliderInt("COLOR",&g_asset_color,0,g_asset_modern?255:63);ImGui::Separator();
         if(ImGui::Button("CLEAR CANVAS",ImVec2(-1,30)))std::fill(g_asset_pixels,g_asset_pixels+1024,0);
         ImGui::TextDisabled("PNG / SPRITE SHEET PIPELINE");ImGui::TextWrapped("Local canvas drawing is active. Import, slicing and export are the next pipeline connection.");
     }else{
-        ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"BOSS: MECH-V1");ImGui::Text("PHASE 1 / HP");ImGui::SliderInt("##boss_hp",&g_boss_hp,1,100);ImGui::Text("PHASE 2 / 60 - 25%%");ImGui::ProgressBar(.38f,ImVec2(-1,14));ImGui::Text("PHASE 3 / ENRAGE");ImGui::Separator();
-        ImGui::Checkbox("AGGRESSIVE",&g_behavior_flags[0]);ImGui::Checkbox("DEFENSIVE",&g_behavior_flags[1]);ImGui::Checkbox("RAGE MODE",&g_behavior_flags[2]);ImGui::Checkbox("SHIELD CORE",&g_behavior_flags[3]);ImGui::Separator();ImGui::RadioButton("PHASE 1",&g_boss_phase,1);ImGui::RadioButton("PHASE 2",&g_boss_phase,2);ImGui::RadioButton("PHASE 3",&g_boss_phase,3);
+        if(!g_boss_created){
+            ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"NO BOSS ASSEMBLED");
+            ImGui::TextWrapped("The boss workspace is empty. Create a core when you are ready to start assembly.");
+            if(ImGui::Button("CREATE BOSS CORE",ImVec2(-1,32)))g_boss_created=true;
+        }else{
+            ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"BOSS CORE");
+            ImGui::Text("PHASE 1 / HP");ImGui::SliderInt("##boss_hp",&g_boss_hp,1,100);
+            ImGui::Text("PHASE 2 / 60 - 25%%");ImGui::ProgressBar(.38f,ImVec2(-1,14));
+            ImGui::Text("PHASE 3 / ENRAGE");ImGui::Separator();
+            ImGui::Checkbox("AGGRESSIVE",&g_behavior_flags[0]);ImGui::Checkbox("DEFENSIVE",&g_behavior_flags[1]);
+            ImGui::Checkbox("RAGE MODE",&g_behavior_flags[2]);ImGui::Checkbox("SHIELD CORE",&g_behavior_flags[3]);
+            ImGui::Separator();ImGui::RadioButton("PHASE 1",&g_boss_phase,1);
+            ImGui::RadioButton("PHASE 2",&g_boss_phase,2);ImGui::RadioButton("PHASE 3",&g_boss_phase,3);
+        }
     }
 }
 static void draw_advanced_asset_canvas()
