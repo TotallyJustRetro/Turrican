@@ -150,11 +150,12 @@ static const char *kBossTools[] = {
 static void apply_theme()
 {
     ImGui::StyleColorsDark();
+    ImGui::GetIO().FontGlobalScale = 1.30f;
     ImGuiStyle &s = ImGui::GetStyle();
 
-    s.WindowPadding = ImVec2(9.0f, 8.0f);
-    s.FramePadding = ImVec2(9.0f, 6.0f);
-    s.ItemSpacing = ImVec2(7.0f, 6.0f);
+    s.WindowPadding = ImVec2(8.0f, 7.0f);
+    s.FramePadding = ImVec2(8.0f, 6.0f);
+    s.ItemSpacing = ImVec2(6.0f, 5.0f);
     s.ItemInnerSpacing = ImVec2(6.0f, 5.0f);
     s.ScrollbarSize = 12.0f;
     s.WindowBorderSize = 1.0f;
@@ -305,7 +306,7 @@ static void draw_stage_canvas()
     g_selected_y=std::max(0,std::min(rows-1,g_selected_y));
     ImGui::BeginChild("##stage_canvas",ImVec2(0,0),true);
     ImVec2 avail=ImGui::GetContentRegionAvail();
-    const float cell=std::max(7.0f,std::min(12.0f,std::min(avail.x/24.0f,avail.y/8.0f)));
+    const float cell=std::max(8.0f,std::min(15.0f,std::min(avail.x/20.0f,avail.y/7.0f)));
     const int viewCols=std::max(1,std::min(cols,(int)(avail.x/cell)));
     const int viewRows=std::max(1,std::min(rows,(int)(avail.y/cell)));
     g_map_origin_x=std::max(0,std::min(cols-viewCols,g_selected_x-viewCols/2));
@@ -392,7 +393,7 @@ static void draw_node_graph();
 static void draw_stage_canvas();
 static void draw_bottom_workspace()
 {
-    ImGui::BeginChild("##workspace_bottom",ImVec2(0,25),true);
+    ImGui::BeginChild("##workspace_bottom",ImVec2(0,31),true);
     ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"UNTITLED LEVEL");
     ImGui::SameLine();
     if(g_undo_count>0){if(ImGui::SmallButton("UNDO"))undo_level_edit();}
@@ -410,16 +411,17 @@ static void draw_bottom_workspace()
 
 static void draw_layer_bar()
 {
-    ImGui::BeginChild("##categories",ImVec2(0,21),true);
-    const struct {const char *label;EditorMode mode;float width;} tabs[]={
-        {"TILES",MODE_TILES,49},{"OBJECTS",MODE_ENTITY,57},
-        {"BOSSES",MODE_BOSS,54},{"DRAW",MODE_ASSETS,42},{"EVENTS",MODE_EVENTS,52}
+    ImGui::BeginChild("##categories",ImVec2(0,27),true);
+    const struct {const char *label;EditorMode mode;} tabs[]={
+        {"TILES",MODE_TILES},{"OBJECTS",MODE_ENTITY},
+        {"BOSSES",MODE_BOSS},{"DRAW",MODE_ASSETS},{"EVENTS",MODE_EVENTS}
     };
+    const float tabWidth=(ImGui::GetContentRegionAvail().x-16.0f)/5.0f;
     for(int i=0;i<5;i++){
         if(i)ImGui::SameLine(0,3);
         bool active=g_mode==tabs[i].mode;
         if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.50f,.27f,.10f,1));
-        if(ImGui::Button(tabs[i].label,ImVec2(tabs[i].width,18)))g_mode=tabs[i].mode;
+        if(ImGui::Button(tabs[i].label,ImVec2(tabWidth,23)))g_mode=tabs[i].mode;
         if(active)ImGui::PopStyleColor();
     }
     ImGui::EndChild();
@@ -623,7 +625,7 @@ static void draw_advanced_asset_canvas()
 }
 static void draw_tool_palette()
 {
-    ImGui::BeginChild("##maker_tool_rail",ImVec2(28,0),true);
+    ImGui::BeginChild("##maker_tool_rail",ImVec2(42,0),true);
     const struct { const char *glyph; EditorTool tool; const char *hint; } buttons[] = {
         {"S",TOOL_SELECT,"Select"},
         {"B",TOOL_TILE_BRUSH,"Place / paint"},
@@ -635,7 +637,7 @@ static void draw_tool_palette()
     for(const auto &button:buttons) {
         const bool active=(g_tool==button.tool);
         if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.55f,.30f,.10f,1.0f));
-        if(ImGui::Button(button.glyph,ImVec2(22,20)))g_tool=button.tool;
+        if(ImGui::Button(button.glyph,ImVec2(34,28)))g_tool=button.tool;
         if(active)ImGui::PopStyleColor();
         if(ImGui::IsItemHovered())ImGui::SetTooltip("%s",button.hint);
         ImGui::Spacing();
@@ -645,7 +647,7 @@ static void draw_tool_palette()
 
 static void draw_asset_shelf()
 {
-    ImGui::BeginChild("##asset_shelf",ImVec2(0,34),true);
+    ImGui::BeginChild("##asset_shelf",ImVec2(0,43),true);
     const char *heading=g_mode==MODE_TILES?"GAME TILES":
         g_mode==MODE_ENTITY?"LIVE SPRITES":g_mode==MODE_BOSS?"SPRITE PARTS":
         g_mode==MODE_ASSETS?"DRAW":"EVENTS";
@@ -659,12 +661,12 @@ static void draw_asset_shelf()
             const int tile=g_live_tile_ids[i];
             ImGui::PushID(tile);
             ImVec2 p=ImGui::GetCursorScreenPos();
-            ImGui::InvisibleButton("##tile_pick",ImVec2(20,22));
+            ImGui::InvisibleButton("##tile_pick",ImVec2(28,30));
             ImDrawList *d=ImGui::GetWindowDrawList();
             const bool selected=(g_brush_tile&0x7ff)==tile;
-            d->AddRectFilled(p,ImVec2(p.x+20,p.y+22),selected?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
-            draw_vdp_tile(d,ImVec2(p.x+2,p.y+3),16.0f,tile|(g_selected_palette<<13));
-            d->AddRect(p,ImVec2(p.x+20,p.y+22),selected?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,selected?2.0f:1.0f);
+            d->AddRectFilled(p,ImVec2(p.x+28,p.y+30),selected?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
+            draw_vdp_tile(d,ImVec2(p.x+3,p.y+4),22.0f,tile|(g_selected_palette<<13));
+            d->AddRect(p,ImVec2(p.x+28,p.y+30),selected?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,selected?2.0f:1.0f);
             if(ImGui::IsItemClicked()){g_brush_tile=tile|(g_selected_palette<<13);g_tool=TOOL_TILE_BRUSH;}
             ImGui::PopID();
         }
@@ -691,11 +693,11 @@ static void draw_asset_shelf()
                 ImGui::PushID(2000+i);
                 const LiveSpritePart &sprite=g_live_sprites[i];
                 ImVec2 p=ImGui::GetCursorScreenPos();
-                ImGui::InvisibleButton("##sprite_pick",ImVec2(28,24));
+                ImGui::InvisibleButton("##sprite_pick",ImVec2(36,34));
                 ImDrawList *d=ImGui::GetWindowDrawList();
                 const bool active=g_selected_sprite==i;
-                d->AddRectFilled(p,ImVec2(p.x+28,p.y+24),active?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
-                const float scale=17.0f/(float)std::max(sprite.width_tiles,sprite.height_tiles);
+                d->AddRectFilled(p,ImVec2(p.x+36,p.y+34),active?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
+                const float scale=24.0f/(float)std::max(sprite.width_tiles,sprite.height_tiles);
                 const float sw=scale*sprite.width_tiles,sh=scale*sprite.height_tiles;
                 draw_vdp_sprite(d,ImVec2(p.x+(28.0f-sw)*.5f,p.y+(24.0f-sh)*.5f),
                                 scale,sprite.tile_attr,sprite.width_tiles,sprite.height_tiles);
@@ -757,10 +759,10 @@ static void redo_level_edit()
 
 static void draw_top_bar()
 {
-    ImGui::BeginChild("##topbar",ImVec2(0,22),true);
+    ImGui::BeginChild("##topbar",ImVec2(0,26),true);
     ImDrawList *d=ImGui::GetWindowDrawList();
     ImVec2 p=ImGui::GetWindowPos();
-    d->AddRectFilled(p,ImVec2(p.x+ImGui::GetWindowWidth(),p.y+22),IM_COL32(7,11,18,255));
+    d->AddRectFilled(p,ImVec2(p.x+ImGui::GetWindowWidth(),p.y+26),IM_COL32(7,11,18,255));
     ImGui::TextColored(ImVec4(1.0f,.66f,.22f,1),"MEGA TURRICAN");
     ImGui::SameLine();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"MAKER");
     ImGui::SameLine();ImGui::TextDisabled("/ %s",g_level_name);
@@ -1022,8 +1024,8 @@ extern "C" int mtlb_render_to_framebuffer(uint32_t *framebuffer,int width,int he
     draw_top_bar();
     draw_layer_bar();
     draw_asset_shelf();
-    const float bottomHeight=27;
-    const float workspaceHeight=std::max(74.0f,io.DisplaySize.y-22.0f-21.0f-34.0f-bottomHeight-18.0f);
+    const float bottomHeight=33;
+    const float workspaceHeight=std::max(58.0f,io.DisplaySize.y-26.0f-27.0f-43.0f-bottomHeight-18.0f);
     ImGui::BeginChild("##maker_workspace",ImVec2(0,workspaceHeight),false);
     draw_tool_palette();ImGui::SameLine(0,2);
     ImGui::BeginChild("##maker_stage",ImVec2(0,0),true);
