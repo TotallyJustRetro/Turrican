@@ -175,6 +175,9 @@ static int native_title_gameplay_hud_visible(void) {
        The title card has no such three-part top HUD. */
     return red[0]>12 && red[1]>8 && red[2]>12;
 }
+int md_modern_timer_hud_present(void) {
+    return native_title_gameplay_hud_visible();
+}
 static int native_title_menu_scene_visible(void) {
     static const uint16_t start_tiles[]={0x543,0x544,0x531,0x542,0x544};
     static const uint16_t options_tiles[]={0x53F,0x540,0x544,0x539,0x53F,0x53E,0x543};
