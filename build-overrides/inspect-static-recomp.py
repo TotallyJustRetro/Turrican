@@ -306,6 +306,30 @@ if gen.exists():
  for name,ports in sorted(vdp_summary.items(),key=lambda item:(-len(item[1]),item[0])):
   emit(f"VDP_FUNCTION {name} ports={','.join(sorted(ports))}")
 
+ # Functions touching both the VDP control and data ports are the strongest
+ # static candidates for upload helpers. Emit their complete bounded bodies.
+ emit("VDP_DMA_UPLOAD_FUNCTION_BODIES")
+ candidates=[name for name,ports in vdp_summary.items()
+             if "0XC00000" in ports and "0XC00004" in ports]
+ candidates=sorted(candidates)
+ for name in candidates[:24]:
+  pat=re.compile(r"(?m)^\\s*(?:(?:static|inline)\\s+)*(?:void|int|bool|uint8_t|uint16_t|uint32_t)\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  hit=pat.search("\\n".join(lines))
+  if not hit: continue
+  source="\\n".join(lines)
+  brace=source.find("{",hit.start()); depth=0; end=-1
+  for pos in range(brace,len(source)):
+   if source[pos]=="{": depth+=1
+   elif source[pos]=="}":
+    depth-=1
+    if depth==0: end=pos+1; break
+  if end<=brace: continue
+  block=source[hit.start():end]
+  block_lines=block.splitlines()
+  emit(f"VDP_UPLOAD_BODY {name} source_lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+  for line in block_lines[:180]: emit("  "+line[:280])
+  if len(block_lines)>180: emit(f"  ... clipped {len(block_lines)-180} further lines ...")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
