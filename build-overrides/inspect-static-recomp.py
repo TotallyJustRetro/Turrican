@@ -61,6 +61,18 @@ for rel in FILES:
 
   sound_re=re.compile(r"0x(?:FFFF)?(?:A0400[0-3]|C00011|A000[0-9A-Fa-f]{4}|A11100|A11200)",re.I)
   sound_state_re=re.compile(r"0xFFFF(?:B[0-9A-Fa-f][0-9A-Fa-f]{2}|08[0-9A-Fa-f]{2})",re.I)
+  # Dump complete bodies for routines on the sound service call chain.
+  # These are the concrete call sites used by ordinary game/menu code.
+  emit("GENERATED_SOUND_RELEVANT_FUNCTION_BODIES")
+  target_names={"f_200","f_468","f_1D10","f_6C3E","f_D0000","f_D0008",
+                 "f_D000C","f_D0018","f_D0102","f_D012A","f_D0218",
+                 "f_D070E","f_D09E6","f_D0F02","f_D0FA8"}
+  for fi,(start,name) in enumerate(fn_starts):
+   if name not in target_names:continue
+   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
+   emit(f"RELEVANT_FUNCTION_BODY name={name} lines={start+1}-{end}")
+   for q in range(start,end):
+    emit(f"  {q+1}: {lines[q][:360]}")
   emit("GENERATED_SOUND_CHIP_WRITERS")
   sound_targets=set()
   for name,(start,end,body) in fn_data.items():
