@@ -933,7 +933,7 @@ static void native_pause_panel(const char *title) {
     int x=10,y=8,w=W-20,h=H-16;
     native_menu_rect(x,y,w,h,0x6A,0x74,0x88,255);
     native_menu_rect(x+2,y+2,w-4,h-4,0x08,0x0D,0x17,255);
-    native_menu_rect(x+4,y+4,w-8,h-8,0x1A,0x22,0x2E,255);
+    native_menu_rect(x+4,y+4,w-8,h-8,0x1A,0x22,0x2E,176);
     for(int i=0;i<w-12;i++) {
         int t=i*255/(w-13);
         native_menu_rect(x+6+i,y+6,1,18,
@@ -1226,7 +1226,7 @@ def patch_sdl(project: Path) -> None:
     int x=8,y=7,w=W-16,h=H-14;
     native_menu_rect(x,y,w,h,0x6A,0x74,0x88,255);
     native_menu_rect(x+2,y+2,w-4,h-4,0x08,0x0D,0x17,255);
-    native_menu_rect(x+4,y+4,w-8,h-8,0x1A,0x22,0x2E,255);
+    native_menu_rect(x+4,y+4,w-8,h-8,0x1A,0x22,0x2E,176);
     for(int i=0;i<w-12;i++) {
         int t=i*255/(w-13);
         native_menu_rect(x+6+i,y+6,1,20,
@@ -1246,12 +1246,12 @@ def patch_sdl(project: Path) -> None:
         native_menu_rect(x+w-32+i*6,y+9,4,4,on?0xF4:0x65,on?0x28:0x18,on?0xDA:0x47,255);
     }
     static const char *items[]={"RESUME MISSION","SUIT STATUS ARSENAL","OPTIONS SOUND TEST",
-        "ABORT RESTART STAGE","QUIT TO TITLE","QUIT GAME"};
+        "ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
     for(int i=0;i<6;i++) {
         int iy=y+40+i*23;
         if(i==native_menu_sel) {
-            native_menu_rect(x+10,iy-3,166,19,0x9C,0x0A,0x7B,190);
-            native_menu_rect(x+12,iy-1,162,15,0x24,0x0F,0x2C,245);
+            native_menu_rect(x+10,iy-3,172,19,0x9C,0x0A,0x7B,190);
+            native_menu_rect(x+12,iy-1,168,15,0x24,0x0F,0x2C,245);
             native_menu_rect(x+10,iy-3,2,19,0xF0,0x26,0xD8,255);
         }
         native_pause_draw_text(x+20,iy,items[i],i==native_menu_sel?0xFFF0D0:0xC4CFDA);
