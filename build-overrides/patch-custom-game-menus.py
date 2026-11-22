@@ -36,6 +36,7 @@ static int native_modern_scroll_offset=0;
 static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
+static void native_menu_pause_loop(void);
 static int native_title_menu_selection=0;
 static int native_title_page_mode=0;
 static int native_title_game_options_focus=0;
@@ -305,7 +306,13 @@ static void native_title_open_selected(void) {
         native_menu_state=13;
         native_menu_pause_loop();
     } else if(native_title_menu_selection==3) {
+        /* Run Level Builder as its own paused modal, exactly like Game Options.
+           The modal loop owns input and presentation until ImGui exits; its
+           saved VDP backdrop is restored before the title screen resumes. */
+        native_title_compose_enabled=0;
+        native_title_input_block=1;
         native_menu_state=11;
+        native_menu_pause_loop();
     } else if(native_title_menu_selection==4) {
         native_menu_state=9;
     } else if(native_title_menu_selection==5) {
