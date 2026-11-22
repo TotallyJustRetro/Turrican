@@ -637,6 +637,33 @@ if gen.exists():
     if hits>=120: break
   emit(f"A5_TARGET_REFERENCE_COUNT_LIMITED {hits}")
 
+ # Enumerate every generated function that obtains a record from f_5300.
+ # The instructions immediately surrounding each allocator call show how the
+ # new record gets its update handler, position, state and resource pointers.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_POOL_ALLOCATOR_CALLERS]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  current="(global)"
+  call_sites=[]
+  for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if re.search(r"\bf_5300\s*\(c\)",line):
+    call_sites.append((current,i))
+  grouped={}
+  for fn,i in call_sites:
+   grouped.setdefault(fn,[]).append(i)
+  for fn,sites in sorted(grouped.items(),key=lambda item:(-len(item[1]),item[0])):
+   emit(f"OBJECT_POOL_CALLER function={fn} call_count={len(sites)} source_lines="+",".join(str(i+1) for i in sites[:30]))
+   for i in sites[:12]:
+    lo=max(0,i-8);hi=min(len(gen_lines),i+24)
+    emit(f"  ALLOC_CONTEXT lines={lo+1}-{hi}")
+    for q in range(lo,hi):
+     emit(f"    {q+1}: {gen_lines[q][:280]}")
+  emit(f"OBJECT_POOL_CALLER_COUNT {len(grouped)} total_calls={len(call_sites)}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
