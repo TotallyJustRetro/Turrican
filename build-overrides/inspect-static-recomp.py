@@ -32,7 +32,7 @@ for rel in FILES:
    emit(f"RAM_ADDRESS {address} count={count}")
   emit("RAM_ADDRESS_WRITE_CONTEXTS")
   for n,line in enumerate(lines,1):
-   if re.search(r"WR(?:8|16|32)\\(.*0xFFFF(?:BC|BD|BE|BF)",line):
+   if re.search(r"WR(?:8|16|32)\(.*0xFFFF(?:BC|BD|BE|BF)",line):
     emit(f"RAM_WRITE line={n} {line[:300]}")
     for k in range(max(0,n-4),min(len(lines),n+4)):
      emit(f"  {k+1}: {lines[k][:240]}")
