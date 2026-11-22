@@ -283,30 +283,7 @@ static void draw_stage_canvas()
     ImGui::EndChild();
 }
 
-static void draw_placeholder_viewport(const char *title, const char *description)
-{
-    ImGui::TextColored(ImVec4(0.34f, 0.78f, 0.83f, 1.0f), "%s", title);
-    ImGui::Separator();
-    ImGui::Spacing();
-    ImGui::TextWrapped("%s", description);
-    ImGui::Spacing();
-    ImGui::BeginChild("##module_preview", ImVec2(0.0f, 220.0f), true);
-    const ImVec2 p = ImGui::GetCursorScreenPos();
-    const ImVec2 a(p.x + 12.0f, p.y + 12.0f);
-    const ImVec2 b(a.x + 280.0f, a.y + 150.0f);
-    ImDrawList *draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(a, b, IM_COL32(9, 15, 22, 255), 2.0f);
-    draw->AddRect(a, b, IM_COL32(56, 81, 96, 255));
-    draw->AddLine(ImVec2(a.x + 15.0f, a.y + 76.0f),
-                  ImVec2(b.x - 15.0f, a.y + 76.0f), IM_COL32(35, 72, 84, 255));
-    draw->AddText(ImVec2(a.x + 15.0f, a.y + 18.0f),
-                  IM_COL32(255, 174, 54, 255), "MODULE ONLINE");
-    draw->AddText(ImVec2(a.x + 15.0f, a.y + 48.0f),
-                  IM_COL32(163, 184, 196, 255), "EDITOR SYSTEM / FOUNDATION");
-    draw->AddText(ImVec2(a.x + 15.0f, a.y + 104.0f),
-                  IM_COL32(83, 192, 202, 255), "DATA PIPELINE PENDING");
-    ImGui::EndChild();
-}
+
 
 static void draw_tool_palette() { draw_advanced_tool_palette(); }
 
@@ -423,8 +400,8 @@ static void draw_timeline_panel()
     ImGui::SameLine();ImGui::TextDisabled("NO CLIP SELECTED");ImGui::SameLine();if(ImGui::SmallButton("+ FRAME"))g_selected_frame=std::min(8,g_selected_frame+1);
     for(int i=0;i<9;i++){if(i)ImGui::SameLine(0,3);ImGui::PushID(i);ImVec2 p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton("##frame",ImVec2(60,45));if(ImGui::IsItemClicked())g_selected_frame=i;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+60,p.y+45),i==g_selected_frame?IM_COL32(52,77,90,255):IM_COL32(22,30,41,255));d->AddRect(p,ImVec2(p.x+60,p.y+45),i==g_selected_frame?IM_COL32(255,161,51,255):IM_COL32(85,103,118,255),0.0f,1.5f);d->AddText(ImVec2(p.x+17,p.y+17),IM_COL32(94,115,129,255),"EMPTY");char num[8];std::snprintf(num,sizeof(num),"%02d",i+1);d->AddText(ImVec2(p.x+3,p.y+2),IM_COL32(182,198,208,255),num);ImGui::PopID();}
     const char *names[3]={"POSE","FX","SOUND"};const ImU32 colors[3]={IM_COL32(130,139,166,255),IM_COL32(60,163,216,255),IM_COL32(177,160,95,255)};
-    for(int row=0;row<3;row++){ImGui::TextColored(ImVec4(.67f,.75f,.81f,1),"%s",names[row]);ImGui::SameLine(58);ImVec2 p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+w,p.y+14),IM_COL32(34,41,55,255));d->AddRectFilled(ImVec2(p.x+w*(row==0?.05f:row==1?.25f:.45f),p.y+2),ImVec2(p.x+w*(row==0?.48f:row==1?.63f:.82f),p.y+12),colors[row],2);float play=p.x+w*(g_selected_frame/8.0f);d->AddLine(ImVec2(play,p.y-2),ImVec2(play,p.y+16),IM_COL32(255,100,70,255),2);ImGui::Dummy(ImVec2(w,15));}
-    ImGui::TextDisabled("FRAME %02d / DURATION 6 TICKS / HITBOX & SFX TRACKS",g_selected_frame+1);ImGui::EndChild();
+    for(int row=0;row<3;row++){ImGui::TextColored(ImVec4(.67f,.75f,.81f,1),"%s",names[row]);ImGui::SameLine(58);ImVec2 p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;ImDrawList *d=ImGui::GetWindowDrawList();d->AddRectFilled(p,ImVec2(p.x+w,p.y+14),IM_COL32(34,41,55,255));float play=p.x+w*(g_selected_frame/8.0f);d->AddLine(ImVec2(play,p.y-2),ImVec2(play,p.y+16),IM_COL32(255,100,70,255),2);ImGui::Dummy(ImVec2(w,15));}
+    ImGui::TextDisabled("NO KEYS / NO EVENTS IN THIS TRACK",g_selected_frame+1);ImGui::EndChild();
 }
 static void draw_bottom_workspace()
 {
@@ -452,8 +429,8 @@ static void draw_advanced_inspector()
         ImGui::Checkbox("COLLISION ON",&g_collision_enabled);ImGui::Separator();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"TILE PALETTE");
         for(int i=0;i<12;i++){if(i%4)ImGui::SameLine();ImGui::PushID(i);ImVec4 c=ImVec4(.18f+(i%4)*.12f,.10f+(i%3)*.13f,.25f+(i%5)*.10f,1);if(ImGui::ColorButton("##pal",c,0,ImVec2(34,26)))g_brush_tile=(g_brush_tile+i+1)&2047;ImGui::PopID();}
         ImGui::Separator();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"BEHAVIOR");ImGui::Checkbox("BREAKABLE",&g_behavior_flags[0]);ImGui::Checkbox("ANIMATED",&g_behavior_flags[1]);ImGui::Checkbox("HAZARD",&g_behavior_flags[2]);ImGui::Checkbox("GRAPPLE POINT",&g_behavior_flags[3]);
-        ImGui::Separator();if(ImGui::Button("SAVE LEVEL",ImVec2(-1,30))){bool ok=mtlb_map_save();std::snprintf(g_status,sizeof(g_status),"%s",ok?"SAVED /levels/slot1.mtl":"SAVE FAILED");}
-        if(ImGui::Button("LOAD LEVEL",ImVec2(-1,28))){bool ok=mtlb_map_load();std::snprintf(g_status,sizeof(g_status),"%s",ok?"LOADED /levels/slot1.mtl":"LOAD FAILED");}
+        ImGui::Separator();if(ImGui::Button("SAVE LEVEL",ImVec2(-1,30))){bool ok=mtlb_map_save();std::snprintf(g_status,sizeof(g_status),"%s",ok?"SAVED /levels/untitled.mtlb":"SAVE FAILED");}
+        if(ImGui::Button("LOAD LEVEL",ImVec2(-1,28))){bool ok=mtlb_map_load();std::snprintf(g_status,sizeof(g_status),"%s",ok?"LOADED /levels/untitled.mtlb":"LOAD FAILED");}
     }else if(g_mode==MODE_ENTITY){
         ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"ENTITY PLACEMENT");ImGui::Text("OBJECT COUNT %02d",g_entity_count);
         if(g_selected_entity>=0&&g_selected_entity<g_entity_count){EditorEntity &e=g_entities[g_selected_entity];ImGui::Separator();ImGui::Text("ENTITY_%02d",g_selected_entity);ImGui::SliderInt("TYPE",&e.type,0,5);ImGui::SliderInt("HEALTH",&e.hp,1,999);ImGui::Text("X %.3f  Y %.3f",e.x,e.y);if(ImGui::Button("DELETE ENTITY",ImVec2(-1,28))){for(int i=g_selected_entity;i<g_entity_count-1;i++)g_entities[i]=g_entities[i+1];g_entity_count--;g_selected_entity=-1;}}
@@ -474,6 +451,15 @@ static void draw_advanced_inspector()
             ImGui::InputText("##node_title",n.title,sizeof(n.title));
             ImGui::Text("PARAMETER / TARGET");ImGui::SetNextItemWidth(-1);
             ImGui::InputText("##node_detail",n.detail,sizeof(n.detail));
+            if(n.type==1){
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"NPC DIALOGUE");
+                ImGui::Text("SPEAKER");ImGui::SetNextItemWidth(-1);ImGui::InputText("##speaker",g_speaker,sizeof(g_speaker));
+                ImGui::Text("MESSAGE");ImGui::SetNextItemWidth(-1);ImGui::InputTextMultiline("##dialogue",g_dialogue,sizeof(g_dialogue),ImVec2(-1,94));
+                ImGui::SliderFloat("BLIP PITCH",&g_dialogue_pitch,.5f,2.0f,"%.2fx");
+                ImGui::Checkbox("AUTO ADVANCE",&g_dialogue_auto);
+                ImGui::Checkbox("CAMERA PAN",&g_dialogue_camera_pan);
+            }
             ImGui::Separator();ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"LOGIC LINKS");
             ImGui::Text("OUTGOING %d",g_link_count);
             if(ImGui::Button("LINK TO NEXT NODE",ImVec2(-1,30))&&g_selected_node+1<g_node_count&&g_link_count<12){
@@ -729,7 +715,7 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     }
     if(closing){
         if(g_fade_out_frame<frames)g_fade_out_frame++;
-        return g_fade_out_frame>frames;
+        return g_fade_out_frame>=frames;
     }
     if(g_fade_in_frame<frames)g_fade_in_frame++;
     return 0;
