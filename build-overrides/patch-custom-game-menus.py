@@ -508,18 +508,22 @@ confirm:
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
     title_event=r'''
         if(e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F8) {
-            if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
-            else if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
+            /* The title detector must win: some title-logo pixels overlap the
+               broad colour bands used by the Game Options detector. */
+            if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
+            else if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
             else native_menu_dump_snapshot("other");
             continue;
         }
-        if(reborn_game_options_visible() && e.type==SDL_KEYDOWN && !e.key.repeat &&
-           e.key.keysym.sym==SDLK_F6) {
+        /* Do not mistake the title-card artwork/credits for the submenu.
+           Extras is available only after the original Game Options page opens. */
+        if(!reborn_title_scene_visible() && reborn_game_options_visible() &&
+           e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F6) {
             native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
             continue;
         }
-        if(reborn_game_options_visible() && e.type==SDL_CONTROLLERBUTTONDOWN &&
-           e.cbutton.button==SDL_CONTROLLER_BUTTON_X) {
+        if(!reborn_title_scene_visible() && reborn_game_options_visible() &&
+           e.type==SDL_CONTROLLERBUTTONDOWN && e.cbutton.button==SDL_CONTROLLER_BUTTON_X) {
             native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
             continue;
         }
