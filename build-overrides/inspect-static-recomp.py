@@ -23,6 +23,19 @@ for rel in FILES:
   emit("MISSING")
   continue
  lines=p.read_text(encoding="utf-8",errors="replace").splitlines()
+ if rel=="recomp_gen.c":
+  import collections
+  src="\\n".join(lines)
+  counts=collections.Counter(m.group(1).upper() for m in re.finditer(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})",src))
+  emit("RAM_ADDRESS_COUNTS (generated absolute RAM references)")
+  for address,count in sorted(counts.items()):
+   emit(f"RAM_ADDRESS {address} count={count}")
+  emit("RAM_ADDRESS_WRITE_CONTEXTS")
+  for n,line in enumerate(lines,1):
+   if re.search(r"WR(?:8|16|32)\\(.*0xFFFF(?:BC|BD|BE|BF)",line):
+    emit(f"RAM_WRITE line={n} {line[:300]}")
+    for k in range(max(0,n-4),min(len(lines),n+4)):
+     emit(f"  {k+1}: {lines[k][:240]}")
  in_struct=False
  struct_depth=0
  for n,line in enumerate(lines,1):
