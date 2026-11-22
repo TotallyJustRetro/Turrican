@@ -51,7 +51,7 @@ static unsigned int native_pause_anim_ticks=0;
 static int native_pause_keep_title_audio=0;
 static int native_title_checkpoint_saved=0;
 static int native_title_input_passthrough=0,native_title_forced_mask=0;
-static int native_title_restore_after_input=0;
+static int native_title_restore_after_input=0,native_title_restore_ready=0;
 static int native_title_pending_open=0,native_title_pending_selection=0;
 static int native_title_reopen_options_after_input=0,native_title_reopen_focus=0;
 static int readpad(void);
