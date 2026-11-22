@@ -1249,7 +1249,7 @@ static void proc_native_pause_audio_settings(SDL_Event *e) {
         case SDLK_RIGHT:if(native_menu_sel<2)adjust_audio(native_menu_sel,1);break;
         case SDLK_RETURN:case SDLK_x:
             if(native_menu_sel==2)native_pause_page_back(2);
-            else adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+            else adjust_audio(native_menu_sel,1);
             break;
         case SDLK_ESCAPE:native_pause_page_back(2);break;
         }
@@ -1257,11 +1257,11 @@ static void proc_native_pause_audio_settings(SDL_Event *e) {
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<2)adjust_audio(native_menu_sel,native_menu_sel==1?-5:-1);
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<2)adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<2)adjust_audio(native_menu_sel,-1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<2)adjust_audio(native_menu_sel,1);
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
             if(native_menu_sel==2)native_pause_page_back(2);
-            else adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+            else adjust_audio(native_menu_sel,1);
         }
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)
             native_pause_page_back(2);
@@ -1539,7 +1539,12 @@ confirm:
         "    else if(native_menu_state==14)proc_native_area_map(e);\n"
         "    else if(native_menu_state==15)proc_native_suit_status(e);\n"
         "    else if(native_menu_state==16)proc_native_pause_options(e);\n"
-        "    else if(native_menu_state==17)proc_native_pause_confirm(e);",
+        "    else if(native_menu_state==17)proc_native_pause_confirm(e);\n"
+        "    else if(native_menu_state==18)proc_native_pause_video_settings(e);\n"
+        "    else if(native_menu_state==19)proc_native_pause_audio_settings(e);\n"
+        "    else if(native_menu_state==20)proc_native_pause_controller_setup(e);\n"
+        "    else if(native_menu_state==21)proc_native_pause_info_back(e);\n"
+        "    else if(native_menu_state==22)proc_native_pause_info_back(e);",
         "native Extras event routing")
 
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
@@ -1568,6 +1573,7 @@ confirm:
                         native_title_menu_selection=0;
                     } else if(native_title_menu_selection>=2) {
                         native_title_menu_selection--;
+                        native_title_menu_sfx(0);
                         if(native_title_menu_selection==1)native_title_transition_guard=1;
                         continue;
                     } else continue;
@@ -1578,14 +1584,17 @@ confirm:
                     } else if(native_title_menu_selection==1) {
                         native_title_menu_selection=2;
                         native_title_transition_guard=1;
+                        native_title_menu_sfx(0);
                         continue;
                     } else if(native_title_menu_selection<5) {
                         native_title_menu_selection++;
+                        native_title_menu_sfx(0);
                         continue;
                     } else continue;
                     break;
                 case SDLK_RETURN:case SDLK_x:
                     if(native_title_menu_selection>=2) {
+                        native_title_menu_sfx(1);
                         native_title_open_selected();
                         continue;
                     }
@@ -1594,6 +1603,7 @@ confirm:
                     if(native_title_menu_selection>=2) {
                         native_title_menu_selection=1;
                         native_title_transition_guard=1;
+                        native_title_menu_sfx(0);
                         continue;
                     }
                     break;
@@ -1604,6 +1614,7 @@ confirm:
                     if(native_title_menu_selection==1)native_title_menu_selection=0;
                     else if(native_title_menu_selection>=2) {
                         native_title_menu_selection--;
+                        native_title_menu_sfx(0);
                         if(native_title_menu_selection==1)native_title_transition_guard=1;
                         continue;
                     } else continue;
@@ -1613,15 +1624,18 @@ confirm:
                     else if(native_title_menu_selection==1) {
                         native_title_menu_selection=2;
                         native_title_transition_guard=1;
+                        native_title_menu_sfx(0);
                         continue;
                     } else if(native_title_menu_selection<5) {
                         native_title_menu_selection++;
+                        native_title_menu_sfx(0);
                         continue;
                     } else continue;
                 }
                 if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
                    e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
                     if(native_title_menu_selection>=2) {
+                        native_title_menu_sfx(1);
                         native_title_open_selected();
                         continue;
                     }
@@ -1707,7 +1721,11 @@ confirm:
            "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n    if(adev)SDL_PauseAudioDevice(adev,0);",
            "    native_pause_audio_pump();\n"
            "    if(native_pause_request_title) {\n"
-           "        native_pause_request_title=0; md_boot(); native_pause_skip_backdrop_restore=1;\n"
+           "        native_pause_request_title=0;\n"
+           "        if(md_save_slot_exists(5) && md_load_slot(5)) {\n"
+           "            native_pause_skip_backdrop_restore=1;\n"
+           "            native_title_scene_active=0; native_title_compose_enabled=0; native_title_checkpoint_saved=1;\n"
+           "        } else { md_boot(); native_pause_skip_backdrop_restore=1; native_title_checkpoint_saved=0; }\n"
            "    }\n"
            "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n"
            "    native_pause_skip_backdrop_restore=0;\n"
