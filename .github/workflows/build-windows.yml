@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation, feature/level-builder-standalone-game-screen]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation, feature/level-builder-standalone-game-screen, feature/level-builder-maker-ui-vdp]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
