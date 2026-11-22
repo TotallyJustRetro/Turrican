@@ -38,7 +38,6 @@ static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static void native_menu_pause_loop(void);
 static int native_title_gameplay_hud_visible(void);
-static int native_editor_stage_has_gameplay(void);
 static int native_title_menu_selection=0;
 static int native_title_page_mode=0;
 static int native_title_game_options_focus=0;
@@ -203,14 +202,6 @@ static int native_title_gameplay_hud_visible(void) {
 }
 /* The modal renderer dims vdp.fb before presenting the editor. Inspect the
    preserved, original frame instead so title art is not mistaken for a level. */
-static uint32_t native_editor_stage_probe_backup[320*240];
-static int native_editor_stage_has_gameplay(void) {
-    memcpy(native_editor_stage_probe_backup,vdp.fb,sizeof native_editor_stage_probe_backup);
-    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);
-    int visible=native_title_gameplay_hud_visible();
-    memcpy(vdp.fb,native_editor_stage_probe_backup,sizeof native_editor_stage_probe_backup);
-    return visible;
-}
 int md_modern_timer_hud_present(void) {
     return native_title_gameplay_hud_visible();
 }
@@ -678,51 +669,6 @@ static int native_level_import(void) {
         if(ok){uint32_t at=(base+(uint32_t)i*2)&0xFFFF;vdp.vram[at]=word[0];vdp.vram[(at+1)&0xFFFF]=word[1];}
     }
     fclose(f);return ok;
-}
-static void render_native_level_builder(void) {
-    int px=native_editor_x*8,py=native_editor_y*8;
-    native_menu_rect(px,py,8,8,0xFF,0xAE,0x1F,255);
-    native_menu_rect(px+1,py+1,6,6,0x07,0x09,0x0D,220);
-    char a[80],b[96];
-    snprintf(a,sizeof a,"LEVEL BUILDER  TILE %03X  CELL %d,%d",native_editor_tile,native_editor_x,native_editor_y);
-    snprintf(b,sizeof b,"ARROWS MOVE  +/- TILE  ENTER PAINT  F5 SAVE  F6 LOAD");
-    native_menu_rect(0,(vdp.height?vdp.height:224)-28,vdp.width?vdp.width:320,28,0x07,0x09,0x0D,230);
-    draw_str(4,(vdp.height?vdp.height:224)-25,a,1,0xFF,0xAE,0x1F);
-    draw_str(4,(vdp.height?vdp.height:224)-15,b,1,0xCC,0xD6,0xE0);
-    draw_str(4,(vdp.height?vdp.height:224)-7,"TILEMAP ONLY - COLLISION AND OBJECTS NOT EDITED",1,0x99,0xB4,0xC8);
-}
-static void proc_native_level_builder(SDL_Event *e) {
-    int cols=native_level_cols(),rows=native_level_rows();
-    if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
-        switch(e->key.keysym.sym) {
-        case SDLK_UP:if(native_editor_y>0)native_editor_y--;break;
-        case SDLK_DOWN:if(native_editor_y+1<rows)native_editor_y++;break;
-        case SDLK_LEFT:if(native_editor_x>0)native_editor_x--;break;
-        case SDLK_RIGHT:if(native_editor_x+1<cols)native_editor_x++;break;
-        case SDLK_EQUALS:case SDLK_PLUS:case SDLK_PAGEUP:native_editor_tile=(native_editor_tile+1)&0x7FF;break;
-        case SDLK_MINUS:case SDLK_PAGEDOWN:native_editor_tile=(native_editor_tile+0x7FF)&0x7FF;break;
-        case SDLK_RETURN:case SDLK_x:native_level_paint();break;
-        case SDLK_F5:
-#ifdef _WIN32
-            _mkdir("levels");
-#else
-            mkdir("levels",0775);
-#endif
-            native_level_export();break;
-        case SDLK_F6:native_level_import();break;
-        case SDLK_ESCAPE:native_custom_page_back(4);break;
-        }
-    }
-    if(e->type==SDL_CONTROLLERBUTTONDOWN) {
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP&&native_editor_y>0)native_editor_y--;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN&&native_editor_y+1<rows)native_editor_y++;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_editor_x>0)native_editor_x--;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_editor_x+1<cols)native_editor_x++;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A)native_level_paint();
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_X)native_editor_tile=(native_editor_tile+1)&0x7FF;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_Y)native_level_export();
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(4);
-    }
 }
 static const char *native_modern_option_labels[6]={
     "MAP (M KEY)","HIDE TIMER HUD","ONE-TIER WEAPON LOSS","CHECKPOINT AUTO-SAVE",
@@ -1634,7 +1580,6 @@ confirm:
         "    case 8: render_native_extras(); break;\n"
         "    case 9: render_native_toggle_page(9); break;\n"
         "    case 10: render_native_saves(); break;\n"
-        "    case 11: render_native_level_builder(); break;\n"
         "    case 12: render_native_toggle_page(12); break;\n"
         "    case 13: render_native_title_game_options(); break;\n"
         "    case 14: render_native_area_map(); break;\n"
@@ -1663,7 +1608,6 @@ confirm:
         "    else if(native_menu_state==8)proc_native_extras(e);\n"
         "    else if(native_menu_state==9)proc_native_toggle_page(e,9);\n"
         "    else if(native_menu_state==10)proc_native_saves(e);\n"
-        "    else if(native_menu_state==11)proc_native_level_builder(e);\n"
         "    else if(native_menu_state==12)proc_native_toggle_page(e,12);\n"
         "    else if(native_menu_state==13)proc_native_title_game_options(e);\n"
         "    else if(native_menu_state==14)proc_native_area_map(e);\n"
