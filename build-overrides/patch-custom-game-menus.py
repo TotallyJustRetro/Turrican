@@ -1709,19 +1709,19 @@ confirm:
         "hide generic footer on full-screen title Game Options page")
     # Add the game-native subpages, pause animation and sound-test pumping.
     s=once(s,"static void native_menu_draw_frame(const uint32_t *backdrop) {",
-           "static void native_menu_draw_frame(const uint32_t *backdrop) {\\n    native_pause_anim_ticks++;",
+           "static void native_menu_draw_frame(const uint32_t *backdrop) {\n    native_pause_anim_ticks++;",
            "pause animation tick")
     s=once(s,"        while(SDL_PollEvent(&e))native_menu_route_event(&e);",
-           "        while(SDL_PollEvent(&e))native_menu_route_event(&e);\\n        native_pause_audio_pump();",
+           "        while(SDL_PollEvent(&e))native_menu_route_event(&e);\n        native_pause_audio_pump();",
            "pause FM sound-test pump")
     s=once(s,
-           "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\\n    if(adev)SDL_PauseAudioDevice(adev,0);",
-           "    native_pause_audio_pump();\\n"
-           "    if(native_pause_request_title) {\\n"
-           "        native_pause_request_title=0; md_boot(); native_pause_skip_backdrop_restore=1;\\n"
-           "    }\\n"
-           "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\\n"
-           "    native_pause_skip_backdrop_restore=0;\\n"
+           "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n    if(adev)SDL_PauseAudioDevice(adev,0);",
+           "    native_pause_audio_pump();\n"
+           "    if(native_pause_request_title) {\n"
+           "        native_pause_request_title=0; md_boot(); native_pause_skip_backdrop_restore=1;\n"
+           "    }\n"
+           "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n"
+           "    native_pause_skip_backdrop_restore=0;\n"
            "    if(adev)SDL_PauseAudioDevice(adev,0);",
            "pause checkpoint/title transition restore")
     path.write_text(s,encoding="utf-8",newline="\n")
