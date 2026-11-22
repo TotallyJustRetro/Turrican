@@ -911,51 +911,38 @@ extern "C" int mtlb_map_cursor_x(void) { return g_selected_x; }
 extern "C" int mtlb_map_cursor_y(void) { return g_selected_y; }
 extern "C" int mtlb_map_brush(void) { return g_brush_tile; }
 
-extern "C" int mtlb_init(SDL_Window *window,int width,int height)
+extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
 {
     if(g_initialized)return 1;
-    if(!window||width<=0||height<=0)return 0;
+    if(!window||!renderer)return 0;
 
-    g_imgui_width=width;
-    g_imgui_height=height;
-    g_imgui_surface=SDL_CreateRGBSurfaceWithFormat(
-        0,g_imgui_width,g_imgui_height,32,SDL_PIXELFORMAT_ARGB8888);
-    if(!g_imgui_surface)return 0;
-    g_imgui_surface_renderer=SDL_CreateSoftwareRenderer(g_imgui_surface);
-    if(!g_imgui_surface_renderer){
-        SDL_FreeSurface(g_imgui_surface);
-        g_imgui_surface=nullptr;
-        return 0;
-    }
+    g_window=window;
+    g_renderer=renderer;
+    SDL_GetWindowSize(window,&g_imgui_width,&g_imgui_height);
+    if(g_imgui_width<=0||g_imgui_height<=0)return 0;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io=ImGui::GetIO();
     io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename=nullptr;
+    g_ui_scale=1.0f;
     apply_theme();
 
-    g_window=window;
-    g_sdl_backend=ImGui_ImplSDL2_InitForSDLRenderer(window,g_imgui_surface_renderer);
+    g_sdl_backend=ImGui_ImplSDL2_InitForSDLRenderer(window,renderer);
     if(!g_sdl_backend){
         ImGui::DestroyContext();
-        SDL_DestroyRenderer(g_imgui_surface_renderer);
-        SDL_FreeSurface(g_imgui_surface);
-        g_imgui_surface_renderer=nullptr;
-        g_imgui_surface=nullptr;
         g_window=nullptr;
+        g_renderer=nullptr;
         return 0;
     }
-    g_renderer_backend=ImGui_ImplSDLRenderer2_Init(g_imgui_surface_renderer);
+    g_renderer_backend=ImGui_ImplSDLRenderer2_Init(renderer);
     if(!g_renderer_backend){
         ImGui_ImplSDL2_Shutdown();
         g_sdl_backend=false;
         ImGui::DestroyContext();
-        SDL_DestroyRenderer(g_imgui_surface_renderer);
-        SDL_FreeSurface(g_imgui_surface);
-        g_imgui_surface_renderer=nullptr;
-        g_imgui_surface=nullptr;
         g_window=nullptr;
+        g_renderer=nullptr;
         return 0;
     }
 
@@ -975,14 +962,11 @@ extern "C" void mtlb_shutdown(void)
     if(g_renderer_backend)ImGui_ImplSDLRenderer2_Shutdown();
     if(g_sdl_backend)ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
-    if(g_imgui_surface_renderer)SDL_DestroyRenderer(g_imgui_surface_renderer);
-    if(g_imgui_surface)SDL_FreeSurface(g_imgui_surface);
-    g_imgui_surface_renderer=nullptr;
-    g_imgui_surface=nullptr;
     g_renderer_backend=false;
     g_sdl_backend=false;
     g_initialized=false;
     g_window=nullptr;
+    g_renderer=nullptr;
     g_last_painted_x=-1;
     g_last_painted_y=-1;
 }
@@ -992,92 +976,86 @@ extern "C" void mtlb_process_event(const SDL_Event *event)
     if (g_initialized && event) ImGui_ImplSDL2_ProcessEvent(event);
 }
 
-
-
-extern "C" int mtlb_render_to_framebuffer(uint32_t *framebuffer,int width,int height,int pitch_pixels)
+extern "C" int mtlb_render_to_screen(SDL_Renderer *renderer,
+                                      int view_x,int view_y,int view_width,int view_height)
 {
-    if(!g_initialized||!g_imgui_surface||!g_imgui_surface_renderer||!framebuffer||
-       width<=0||height<=0||pitch_pixels<width)return 0;
-    if(width!=g_imgui_width||height!=g_imgui_height){
-        ImGui_ImplSDLRenderer2_Shutdown();g_renderer_backend=false;
-        SDL_DestroyRenderer(g_imgui_surface_renderer);SDL_FreeSurface(g_imgui_surface);
-        g_imgui_surface=nullptr;g_imgui_surface_renderer=nullptr;
-        g_imgui_width=width;g_imgui_height=height;
-        g_imgui_surface=SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SDL_PIXELFORMAT_ARGB8888);
-        if(!g_imgui_surface)return 0;
-        g_imgui_surface_renderer=SDL_CreateSoftwareRenderer(g_imgui_surface);
-        if(!g_imgui_surface_renderer)return 0;
-        if(!ImGui_ImplSDLRenderer2_Init(g_imgui_surface_renderer))return 0;
-        g_renderer_backend=true;
-    }
-    ImGui_ImplSDLRenderer2_NewFrame();ImGui_ImplSDL2_NewFrame();
+    if(!g_initialized||!renderer||renderer!=g_renderer||
+       view_width<=0||view_height<=0)return 0;
+
+    int windowW=0,windowH=0;
+    SDL_GetWindowSize(g_window,&windowW,&windowH);
+    if(windowW<=0||windowH<=0)return 0;
+
+    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
     ImGuiIO &io=ImGui::GetIO();
-    int windowW=width,windowH=height;SDL_GetWindowSize(g_window,&windowW,&windowH);
-    ImVec2 mouse=io.MousePos;
-    if(mouse.x>=0&&mouse.y>=0&&windowW>0&&windowH>0){
-        mouse.x*=((float)width/windowW);mouse.y*=((float)height/windowH);io.MousePos=mouse;
+
+    float scaleX=(float)view_width/960.0f;
+    float scaleY=(float)view_height/540.0f;
+    float nextScale=std::min(scaleX,scaleY);
+    nextScale=std::max(0.85f,std::min(2.25f,nextScale));
+    if(nextScale>g_theme_scale+0.01f||nextScale<g_theme_scale-0.01f){
+        g_ui_scale=nextScale;
+        apply_theme();
     }
-    io.DisplaySize=ImVec2((float)width,(float)height);io.DisplayFramebufferScale=ImVec2(1,1);
+    io.FontGlobalScale=g_ui_scale;
+
     ImGui::NewFrame();
-    if(!g_exit_requested&&!io.WantTextInput&&ImGui::IsKeyPressed(ImGuiKey_Escape,false))g_exit_requested=true;
-    ImGui::SetNextWindowPos(ImVec2(0,0));ImGui::SetNextWindowSize(io.DisplaySize);
-    ImGui::SetNextWindowBgAlpha(1);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(3,2));
+    if(!g_exit_requested&&!io.WantTextInput&&ImGui::IsKeyPressed(ImGuiKey_Escape,false))
+        g_exit_requested=true;
+
+    ImGui::SetNextWindowPos(ImVec2((float)view_x,(float)view_y));
+    ImGui::SetNextWindowSize(ImVec2((float)view_width,(float)view_height));
+    ImGui::SetNextWindowBgAlpha(1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(ui(8),ui(7)));
     ImGui::Begin("##MT_MAKER_ROOT",nullptr,
         ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|
         ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoSavedSettings|
         ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse|
         ImGuiWindowFlags_NoBringToFrontOnFocus);
+
     draw_top_bar();
     draw_layer_bar();
     draw_asset_shelf();
-    const float bottomHeight=ui(32);
-    const float workspaceHeight=std::max(ui(90),io.DisplaySize.y-ui(25)-ui(31)-ui(43)-ui(40)-bottomHeight-ui(18));
     draw_tool_palette();
+
+    const float bottomHeight=ui(32);
+    const float workspaceHeight=std::max(ui(90),
+        (float)view_height-ui(25)-ui(31)-ui(43)-ui(40)-bottomHeight-ui(18));
     ImGui::BeginChild("##maker_workspace",ImVec2(0,workspaceHeight),false);
     ImGui::BeginChild("##maker_stage",ImVec2(0,0),true);
     draw_center_view();
-    ImGui::EndChild();ImGui::EndChild();
+    ImGui::EndChild();
+    ImGui::EndChild();
     draw_bottom_workspace();
-    ImGui::End();ImGui::PopStyleVar();ImGui::Render();
-
-    SDL_SetRenderDrawBlendMode(g_imgui_surface_renderer,SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(g_imgui_surface_renderer,0,0,0,255);
-    SDL_RenderClear(g_imgui_surface_renderer);
-    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),g_imgui_surface_renderer);
+    ImGui::End();
+    ImGui::PopStyleVar();
 
     const int gridW=20,gridH=15,total=gridW*gridH,frames=12;
     const bool closing=g_exit_requested;
     if(closing&&g_fade_out_frame<0)g_fade_out_frame=0;
     const int revealed=std::min(total,g_fade_in_frame*total/frames);
     const int covered=closing?std::min(total,g_fade_out_frame*total/frames):0;
-    SDL_SetRenderDrawBlendMode(g_imgui_surface_renderer,SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(g_imgui_surface_renderer,0,0,0,255);
+    ImDrawList *fade=ImGui::GetForegroundDrawList();
     for(int i=0;i<total;i++){
         const int rank=(i*73+19)%total;
         const bool black=closing?(rank<covered):(rank>=revealed);
         if(!black)continue;
         const int x=i%gridW,y=i/gridW;
-        SDL_Rect block={x*width/gridW,y*height/gridH,
-            (x+1)*width/gridW-x*width/gridW,(y+1)*height/gridH-y*height/gridH};
-        SDL_RenderFillRect(g_imgui_surface_renderer,&block);
+        ImVec2 a((float)view_x+x*(float)view_width/gridW,
+                 (float)view_y+y*(float)view_height/gridH);
+        ImVec2 b((float)view_x+(x+1)*(float)view_width/gridW,
+                 (float)view_y+(y+1)*(float)view_height/gridH);
+        fade->AddRectFilled(a,b,IM_COL32(0,0,0,255));
     }
-    SDL_RenderPresent(g_imgui_surface_renderer);
-    if(SDL_MUSTLOCK(g_imgui_surface))SDL_LockSurface(g_imgui_surface);
-    for(int y=0;y<height;y++){
-        const uint32_t *src=(const uint32_t*)((const uint8_t*)g_imgui_surface->pixels+y*g_imgui_surface->pitch);
-        uint32_t *dst=framebuffer+y*pitch_pixels;
-        for(int x=0;x<width;x++){
-            const uint32_t p=src[x];const unsigned a=(p>>24)&255u,r=(p>>16)&255u,g=(p>>8)&255u,b=p&255u;
-            if(a==255)dst[x]=(r<<16)|(g<<8)|b;
-            else if(a){const uint32_t old=dst[x],inv=255u-a;
-                dst[x]=(((r*a+((old>>16)&255u)*inv)/255u)<<16)|
-                       (((g*a+((old>>8)&255u)*inv)/255u)<<8)|
-                       ((b*a+(old&255u)*inv)/255u);}
-        }
+
+    ImGui::Render();
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),renderer);
+
+    if(closing){
+        if(g_fade_out_frame<frames)g_fade_out_frame++;
+        return g_fade_out_frame>=frames;
     }
-    if(SDL_MUSTLOCK(g_imgui_surface))SDL_UnlockSurface(g_imgui_surface);
-    if(closing){if(g_fade_out_frame<frames)g_fade_out_frame++;return g_fade_out_frame>=frames;}
     if(g_fade_in_frame<frames)g_fade_in_frame++;
     return 0;
 }
