@@ -860,6 +860,8 @@ confirm:
                "apply custom gameplay modifiers")
     else:
         raise RuntimeError("Could not locate custom gameplay frame boundary hook.")
+    # Match the original VDP menu's cool-blue selected treatment, not the old gold accent.
+    s=s.replace("0xFF,0xAE,0x1F","0x00,0x48,0xFC")
     path.write_text(s,encoding="utf-8",newline="\n")
 
 def main() -> int:
