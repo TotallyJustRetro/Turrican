@@ -133,6 +133,17 @@ Together with `f_5232` (initialize the 79-record pool), `f_5300` (allocate), `f_
 
 The next static pass is to find the other consumers of per-object +30 and +38, then correlate spawn routines, update routines, and ROM animation/resource pointers into verified object families. That is the step needed before exposing safe named objects in the Maker.
 
+### Build #335: +30/+38 can be data tables, not callbacks
+
+The new consumer bodies confirm that record-field meanings are family-specific:
+
+- In `f_4A5A`, the routine reads the object's +38 field into A1, then indexes it with the object's state at +28 and reads word values used to adjust the object's +24/+26 position. It also changes +34 to `0x4AC0` for the next update state. In this family, +38 is an animation/movement data table, while +34 is the executable update callback.
+- In `f_54A6`, the routine reads +30 into A2 and walks through the referenced data by indexed long/word reads, writing the results into an output buffer. In this path, +30 is a data/sequence pointer, not a function being called directly.
+- `f_4E52` is a record initializer which fills +30, +34, +38, +42 and +46 from several advancing table pointers. It initializes the object around the chosen position and prepares multiple per-object tables/handlers together. We still need the caller's table bases to assign the exact role of each field.
+- `f_50EA` reads +34 and +38 from a related context, uses them as source pointers, and copies indexed data into buffers. Because its base register is A6 and the parent object/context has not yet been traced, do not assume it uses the same record layout as the +34 list walker.
+
+Therefore, the Maker's internal record schema must be actor-family-aware. It cannot assume that +30 or +38 always hold a function pointer, nor that every structure using those offsets is the 62-byte object-pool record.
+
 The generated-code scan currently finds 43 distinct addresses assigned to the +34 object slot. They include `0x3E5C`, `0x406E`, `0x439E`, `0x4466`, `0x46B2`, `0x49C8`, `0x4A5A`, `0x4AC0`, `0x4BD0`, `0x5962`, `0x5B42`, `0x5BE4`, `0x5CD0`, `0x617C`, `0x6212`, `0x623C`, `0x6334`, `0x6410`, `0x959A`, `0xA3D6`, `0xA5D4`, `0xA94E`, `0xAA74`, `0xAF80`, `0xB4AA`, `0xB5BA`, `0xB710`, `0xB852`, `0xBD20`, `0xBE16`, `0xBE1E`, `0xBF50`, `0xC262`, `0xC402`, `0xC46C`, `0xC8A6`, and others.
 
 These addresses are code handlers, not user-facing actor names. Some are later state transitions installed by other handlers, so the list is an implementation index, not a count of distinct enemy types. Verified initial allocator-owner → first +34 handler relationships include `f_4992 → 0x49C8`, `f_4B58/f_4B74 → 0x4BD0`, `f_60EE → 0x617C`, `f_62FA → 0x6334`, `f_A114 → 0xC8A6`, `f_A1E8 → 0xA3D6`, `f_A556 → 0xA5D4`, `f_A708 → 0xAA74`, `f_BCB6 → 0xBD20`, `f_C212 → 0xC262`, and `f_C2E4/f_C310/f_C32E → 0xC402`. A single owner may create several child records or transition an object to a different handler later.
