@@ -1037,6 +1037,54 @@ if gen.exists():
    summary=",".join(f"+{offset}:{sum(1 for row in entries if row[2]==offset)}" for offset in sorted(set(row[2] for row in entries)))
    emit(f"OBJECT_RENDER_INITIALIZER function={fn} writes={len(entries)} fields={summary}")
 
+ # Correlate the renderer descriptor initializers with their direct callers.
+ # This is the final step needed to identify which parent routines select each
+ # data table and to separate spawn recipes from state-transition helpers.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_FAMILY_SETUP_CALL_GRAPH]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  targets={
+   "f_3DB4","f_3FA4","f_419A","f_4626","f_4E52","f_59EE","f_5A9E",
+   "f_5BB4","f_5CA4","f_5FCA","f_60EE","f_62FA","f_951C",
+   "f_A1B6","f_A3A0","f_A556","f_A67C","f_A708","f_AC58",
+   "f_B05C","f_B460","f_B4AA","f_B4C4","f_B6A2","f_BACA",
+   "f_BD20","f_C2E4","f_C310","f_C32E","f_C34E","f_DC78"
+  }
+  current="(global)"
+  call_records=[]
+  for n,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   called=sorted(set(re.findall(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)",line))&targets)
+   for target in called:
+    call_records.append((current,target,n))
+  by_target={}
+  for owner,target,n in call_records:
+   by_target.setdefault(target,[]).append((owner,n))
+  for target,owners in sorted(by_target.items()):
+   emit(f"OBJECT_SETUP_CALLS target={target} total_calls={len(owners)} owners="+",".join(f"{owner}@{n+1}" for owner,n in owners[:30]))
+   for owner,n in owners[:10]:
+    lo=max(0,n-14);hi=min(len(gen_lines),n+14)
+    emit(f"  OBJECT_SETUP_CALL_CONTEXT owner={owner} target={target} lines={lo+1}-{hi}")
+    for q in range(lo,hi):
+     emit(f"    {q+1}: {gen_lines[q][:300]}")
+  emit(f"OBJECT_SETUP_DIRECT_CALL_TOTAL {len(call_records)}")
+
+  emit("[OBJECT_FAMILY_DATA_TABLE_CONSTANTS]")
+  # List ROM/table addresses used in each family initializer and its caller
+  # context. Values are clues only until a table's record format is decoded.
+  wanted=set(targets)|{"f_3F06","f_3F7C","f_3F8A","f_44EE","f_4992","f_4B58","f_4B74","f_4BF0","f_55A4","f_5B02","f_5DB2","f_A1E8","f_A114","f_BCB6"}
+  current="(global)"
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if current not in wanted: continue
+   constants=sorted(set(int(m.group(1),16) for m in re.finditer(r"0x([0-9A-Fa-f]{4,8})u",line) if int(m.group(1),16)<0x400000))
+   if constants:
+    emit(f"OBJECT_FAMILY_CONST function={current} line={n} values="+",".join(f"0x{x:X}" for x in constants)+" code={line.strip()[:300]}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
