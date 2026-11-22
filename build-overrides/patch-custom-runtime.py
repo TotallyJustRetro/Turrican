@@ -217,7 +217,7 @@ static int md_reborn_save_dir(void) {
 }
 
 static int md_reborn_slot_path(char *dst,size_t cap,int slot,int temporary) {
-    if(slot<1||slot>4) return 0;
+    if(slot<1||slot>5) return 0;
     int n=snprintf(dst,cap,"saves/slot%d.%s",slot,temporary?"tmp":"mts");
     return n>0 && (size_t)n<cap;
 }
@@ -528,12 +528,11 @@ static int md_modern_timer_hud_this_frame=0;
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* The timer sits on the foreground plane/sprite layer in the top-center
-       HUD column. Clear that entire column and leave the rendered parallax
-       background (Plane B) untouched. The side HUD labels remain visible and
-       provide a stable presence signal, so this mask does not oscillate. */
-    if(md_modern_timer_hud_this_frame && y>=vdp.height*4/100 && y<vdp.height*41/100) {
-        int x0=W*30/100, x1=W*70/100;
+    /* Remove only the central timer's foreground pixels. Do not blank the
+       whole center of the HUD: that exposes a broad strip of Plane B scenery.
+       The score and energy labels stay untouched and keep HUD detection stable. */
+    if(md_modern_timer_hud_this_frame && y>=vdp.height*5/100 && y<vdp.height*25/100) {
+        int x0=W*41/100, x1=W*62/100;
         if(x1>W)x1=W;
         for(int x=x0;x<x1;x++) {
             pa[x]=0;
