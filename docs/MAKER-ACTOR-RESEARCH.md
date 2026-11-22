@@ -146,16 +146,17 @@ The new consumer bodies confirm that record-field meanings are family-specific:
 
 Therefore, the Maker's internal record schema must be actor-family-aware. It cannot assume that +30 or +38 always hold a function pointer, nor that every structure using those offsets is the 62-byte object-pool record.
 
-### Build #336: object records feed two render-preparation paths
+### Build #336–338: object render preparation and VDP upload
 
-The source report now exposes a useful bridge between the active object list and renderer-facing data:
+The source reports now expose the link from the active object list through the game's render preparation and into the VDP upload path:
 
-1. `f_56CE` walks the active list at `$FFBC28`. It filters records using +42, reads each object's +24 position, +28 state, and +38 table pointer, indexes that table, and writes derived entries into output areas beginning at `$FFF268` and `$FFF2A8`.
-2. `f_5472` sets up a second output pass using shared output state at `$FFBC54/$FFBC58` and the same active-list head. It calls `f_54A6`.
-3. `f_54A6` checks object flags +43 and +10, reads object position fields (+24), obtains the +30 table pointer, indexes that table, and emits calculated data into the output buffer. It updates the shared output pointer and count when it returns.
-4. The normal frame loop in `f_156A` calls the update walker `f_5432`, then `f_56CE`, later `f_5472`, and then the stage/global callbacks. This places both object-output passes in the ordinary frame pipeline, after the object update step.
+- `f_5472` checks the display-state byte at `$FFBD16`. When enabled, it sets render parameters, loads the current output pointer from `$FFBC54`, the output count from `$FFBC58`, and the active object list from `$FFBC28`, then calls `f_54A6`. It stores the updated pointer and count back into `$FFBC54/$FFBC58`.
+- `f_54A6` walks those active object records. It filters records using flags +43 and +10, reads object position data at +24, obtains the object's +30 render-data pointer, indexes that table and writes generated entries to the shared output buffer.
+- `f_5450` computes the amount of data added by comparing `$FFBC54` with the buffer base `$DA1E`. It caps the size at `0x280` bytes, then calls the VDP transfer helper `f_6DE` with source `$DA1E`, destination `0x3000`, and transfer parameter 2. This is the strongest evidence so far that object +30 data contributes to real VDP graphics/render output.
+- `f_56CE` is a separate pass over the active list. It filters objects using +42, reads +24 position, +28 state and the +38 table pointer, indexes the table and writes derived entries into auxiliary buffers beginning at `$FFF268` and `$FFF2A8`.
+- The main frame path in `f_156A` runs the update walker `f_5432`, then `f_5644`, `f_56CE`, `f_3D80`, `f_5DB2`, a global callback, and then `f_5472`/`f_3BD8`. So both object-output passes execute as part of the ordinary gameplay frame after the object update step.
 
-This means the +30 and +38 fields are not arbitrary or decorative references: they feed the game's real per-object render-preparation pipeline. However, the table formats and relationship to the actual VRAM tile/pattern data still need mapping. A Maker actor manifest should therefore preserve the object’s spawn routine, +34 update handler, +30 render data and +38 state/render table as separate family-specific fields.
+This proves that the engine's object pool is directly connected to renderer-facing data and VDP transfers. The asset catalogue needs to retain the spawn routine, +34 update handler, +30 render-data pointer, and +38 state/render table as separate family-specific fields. The table contents and their exact encoding are not decoded yet.
 
 The generated-code scan currently finds 43 distinct addresses assigned to the +34 object slot. They include `0x3E5C`, `0x406E`, `0x439E`, `0x4466`, `0x46B2`, `0x49C8`, `0x4A5A`, `0x4AC0`, `0x4BD0`, `0x5962`, `0x5B42`, `0x5BE4`, `0x5CD0`, `0x617C`, `0x6212`, `0x623C`, `0x6334`, `0x6410`, `0x959A`, `0xA3D6`, `0xA5D4`, `0xA94E`, `0xAA74`, `0xAF80`, `0xB4AA`, `0xB5BA`, `0xB710`, `0xB852`, `0xBD20`, `0xBE16`, `0xBE1E`, `0xBF50`, `0xC262`, `0xC402`, `0xC46C`, `0xC8A6`, and others.
 
