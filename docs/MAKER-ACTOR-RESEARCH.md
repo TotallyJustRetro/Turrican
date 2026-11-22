@@ -1,0 +1,43 @@
+# Mega Turrican Reborn — Maker actor and asset research
+
+Branch: `feature/level-builder-maker-ui-vdp`
+
+## Safety / entry-point status
+
+- Build #295 added a live gameplay snapshot writer when the Level Builder was opened. That experiment was removed after the user reported a crash.
+- The snapshot writer function and its call site are removed from the build patches.
+- Level Builder has been removed from the in-game pause menu. It remains reachable from the title/creation menu.
+- Build #299 compiled successfully with those safety corrections. Do not ask the user to repeat the Build #295 capture procedure.
+
+## What the current code actually contains
+
+The native harness loads the user's Mega Drive ROM as a runtime byte array (`md_load_rom` reads the external ROM file into `rom` / `romlen`). The generated C contains recompiled 68000 routines, but the artwork is not currently packaged as a named PC-side sprite/enemy/boss library. The cartridge's graphics data is loaded from the ROM and transferred through the emulated VDP into VRAM/CRAM.
+
+The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
+
+## Static runtime findings (Build #296 report)
+
+The generated code reveals a callback/context mechanism:
+
+- `f_156A` and `f_1994` read several 32-bit addresses from fixed work-RAM slots and dispatch through them with `rt_call_addr`.
+- Observed callback slots include `$FFBC3C`, `$FFBC44`, `$FFBC4C`, `$FFBC1C`, `$FFBC62`, `$FFBC20`, `$FFBC5A`, and `$FFBC5E`.
+- `f_19FA` stores its incoming A0 value in `$FFBC50`, then copies 32-bit values from offsets in the pointed-to structure into callback slots. Notable offsets include +18, +22, +30, +34, and +42.
+- This is strong evidence for a runtime object/context descriptor whose fields include callback pointers. It is not yet proof that each descriptor is an enemy or boss definition.
+- Constant callback assignments seen in the report include `$FFBC44 <- 0x9B6C / 0x915A / 0xA18A`, `$FFBC4C <- 0x9B5C / 0x0582`, `$FFBC20 <- 0x9BE0 / 0x9AB4 / 0xA080 / 0x99FE / 0xA114 / 0xA18A`, and `$FFBC62 <- 0x224C`. These are routine addresses, not actor IDs.
+
+The next reports extend this work by capturing the installer routine bodies and indexing writes to the VDP data/control ports. This should help locate object setup routines and ROM-to-VDP graphics transfer paths.
+
+## Correct build direction
+
+1. Keep the Creator outside the pause menu. Keep the in-game pause menu for gameplay options only.
+2. Build a static research index from generated routines and ROM-data references. Do not use a giant live CPU/RAM snapshot for this.
+3. Trace the callback descriptor layout and the routines that install its handlers. Identify which contexts are player logic, enemy logic, boss logic, pickups, or stage objects before assigning names.
+4. Trace ROM-to-VDP transfer/decompression paths. The asset browser should be populated from actual ROM data using the game's own formats, not by presenting arbitrary individual SAT entries as enemies.
+5. Define reusable semantic actor records only after the sprite composition, animation data, spawn routine, update routine, collision behavior, and properties are identified.
+6. Implement level document loading in the gameplay runtime before enabling Test Play. A saved Maker map must become a real playable level, not remain an editor-only picture.
+7. Add music import/selection as a separate asset pipeline using the runtime audio playback path; keep Classic and Modern modes as distinct level profiles.
+
+## Build references
+
+- Build #299 (safe pause-menu and capture cleanup): successful Windows build.
+- Build #295: do not use for further testing; it contains the removed live snapshot experiment.
