@@ -48,6 +48,9 @@ static int native_title_last_selection=-1, native_title_last_page=-1, native_tit
 static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
+static uint8_t native_pause_font_cache[43][32];
+static int native_pause_font_cache_valid=0;
+static void native_pause_font_capture(void);
 static int native_pause_confirm_action=0,native_pause_confirm_choice=1;
 static int native_pause_request_title=0,native_pause_skip_backdrop_restore=0;
 static int native_pause_no_checkpoint=0;
@@ -311,6 +314,7 @@ static void native_title_menu_update(void) {
         native_title_last_focus=-1;
         return;
     }
+    native_pause_font_capture();
     if(!native_title_scene_active) {
         native_title_scene_active=1;
         native_title_menu_selection=0;
@@ -894,18 +898,30 @@ static void proc_native_area_map(SDL_Event *e) {
 }
 
 
+static void native_pause_font_capture(void) {
+    if(native_pause_font_cache_valid)return;
+    /* Cache the ROM's title-menu glyph patterns while they are resident in VRAM.
+       Gameplay reuses those tile slots for scenery, so reading them live during
+       pause produces the rectangular texture blocks seen in the broken menu. */
+    for(unsigned tile=0x530u;tile<=0x55Au;tile++)
+        memcpy(native_pause_font_cache[tile-0x530u],&vdp.vram[tile*32u],32u);
+    native_pause_font_cache_valid=1;
+}
 static void native_pause_draw_text(int x,int y,const char *s,uint32_t color) {
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
+    if(!native_pause_font_cache_valid)return;
     uint8_t r=(uint8_t)(color>>16),g=(uint8_t)(color>>8),b=(uint8_t)color;
     for(int i=0;s[i];i++) {
-        uint16_t tile=native_options_font_tile(s[i]);
         if(s[i]==' ')continue;
+        uint16_t tile=native_options_font_tile(s[i]);
+        if(tile<0x530u||tile>0x55Au)continue;
+        const uint8_t *glyph=native_pause_font_cache[tile-0x530u];
         for(int sy=0;sy<8;sy++) {
             int py=y+sy;if(py<0||py>=H)continue;
             uint32_t *row=&vdp.fb[py*320];
             for(int sx=0;sx<8;sx++) {
                 int px=x+i*8+sx;if(px<0||px>=W)continue;
-                uint8_t packed=vdp.vram[(size_t)tile*32u+(size_t)sy*4u+(size_t)(sx>>1)];
+                uint8_t packed=glyph[(size_t)sy*4u+(size_t)(sx>>1)];
                 unsigned ink=(sx&1)?(packed&15u):(packed>>4);
                 if(ink)row[px]=((uint32_t)r<<16)|((uint32_t)g<<8)|b;
             }
@@ -963,7 +979,7 @@ static void render_native_suit_status(void) {
     snprintf(row,sizeof row,"SMART BOMBS %u",bombs);native_pause_draw_text(x,76,row,0xD7E0EB);
     native_pause_draw_text(x,91,"DIAMONDS --",0xAAB8C7);
     native_pause_draw_text(x,106,"HOMING MISSILES --",0xAAB8C7);
-    native_pause_draw_text(x,123,"PRIMARY WEAPON  (LEFT / RIGHT)",0xF0B7E7);
+    native_pause_draw_text(x,123,"PRIMARY WEAPON LEFT RIGHT",0xF0B7E7);
     const char *weapon_name[3]={"MULTIPLE","LASER","REBOUND"};
     const unsigned levels[3]={multiple,laser,rebound};
     for(int i=0;i<3;i++) {
@@ -976,7 +992,7 @@ static void render_native_suit_status(void) {
         native_pause_draw_text(x,yy,row,i==(int)weapon?0xFFF0D0:0xCDD6E2);
     }
     native_pause_draw_text(x,186,"PLASMA ROPE --   ENERGY WHEEL --",0xAAB8C7);
-    native_pause_draw_text(x,202,"B / ESC BACK",0xAAB8C7);
+    native_pause_draw_text(x,202,"B ESC BACK",0xAAB8C7);
 }
 static void proc_native_suit_status(SDL_Event *e) {
     uint8_t ram_snapshot[0x10000];md_copy_main_ram(ram_snapshot);
@@ -1021,12 +1037,12 @@ static void render_native_pause_options(void) {
             native_menu_rect(18,y-2,2,17,0xF0,0x26,0xD8,255);
         }
         char row[56];
-        if(i==0)snprintf(row,sizeof row,"RAPID FIRE: %s",native_pause_rapid_fire?"ON":"OFF");
-        else if(i==1)snprintf(row,sizeof row,"CONTROL CONFIG: TYPE %c",'A'+(native_pause_control_config%3));
+        if(i==0)snprintf(row,sizeof row,"RAPID FIRE %s",native_pause_rapid_fire?"ON":"OFF");
+        else if(i==1)snprintf(row,sizeof row,"CONTROL CONFIG TYPE %c",'A'+(native_pause_control_config%3));
         else snprintf(row,sizeof row,"%s",items[i]);
         native_pause_draw_text(26,y,row,i==native_menu_sel?0xFFF0D0:0xC9D4E0);
     }
-    native_pause_draw_text(22,202,"B / ESC BACK   A / ENTER SELECT",0xAAB8C7);
+    native_pause_draw_text(22,202,"B ESC BACK   A ENTER SELECT",0xAAB8C7);
 }
 static void proc_native_pause_options(SDL_Event *e) {
     const int n=7;
@@ -1089,7 +1105,7 @@ static void render_native_pause_confirm(void) {
     native_pause_panel(native_pause_confirm_action==0?"RESTART STAGE":
         native_pause_confirm_action==1?"QUIT TO TITLE SCREEN":"QUIT GAME");
     int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
-    native_pause_draw_text(W/2-48,H/2-30,"ARE YOU SURE?",0xFFF0CF);
+    native_pause_draw_text(W/2-48,H/2-30,"ARE YOU SURE",0xFFF0CF);
     native_pause_draw_text(W/2-42,H/2+3,"YES",native_pause_confirm_choice==0?0xFF52E8:0xDDE6F1);
     native_pause_draw_text(W/2+28,H/2+3,"NO",native_pause_confirm_choice==1?0xFF52E8:0xDDE6F1);
     if(native_pause_no_checkpoint)
@@ -1229,13 +1245,13 @@ def patch_sdl(project: Path) -> None:
         int on=((native_pause_anim_ticks/12u+i*3u)&1u)!=0;
         native_menu_rect(x+w-32+i*6,y+9,4,4,on?0xF4:0x65,on?0x28:0x18,on?0xDA:0x47,255);
     }
-    static const char *items[]={"RESUME MISSION","SUIT STATUS AND ARSENAL","OPTIONS AND SOUND TEST",
-        "ABORT / RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
+    static const char *items[]={"RESUME MISSION","SUIT STATUS ARSENAL","OPTIONS SOUND TEST",
+        "ABORT RESTART STAGE","QUIT TO TITLE","QUIT GAME"};
     for(int i=0;i<6;i++) {
         int iy=y+40+i*23;
         if(i==native_menu_sel) {
-            native_menu_rect(x+10,iy-3,174,19,0x9C,0x0A,0x7B,190);
-            native_menu_rect(x+12,iy-1,170,15,0x24,0x0F,0x2C,245);
+            native_menu_rect(x+10,iy-3,166,19,0x9C,0x0A,0x7B,190);
+            native_menu_rect(x+12,iy-1,162,15,0x24,0x0F,0x2C,245);
             native_menu_rect(x+10,iy-3,2,19,0xF0,0x26,0xD8,255);
         }
         native_pause_draw_text(x+20,iy,items[i],i==native_menu_sel?0xFFF0D0:0xC4CFDA);
@@ -1243,17 +1259,17 @@ def patch_sdl(project: Path) -> None:
     uint8_t ram_snapshot[0x10000];md_copy_main_ram(ram_snapshot);
     unsigned energy=((unsigned)ram_snapshot[0xBF20]<<8)|ram_snapshot[0xBF21];
     if(energy>0x40)energy=0x40;
-    int bx=x+198,by=y+42,bw=w-210;
+    int bx=x+186,by=y+42,bw=w-198;
     native_menu_rect(bx,by,bw,85,0x05,0x08,0x11,255);
     native_menu_rect(bx,by,bw,1,0x9D,0x18,0x83,255);
     native_pause_draw_text(bx+8,by+8,"SUIT STATUS",0xEDB5E8);
     native_pause_draw_text(bx+8,by+25,"ENERGY",0xDCE5EF);
     native_menu_rect(bx+8,by+39,bw-16,8,0x3A,0x30,0x44,255);
     if(energy)native_menu_rect(bx+8,by+39,(bw-16)*(int)energy/0x40,8,0xE9,0xA5,0x25,255);
-    native_pause_draw_text(bx+8,by+54,"MISSION ACTIVE",0xA9B5C6);
+    native_pause_draw_text(bx+8,by+54,"MISSION LIVE",0xA9B5C6);
     native_menu_rect(bx+8,by+69,bw-16,1,0xB7,0x1D,0x9D,255);
-    native_pause_draw_text(bx+8,by+76,"FM LINK ONLINE",0xC7B0D0);
-    native_pause_draw_text(x+16,y+h-17,"UP / DOWN SELECT   A / ENTER OK   B / ESC RESUME",0xAAB8C7);
+    native_pause_draw_text(bx+8,by+76,"FM READY",0xC7B0D0);
+    native_pause_draw_text(x+16,y+h-17,"ARROWS SELECT  ENTER OK  ESC BACK",0xAAB8C7);
 }'''
     s=replace_function(s,"static void render_native_pause_main(void)",pause_render,"pause menu Extras row")
 
@@ -1476,7 +1492,7 @@ confirm:
         "native Game Options EXIT hint")
     s=once(s,
         "    draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
-        "    if(native_menu_state<15)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
+        "    if(native_menu_state!=1 && native_menu_state<15)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
         "hide generic footer on full-screen title Game Options page")
     # Add the game-native subpages, pause animation and sound-test pumping.
     s=once(s,"static void native_menu_draw_frame(const uint32_t *backdrop) {",
