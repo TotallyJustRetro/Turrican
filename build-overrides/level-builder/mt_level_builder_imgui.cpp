@@ -49,8 +49,13 @@ static float ui(float value) { return value * g_ui_scale; }
 static uint8_t g_live_vram[65536] = {};
 static uint16_t g_live_cram[64] = {};
 static uint32_t g_live_art_hash = 0;
-static int g_live_tile_ids[256] = {};
+static int g_live_tile_ids[336] = {};
 static int g_live_tile_count = 0;
+/* ROM block confirmed by native object handler f_C8A6: ROM $03AF80 -> VRAM $1600, length $0A00. */
+static uint8_t g_rom_art_block[0x0A00] = {};
+static bool g_rom_art_valid = false;
+static int g_rom_tile_start_index = -1;
+static int g_rom_tile_count = 0;
 static uint8_t g_live_regs[32] = {};
 struct LiveSpritePart {
     uint16_t tile_attr;
@@ -260,8 +265,21 @@ static ImU32 vdp_color(int palette,int index)
 static int vdp_pixel(int tile,int x,int y)
 {
     if(tile<0||tile>=2048)return 0;
-    const uint8_t packed=g_live_vram[tile*32+y*4+(x>>1)];
+    uint8_t packed=0;
+    if(g_rom_art_valid && tile>=0xB0 && tile<0x100)
+        packed=g_rom_art_block[(tile-0xB0)*32+y*4+(x>>1)];
+    else
+        packed=g_live_vram[tile*32+y*4+(x>>1)];
     return (x&1)?(packed&15):(packed>>4);
+}
+
+static void append_rom_art_tiles()
+{
+    if(!g_rom_art_valid || g_rom_tile_count)return;
+    g_rom_tile_start_index=g_live_tile_count;
+    for(int tile=0xB0;tile<0x100 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+        g_live_tile_ids[g_live_tile_count++]=tile;
+    g_rom_tile_count=g_live_tile_count-g_rom_tile_start_index;
 }
 static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
 {
@@ -663,6 +681,7 @@ static void draw_asset_shelf()
     if(g_mode==MODE_TILES){
         ImGui::SameLine();
         if(ImGui::SmallButton("<"))g_tile_shelf_offset=std::max(0,g_tile_shelf_offset-8);
+        if(g_rom_tile_count>0){ImGui::SameLine(0,2);if(ImGui::SmallButton("ROM ART"))g_tile_shelf_offset=g_rom_tile_start_index;}
         for(int i=g_tile_shelf_offset;i<g_live_tile_count&&i<g_tile_shelf_offset+8;i++){
             ImGui::SameLine(0,2);
             const int tile=g_live_tile_ids[i];
@@ -679,7 +698,8 @@ static void draw_asset_shelf()
         }
         ImGui::SameLine(0,2);
         if(ImGui::SmallButton(">"))g_tile_shelf_offset=std::min(std::max(0,g_live_tile_count-8),g_tile_shelf_offset+8);
-        if(g_live_tile_count==0){ImGui::SameLine();ImGui::TextDisabled("ENTER A STAGE TO CAPTURE TILES");}
+        if(g_live_tile_count==0){ImGui::SameLine();ImGui::TextDisabled("NO ROM OR LIVE ART AVAILABLE");}
+        else if(g_rom_tile_count>0){ImGui::SameLine();ImGui::TextDisabled("80 ROM TILES  |  $03AF80");}
         ImGui::SameLine();
         ImGui::TextDisabled("PAL");
         for(int pal=0;pal<4;pal++){
@@ -800,6 +820,7 @@ extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cr
         for(int i=0;i<32;i++)if(pattern[i]){visible=true;break;}
         if(visible)g_live_tile_ids[g_live_tile_count++]=tile;
     }
+    append_rom_art_tiles();
 
     // Genesis VDP register 5 points to a linked Sprite Attribute Table.
     g_live_sprite_count=0;
@@ -949,6 +970,10 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_x=std::max(0,mtlb_map_cursor_x());
     g_selected_y=std::max(0,mtlb_map_cursor_y());
     g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
+    g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
+    g_rom_tile_start_index=-1;
+    g_rom_tile_count=0;
+    append_rom_art_tiles();
     g_fade_in_frame=0;
     g_fade_out_frame=-1;
     g_exit_requested=false;
