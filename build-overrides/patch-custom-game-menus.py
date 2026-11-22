@@ -667,53 +667,185 @@ confirm:
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
     title_event=r'''
         if(e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F8) {
-            /* The title detector wins; Game Options is identified by its exact
-               original Window Plane tile strings, independent of highlight. */
             if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
             else if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
             else native_menu_dump_snapshot("other");
             continue;
         }
 
-        if(native_menu_state==0 && !reborn_title_scene_visible() && reborn_game_options_visible()) {
-            if(native_options_tool_active) {
+        if(native_menu_state==0 && reborn_title_scene_visible()) {
+            if(native_title_page_mode) {
                 if(e.type==SDL_KEYDOWN && !e.key.repeat) {
                     switch(e.key.keysym.sym) {
-                    case SDLK_LEFT: native_options_tool_index=(native_options_tool_index+2)%3; break;
-                    case SDLK_RIGHT: native_options_tool_index=(native_options_tool_index+1)%3; break;
-                    case SDLK_DOWN: case SDLK_ESCAPE: native_options_tool_active=0; native_menu_resume_guard=1; break;
-                    case SDLK_RETURN: case SDLK_x: native_options_open_tool(); break;
+                    case SDLK_UP:
+                        if(native_title_game_options_focus>=2)native_title_game_options_focus=1;
+                        else native_title_game_options_focus=0;
+                        break;
+                    case SDLK_DOWN:
+                        if(native_title_game_options_focus==0)native_title_game_options_focus=1;
+                        else if(native_title_game_options_focus==1 && native_game_level_modern)
+                            native_title_game_options_focus=2;
+                        break;
+                    case SDLK_LEFT:
+                        if(native_title_game_options_focus>=2)
+                            native_title_game_options_focus=2+(native_title_game_options_focus+1)%3;
+                        else native_title_game_options_focus=1-native_title_game_options_focus;
+                        break;
+                    case SDLK_RIGHT:
+                        if(native_title_game_options_focus>=2)
+                            native_title_game_options_focus=2+(native_title_game_options_focus-1+3)%3;
+                        else native_title_game_options_focus=1-native_title_game_options_focus;
+                        break;
+                    case SDLK_RETURN: case SDLK_x:
+                        if(native_title_game_options_focus==0) {
+                            native_game_level_modern=0;
+                            native_custom_save_config();
+                            native_title_game_options_focus=0;
+                        } else if(native_title_game_options_focus==1) {
+                            native_game_level_modern=1;
+                            native_custom_save_config();
+                            native_title_game_options_focus=2;
+                        } else {
+                            native_toggle_option(12,native_title_game_options_focus-2);
+                        }
+                        break;
+                    case SDLK_ESCAPE:
+                        native_title_page_mode=0;
+                        native_title_game_options_focus=native_game_level_modern?1:0;
+                        break;
                     }
                     continue;
                 }
                 if(e.type==SDL_CONTROLLERBUTTONDOWN) {
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT)
-                        native_options_tool_index=(native_options_tool_index+2)%3;
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT)
-                        native_options_tool_index=(native_options_tool_index+1)%3;
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN ||
-                       e.cbutton.button==SDL_CONTROLLER_BUTTON_B) {
-                        native_options_tool_active=0;
-                        native_menu_resume_guard=1;
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                        if(native_title_game_options_focus>=2)native_title_game_options_focus=1;
+                        else native_title_game_options_focus=0;
                     }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A)
-                        native_options_open_tool();
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                        if(native_title_game_options_focus==0)native_title_game_options_focus=1;
+                        else if(native_title_game_options_focus==1 && native_game_level_modern)
+                            native_title_game_options_focus=2;
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
+                        if(native_title_game_options_focus>=2)
+                            native_title_game_options_focus=2+(native_title_game_options_focus+1)%3;
+                        else native_title_game_options_focus=1-native_title_game_options_focus;
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
+                        if(native_title_game_options_focus>=2)
+                            native_title_game_options_focus=2+(native_title_game_options_focus-1+3)%3;
+                        else native_title_game_options_focus=1-native_title_game_options_focus;
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A) {
+                        if(native_title_game_options_focus==0) {
+                            native_game_level_modern=0;
+                            native_custom_save_config();
+                            native_title_game_options_focus=0;
+                        } else if(native_title_game_options_focus==1) {
+                            native_game_level_modern=1;
+                            native_custom_save_config();
+                            native_title_game_options_focus=2;
+                        } else {
+                            native_toggle_option(12,native_title_game_options_focus-2);
+                        }
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B) {
+                        native_title_page_mode=0;
+                        native_title_game_options_focus=native_game_level_modern?1:0;
+                    }
                     continue;
                 }
-            } else if((e.type==SDL_KEYDOWN && !e.key.repeat &&
-                       e.key.keysym.sym==SDLK_UP &&
-                       native_options_item_selected(8,3)) ||
-                      (e.type==SDL_CONTROLLERBUTTONDOWN &&
-                       e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP &&
-                       native_options_item_selected(8,3))) {
-                /* UP from the first original option focuses the added tools row. */
-                native_options_tool_active=1;
-                native_options_tool_restore_gamelevel=1;
-                native_options_tool_index=0;
-                continue;
+            } else {
+                if(e.type==SDL_KEYDOWN && !e.key.repeat) {
+                    switch(e.key.keysym.sym) {
+                    case SDLK_UP:
+                        if(native_title_menu_selection==1) {
+                            native_title_menu_selection=0; /* original OPTIONS -> START */
+                        } else if(native_title_menu_selection>=2) {
+                            native_title_menu_selection--;
+                            if(native_title_menu_selection==1)native_title_transition_guard=1;
+                            continue;
+                        } else {
+                            continue;
+                        }
+                        break;
+                    case SDLK_DOWN:
+                        if(native_title_menu_selection==0) {
+                            native_title_menu_selection=1; /* original START -> OPTIONS */
+                        } else if(native_title_menu_selection==1) {
+                            native_title_menu_selection=2;
+                            native_title_transition_guard=1;
+                            continue;
+                        } else if(native_title_menu_selection<5) {
+                            native_title_menu_selection++;
+                            continue;
+                        } else {
+                            continue;
+                        }
+                        break;
+                    case SDLK_RETURN: case SDLK_x:
+                        if(native_title_menu_selection>=2) {
+                            native_title_open_selected();
+                            continue;
+                        }
+                        native_title_backup_restore();
+                        native_title_suppress_frames=2;
+                        break; /* vanilla START/OPTIONS confirm stays with the cartridge */
+                    case SDLK_ESCAPE:
+                        if(native_title_menu_selection>=2) {
+                            native_title_menu_selection=1;
+                            native_title_transition_guard=1;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                if(e.type==SDL_CONTROLLERBUTTONDOWN) {
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                        if(native_title_menu_selection==1) {
+                            native_title_menu_selection=0;
+                        } else if(native_title_menu_selection>=2) {
+                            native_title_menu_selection--;
+                            if(native_title_menu_selection==1)native_title_transition_guard=1;
+                            continue;
+                        } else {
+                            continue;
+                        }
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                        if(native_title_menu_selection==0) {
+                            native_title_menu_selection=1;
+                        } else if(native_title_menu_selection==1) {
+                            native_title_menu_selection=2;
+                            native_title_transition_guard=1;
+                            continue;
+                        } else if(native_title_menu_selection<5) {
+                            native_title_menu_selection++;
+                            continue;
+                        } else {
+                            continue;
+                        }
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
+                       e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
+                        if(native_title_menu_selection>=2) {
+                            native_title_open_selected();
+                            continue;
+                        }
+                        native_title_backup_restore();
+                        native_title_suppress_frames=2;
+                    }
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B &&
+                       native_title_menu_selection>=2) {
+                        native_title_menu_selection=1;
+                        native_title_transition_guard=1;
+                        continue;
+                    }
+                }
             }
         }
 '''
+
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
 
