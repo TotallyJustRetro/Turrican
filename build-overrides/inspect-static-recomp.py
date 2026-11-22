@@ -50,6 +50,11 @@ for rel in FILES:
     emit(f"RECOMP_GLOBAL line={n} {t[:220]}")
    if "L_192C" in t:
     emit(f"CONTINUES_PATCH_SITE line={n} {t[:320]}")
+   if "L_1796" in t or "L_17A0" in t:
+    lo=max(0,n-5); hi=min(len(lines),n+18)
+    emit(f"WEAPON_DEATH_CONTEXT line={n}")
+    for k in range(lo,hi):
+     emit(f"  {k+1}: {lines[k][:260]}")
   if rel in ("runtime/ym2612.c","runtime/psg.c") and n<=80:
    if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
     emit(f"STATE_DECL line={n} {t[:220]}")
