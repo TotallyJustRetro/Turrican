@@ -672,7 +672,10 @@ if gen.exists():
    if re.search(r"\bf_5300\s*\(c\)",line):
     allocation_lines.append((current,i))
   assignments=[]
+  current="(global)"
   for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
    if not re.search(r"WR32\s*\(\s*d\s*,\s*v\s*\)",line): continue
    if "A(0)+(int32_t)34" not in line: continue
    vm=re.search(r"uint32_t\s+v\s*=\s*0x([0-9A-Fa-f]+)u",line)
