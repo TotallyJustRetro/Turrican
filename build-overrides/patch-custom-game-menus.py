@@ -49,18 +49,15 @@ static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
 static int native_pause_keep_title_audio=0;
-static int native_title_checkpoint_saved=0;
 static int native_title_input_passthrough=0,native_title_forced_mask=0;
-static int native_title_restore_after_input=0,native_title_restore_ready=0;
-static int native_title_pending_open=0,native_title_pending_selection=0;
-static int native_title_reopen_options_after_input=0,native_title_reopen_focus=0;
+static int native_title_reopen_options_next_frame=0;
 static int readpad(void);
 static int native_pause_achievement_first=0;
 static uint8_t native_pause_font_cache[43][32];
 static int native_pause_font_cache_valid=0;
 static void native_pause_font_capture(void);
 static int native_pause_confirm_action=0,native_pause_confirm_choice=1;
-static int native_pause_request_title=0,native_pause_request_quit=0,native_pause_skip_backdrop_restore=0;
+static int native_pause_request_title=0,native_pause_request_quit=0;
 static int native_pause_no_checkpoint=0;
 static int native_pause_control_config=0,native_pause_rapid_fire=0;
 static int native_pause_sound_track=-1;
@@ -68,48 +65,14 @@ static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
 static void native_pause_enter_confirm(int action);
 static void native_pause_audio_pump(void);
 static void native_pause_apply_control_config(void);
-static int native_title_menu_sfx(int confirm);
-static void render_native_pause_video_settings(void);
-static void render_native_pause_audio_settings(void);
-static void render_native_pause_controller_setup(void);
-static void render_native_pause_controls(void);
-static void render_native_pause_achievements(void);
-static void proc_native_pause_video_settings(SDL_Event *e);
-static void proc_native_pause_audio_settings(SDL_Event *e);
-static void proc_native_pause_controller_setup(SDL_Event *e);
-static void proc_native_pause_info_back(SDL_Event *e);
-static void native_custom_save_config(void);
-extern void md_set_ram_byte(uint32_t address,uint8_t value);
-extern void md_pause_fm_test_start(int track);
-extern void md_pause_fm_test_stop(void);
-extern void md_pause_fm_test_render(int16_t *dst,int frames,int channels);
-
-static int reborn_game_options_visible(void);
-static int reborn_title_scene_visible(void);
-static void native_menu_pause_loop(void);
-
-extern void md_set_custom_gameplay_options(int,int,int,int,int,int,int,int);
-extern void md_apply_custom_gameplay_options(void);
-extern void md_copy_main_ram(uint8_t *dst);
-extern uint32_t md_cpu_state_size(void);
-extern void md_copy_cpu_state(void *dst, uint32_t bytes);
-extern int md_save_slot(int slot);
-extern int md_load_slot(int slot);
-extern int md_save_slot_exists(int slot);
-extern void md_preserve_audio_on_next_load(void);
-'''
-
-CUSTOM_PAGES = r'''
-static unsigned int native_menu_trace_index=0;
-/* Always place diagnostic captures beside the running game executable.
-   The process working directory may be inherited from the launcher and can
-   point somewhere completely different. SDL_GetBasePath returns the EXE path. */
-static int native_menu_trace_fullpath(char *dst,size_t capacity,const char *filename) {
-    char *base=SDL_GetBasePath();
-    if(!base)return 0;
-    int written=snprintf(dst,capacity,"%s%s",base,filename);
-    SDL_free(base);
-    return written>=0 && (size_t)written<capacity;
+static int native_title_menu_sfx(int confirm) {
+    /* Let only navigation reach the original cartridge menu for one normal
+       frame. Its own handler produces the authentic movement cue; confirm is
+       withheld because it could activate the hidden vanilla menu selection. */
+    if(confirm)return 0;
+    native_title_forced_mask=readpad();
+    native_title_input_passthrough=1;
+    return 1;
 }
 static void native_menu_dump_snapshot(const char *scene) {
     uint8_t ram_snapshot[0x10000], cpu_snapshot[128];
@@ -296,7 +259,7 @@ static void native_title_open_selected(void) {
         native_title_page_mode=0;
         native_title_compose_enabled=0;
         native_title_input_block=1;
-        native_title_game_options_focus=native_title_reopen_options_after_input ? native_title_reopen_focus : (native_game_level_modern?1:0);
+        native_title_game_options_focus=native_game_level_modern?1:0;
         native_title_reopen_options_after_input=0;
         /* Preserve the real title frame before an attract demo can advance. */
         memcpy(native_title_options_backdrop,vdp.fb,sizeof native_title_options_backdrop);
@@ -338,10 +301,6 @@ static void native_title_menu_update(void) {
         return;
     }
     native_pause_font_capture();
-    /* Keep a private, full-core checkpoint of the branded title screen. Returning
-       from gameplay can then restore the actual Mega Turrican Reborn title state
-       without running the reset vector and showing the SEGA boot logo again. */
-    if(!native_title_checkpoint_saved && md_save_slot(5))native_title_checkpoint_saved=1;
     if(!native_title_scene_active) {
         native_title_scene_active=1;
         native_title_menu_selection=0;
@@ -794,12 +753,11 @@ static void native_title_game_options_confirm(void) {
     }
 }
 static void native_title_game_options_pass_input(int confirm,int reopen) {
-    native_title_reopen_focus=native_title_game_options_focus;
-    native_title_reopen_options_after_input=reopen;
-    native_menu_state=0; /* leave the modal pause loop for exactly one ROM frame */
-    if(!native_title_menu_sfx(confirm)) {
-        native_title_reopen_options_after_input=0;
-        if(reopen)native_menu_state=13; /* keep the page open if no title checkpoint exists */
+    native_menu_state=0;
+    if(native_title_menu_sfx(confirm)) {
+        if(reopen)native_title_reopen_options_next_frame=1;
+    } else if(reopen) {
+        native_menu_state=13;
     }
 }
 static void native_title_game_options_change_side(int direction) {
@@ -1585,7 +1543,7 @@ confirm:
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
            "if(!native_custom_cfg_loaded)native_custom_load_config();\n"
-           "    if(!native_title_restore_after_input)native_title_menu_update();\n"
+           "    native_title_menu_update();\n"
            "    md_live_mask = (native_menu_state==0 && (native_title_input_passthrough || !native_menu_resume_guard) && (native_title_input_passthrough || !native_title_input_block)) ? (readpad() | native_title_forced_mask) : 0;\n"
            "    native_title_input_passthrough=0;\n"
            "    native_title_forced_mask=0;\n"
@@ -1744,68 +1702,19 @@ confirm:
     if hook_end<0:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
-    restore_arm=r"""
-    if(native_title_restore_after_input)native_title_restore_ready=1;
-"""
-    if "if(native_title_restore_after_input)native_title_restore_ready=1;" not in hook:
-        hook_anchor="void md_frame_hook(void) {\n    static uint32_t next=0; SDL_Event e;"
-        hook=once(hook,hook_anchor,hook_anchor+"\n"+restore_arm,
-                  "arm title restoration after the one-frame original input")
-        s=s[:hook_start]+hook+s[hook_end:]
-        hook_end=hook_start+len(hook)
-
-    restore_after_pump=r"""
-    if(native_title_restore_ready) {
-        native_title_restore_ready=0;
-        native_title_restore_after_input=0;
-        int restored=0;
-        if(native_title_checkpoint_saved && md_save_slot_exists(5)) {
-            md_preserve_audio_on_next_load();
-            restored=md_load_slot(5);
-        }
-        if(restored) {
-            native_title_scene_active=1;
-            native_title_page_mode=0;
-            native_title_compose_enabled=1;
-            native_title_input_block=0;
-            native_title_menu_update();
-            if(native_title_pending_open) {
-                native_title_pending_open=0;
-                native_title_menu_selection=native_title_pending_selection;
-                native_title_open_selected();
-                if(native_menu_state>0)native_menu_pause_loop();
-            } else if(native_title_reopen_options_after_input) {
-                native_title_menu_selection=2;
-                native_title_open_selected();
-            }
-        } else {
-            native_title_pending_open=0;
-            native_title_reopen_options_after_input=0;
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican Reborn",
-                "Could not restore the branded title after the original menu sound. The current scene was left unchanged.",NULL);
-        }
+    reopen_options=r"""
+    if(native_title_reopen_options_next_frame) {
+        native_title_reopen_options_next_frame=0;
+        native_menu_state=13;
+        native_menu_pause_loop();
     }
 """
-    if "if(native_title_restore_ready)" not in hook:
-        hook=once(hook,"    audio_pump();","    audio_pump();\n"+restore_after_pump,
-                  "restore the title only after original YM/PSG samples are pumped")
+    if "if(native_title_reopen_options_next_frame)" not in hook:
+        hook_anchor="void md_frame_hook(void) {\\n    static uint32_t next=0; SDL_Event e;"
+        hook=once(hook,hook_anchor,hook_anchor+"\\n"+reopen_options,
+                  "reopen Game Options after original navigation sound frame")
         s=s[:hook_start]+hook+s[hook_end:]
         hook_end=hook_start+len(hook)
-
-    if "native_title_compose_frame();" not in hook:
-        shade=re.search(r"shade\s*\(\s*w\s*,\s*h\s*\)\s*;",hook)
-        if not shade:
-            raise RuntimeError("Could not locate shade(w,h) in md_frame_hook.")
-        at=shade.start()
-        hook=hook[:at]+"native_title_compose_frame(); native_modern_apply_frame_features(); "+hook[at:]
-        s=s[:hook_start]+hook+s[hook_end:]
-
-    # Keep the custom title menu latched while the hidden cartridge menu runs
-    # its one frame to produce the authentic SFX. Rebuild it after the checkpoint
-    # restore, which happens only after audio_pump() above.
-    s=once(s,"    reborn_title_update();",
-           "    if(!native_title_restore_after_input)reborn_title_update();",
-           "hold Reborn title overlay during the SFX pass-through frame")
 
     # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
