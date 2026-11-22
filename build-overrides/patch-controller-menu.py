@@ -553,6 +553,29 @@ ipcMain.handle('rom-choose', async () => {
         handlers = r'''
 const controllerSettingsFile = path.join(app.getPath('userData'), 'controller-settings.json');
 const defaultControllerSettings = { version: 3, padMap: [12, 13, 14, 15, 2, 0, 1, 9] };
+function syncControllerSettingsFromConfig(configPath) {
+  try {
+    const text = fs.readFileSync(configPath, 'utf8');
+    const keys = ['pad_up','pad_down','pad_left','pad_right','pad_a','pad_b','pad_c','pad_start'];
+    const current = new Map();
+    for (const line of text.split(/\r?\n/)) {
+      const at = line.indexOf('=');
+      if (at > 0) current.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+    }
+    const padMap = keys.map((key, i) => {
+      const value = Number(current.get(key));
+      return Number.isInteger(value) && value >= -8 && value <= 15
+        ? value : defaultControllerSettings.padMap[i];
+    });
+    const normalized = { version: 3, padMap };
+    fs.mkdirSync(path.dirname(controllerSettingsFile), { recursive: true });
+    const temporary = controllerSettingsFile + '.tmp';
+    fs.writeFileSync(temporary, JSON.stringify(normalized, null, 2), 'utf8');
+    fs.renameSync(temporary, controllerSettingsFile);
+  } catch (error) {
+    console.warn('Could not synchronize native game controller settings:', error.message);
+  }
+}
 ipcMain.handle('controller-settings-load', async () => {
   try {
     const parsed = JSON.parse(fs.readFileSync(controllerSettingsFile, 'utf8'));
@@ -597,6 +620,16 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
         if config_anchor not in main:
             raise RuntimeError("Could not find the vsync line for controller config injection.")
         main = main.replace(config_anchor, config_anchor + "\n" + "\n".join(lines), 1)
+
+    exit_anchor = "child.once('exit', (code, signal) => {"
+    if "syncControllerSettingsFromConfig(configPath)" not in main:
+        main = replace_once(
+            main,
+            exit_anchor,
+            exit_anchor + "\n      syncControllerSettingsFromConfig(configPath);",
+            "launcher controller-settings round-trip on game exit"
+        )
+
     path.write_text(main, encoding="utf-8")
 
 def patch_sdl(project: Path) -> None:
@@ -607,7 +640,7 @@ def patch_sdl(project: Path) -> None:
         if not cfg_end:
             raise RuntimeError("Could not find native SDL config declaration.")
         sdl = sdl[:cfg_end.end()] + "\nstatic int pad_map[8] = { 12, 13, 14, 15, 2, 0, 1, 9 };\n" + sdl[cfg_end.end():]
-    if 'else if(!strcmp(l, "pad_up"))' not in sdl:
+    if 'else if(!strcmp(l, "pad_up"))' not in sdl and 'else if(!strcmp(l,"pad_up"))' not in sdl:
         background = 'else if(!strcmp(l, "background")) strncpy(cfg.bg, v, sizeof cfg.bg - 1);'
         pad_parser = '''else if(!strcmp(l, "pad_up")) pad_map[0] = atoi(v);
         else if(!strcmp(l, "pad_down")) pad_map[1] = atoi(v);
@@ -620,7 +653,7 @@ def patch_sdl(project: Path) -> None:
         ''' + background
         sdl = replace_once(sdl, background, pad_parser, "native SDL controller config parser")
     if "static int mapped_controller_button(int binding)" not in sdl:
-        readpad = re.compile(r'static int readpad\(void\)\{.*?\n\s*static void open_pad\(void\)\{', re.S)
+        readpad = re.compile(r'static int readpad\s*\(void\)\s*\{.*?\n\s*static void open_pad\s*\(void\)\s*\{', re.S)
         sdl, n = readpad.subn(SDL_READER + "\nstatic void open_pad(void){", sdl, count=1)
         if n != 1:
             raise RuntimeError("Could not replace SDL's hard-coded controller input reader.")

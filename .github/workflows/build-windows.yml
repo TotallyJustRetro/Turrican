@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
@@ -66,6 +66,24 @@ jobs:
           $patchScript = Join-Path $PWD 'build-overrides/patch-launcher.ps1'
           if (-not (Test-Path $patchScript)) { throw 'Launcher patch script is missing.' }
           & $patchScript -ProjectRoot $project
+
+          # Install the updated in-game pause/options menu from the supplied WindowsPort source.
+          $menuPayload = Join-Path $PWD 'build-overrides/ingame-menu-sdl_main.c.gz.b64'
+          if (-not (Test-Path -LiteralPath $menuPayload)) { throw 'Updated in-game menu source payload is missing.' }
+          $compressed = [Convert]::FromBase64String((Get-Content -LiteralPath $menuPayload -Raw).Trim())
+          $inputStream = [System.IO.MemoryStream]::new($compressed)
+          $outputStream = [System.IO.MemoryStream]::new()
+          $gzipStream = [System.IO.Compression.GZipStream]::new($inputStream, [System.IO.Compression.CompressionMode]::Decompress)
+          try { $gzipStream.CopyTo($outputStream) } finally { $gzipStream.Dispose(); $inputStream.Dispose() }
+          $menuSourcePath = Join-Path $project 'runtime/sdl_main.c'
+          [System.IO.File]::WriteAllBytes($menuSourcePath, $outputStream.ToArray())
+          $outputStream.Dispose()
+          $menuHash = (Get-FileHash -LiteralPath $menuSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($menuHash -ne '96981beaa64122b40786dfdac8788323f582979bb26a88c4584ab42777f1deaa') {
+            throw "Updated in-game menu source checksum mismatch: $menuHash"
+          }
+          Write-Host 'Installed updated in-game pause/options menu source.'
+
           "MEGATURRICAN_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 
@@ -74,18 +92,65 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Pillow for Windows icon conversion
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check Pillow
+          if ($LASTEXITCODE -ne 0) { throw 'Installing Pillow for icon conversion failed.' }
+
       - name: Apply Genesis controller UI and native mappings
         shell: pwsh
         run: |
           python (Join-Path $PWD 'build-overrides/patch-controller-menu.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying Genesis controller changes failed.' }
 
+      - name: Apply launcher audio options and game icon
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-audio.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Applying audio and icon changes failed.' }
+
+      - name: Embed Reborn intro and persistent title branding
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-reborn-title.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Embedding the Reborn title animation failed.' }
+
+      - name: Install native VDP pause and controller menus
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-native-game-menus.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native VDP pause and controller menus failed.' }
+
+      - name: Install native gameplay cheats, continues patch, and save slots
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-custom-runtime.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native gameplay options and save slots failed.' }
+          python (Join-Path $PWD 'build-overrides/patch-custom-game-menus.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing native Extras menus failed.' }
+
+      - name: Inspect static recomp gameplay hooks
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/inspect-static-recomp.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Static recomp diagnostics failed.' }
+
+      - name: Upload private runtime state report
+        uses: actions/upload-artifact@v4
+        with:
+          name: MegaTurrican-runtime-state-report
+          path: runtime-state-report.txt
+          retention-days: 3
+
       - name: Compile native Windows game core
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/build-overrides"
+          windres MegaTurrican.rc -O coff -o "$(cygpath -u "$MEGATURRICAN_PROJECT")/MegaTurrican-icon.o"
           cd "$(cygpath -u "$MEGATURRICAN_PROJECT")"
-          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime recomp_gen.c runtime/harness.c runtime/vdp.c runtime/m68k_interp.c runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c $(sdl2-config --libs) -lm -static-libgcc -mwindows -o MegaTurrican.exe
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime recomp_gen.c runtime/harness.c runtime/vdp.c runtime/m68k_interp.c runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c MegaTurrican-icon.o $(sdl2-config --libs) -lm -static-libgcc -mwindows -o MegaTurrican.exe
           test -s MegaTurrican.exe
           mkdir -p launcher/native
           cp MegaTurrican.exe launcher/native/MegaTurrican.exe
