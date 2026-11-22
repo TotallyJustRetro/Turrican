@@ -285,6 +285,15 @@ static void draw_stage_canvas()
 
 
 
+static void draw_advanced_tool_palette();
+static void draw_advanced_layers();
+static void draw_advanced_inspector();
+static void draw_advanced_asset_canvas();
+static void draw_node_graph();
+static void draw_stage_canvas();
+static void draw_bottom_workspace();
+static void draw_timeline_panel();
+
 static void draw_tool_palette() { draw_advanced_tool_palette(); }
 
 static void draw_layer_bar() { draw_advanced_layers(); }
