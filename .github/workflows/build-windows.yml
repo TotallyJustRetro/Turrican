@@ -3,7 +3,7 @@ name: Build Mega Turrican for Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
@@ -41,6 +41,16 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-openssl
+
+      - name: Fetch pinned Dear ImGui 1.93.0 source
+        shell: pwsh
+        run: |
+          $imgui = Join-Path $PWD '_imgui-source'
+          git clone --depth 1 --branch v1.93.0 https://github.com/ocornut/imgui.git $imgui
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch Dear ImGui v1.93.0.' }
+          $actual = (git -C $imgui rev-parse HEAD).Trim()
+          if ($actual -ne 'c1aaac65e896a45f81f47a4d68f9959e0f86c859') { throw "Unexpected Dear ImGui source revision: $actual" }
+          "IMGUI_SOURCE=$imgui" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Decrypt private source bundle
         shell: msys2 {0}
@@ -129,6 +139,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing native gameplay options and save slots failed.' }
           python (Join-Path $PWD 'build-overrides/patch-custom-game-menus.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing native Extras menus failed.' }
+          python (Join-Path $PWD 'build-overrides/patch-imgui-level-builder.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the ImGui Level Builder failed.' }
 
       - name: Inspect static recomp gameplay hooks
         shell: pwsh
@@ -150,7 +162,24 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/build-overrides"
           windres MegaTurrican.rc -O coff -o "$(cygpath -u "$MEGATURRICAN_PROJECT")/MegaTurrican-icon.o"
           cd "$(cygpath -u "$MEGATURRICAN_PROJECT")"
-          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime recomp_gen.c runtime/harness.c runtime/vdp.c runtime/m68k_interp.c runtime/z80.c runtime/ym2612.c runtime/psg.c runtime/sdl_main.c MegaTurrican-icon.o $(sdl2-config --libs) -lm -static-libgcc -mwindows -o MegaTurrican.exe
+          pkg-config --atleast-version=2.0.17 sdl2 || { echo 'Dear ImGui SDL_Renderer2 backend requires SDL 2.0.17 or newer.'; exit 1; }
+          mkdir -p _objects
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c recomp_gen.c -o _objects/recomp_gen.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/harness.c -o _objects/harness.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/vdp.c -o _objects/vdp.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/m68k_interp.c -o _objects/m68k_interp.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/z80.c -o _objects/z80.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/ym2612.c -o _objects/ym2612.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/psg.c -o _objects/psg.o
+          gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/sdl_main.c -o _objects/sdl_main.o
+          g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -I"$IMGUI_SOURCE/backends" -Iruntime -c runtime/mt_level_builder_imgui.cpp -o _objects/mt_level_builder_imgui.o
+          for source in imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp; do
+            g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -c "$IMGUI_SOURCE/$source" -o "_objects/${source%.cpp}.o"
+          done
+          for source in imgui_impl_sdl2.cpp imgui_impl_sdlrenderer2.cpp; do
+            g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -I"$IMGUI_SOURCE/backends" -c "$IMGUI_SOURCE/backends/$source" -o "_objects/${source%.cpp}.o"
+          done
+          g++ _objects/*.o MegaTurrican-icon.o $(sdl2-config --libs) -lm -static-libgcc -static-libstdc++ -mwindows -o MegaTurrican.exe
           test -s MegaTurrican.exe
           mkdir -p launcher/native
           cp MegaTurrican.exe launcher/native/MegaTurrican.exe
