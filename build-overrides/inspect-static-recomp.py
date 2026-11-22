@@ -346,7 +346,11 @@ if gen.exists():
   "f_1E38","f_1D54","f_1BDE","f_1E00","f_2130","f_2150",
   "f_2230","f_223E","f_224C","f_2A18","f_20000","f_24000",
   "f_2640","f_26A2","f_31E4","f_3284","f_3368","f_3BD8",
-  "f_5432","f_552A","f_5578","f_5D8A","f_5DB2","f_6C3E"
+  "f_5432","f_552A","f_5578","f_5D8A","f_5DB2","f_6C3E",
+  "f_9DD4","f_932A","f_9CA4","f_9222","f_9198","f_9B6C",
+  "f_9DA2","f_A114","f_99FE","f_A080","f_DDAE","f_DF46",
+  "f_DAF6","f_DE60","f_DEC8","f_10078","f_D68C","f_8856",
+  "f_897A","f_8A86","f_6A7E","f_71C4","f_86D8"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -477,7 +481,10 @@ if gen.exists():
   assign_base=re.compile(r"\buint32_t\s+e\s*=\s*0x([0-9A-Fa-f]{3,8})u;\s*A\(([0-7])\)\s*=\s*e;")
   direct_base=re.compile(r"\bA\(([0-7])\)\s*=\s*0x([0-9A-Fa-f]{3,8})u")
   indexed_read=re.compile(r"\b(?:RD8|RD16|RD32)\s*\(\s*A\(([0-7])\)\s*\+")
+  temp_address=re.compile(r"\buint32_t\s+s\s*=\s*A\(([0-7])\)([^;]*);")
+  temp_read=re.compile(r"\b(?:RD8|RD16|RD32)\s*\(\s*s\s*\)")
   bases={}
+  temp_base=None
   records=[]
   current="(global)"
   for n,line in enumerate(gen_lines,1):
@@ -485,6 +492,7 @@ if gen.exists():
    if fm:
     current=fm.group(1)
     bases={}
+    temp_base=None
    am=assign_base.search(line)
    if am:
     value=int(am.group(1),16)
@@ -494,11 +502,20 @@ if gen.exists():
    if dm:
     reg=int(dm.group(1));value=int(dm.group(2),16)
     if value<0x400000:bases[reg]=value
+   tm=temp_address.search(line)
+   if tm:
+    reg=int(tm.group(1))
+    temp_base=bases.get(reg)
+    if temp_base is not None and 0x200<=temp_base<0x400000 and temp_read.search(line):
+     records.append((current,temp_base,n,line.strip()[:280]))
    rm=indexed_read.search(line)
    if rm:
     reg=int(rm.group(1));base=bases.get(reg)
     if base is not None and 0x200<=base<0x400000:
      records.append((current,base,n,line.strip()[:280]))
+   if temp_read.search(line) and temp_base is not None and (not tm or not temp_read.search(line[tm.end():])):
+    if 0x200<=temp_base<0x400000:
+     records.append((current,temp_base,n,line.strip()[:280]))
   grouped={}
   for fn,base,n,line in records:
    grouped.setdefault((fn,base),[]).append((n,line))
