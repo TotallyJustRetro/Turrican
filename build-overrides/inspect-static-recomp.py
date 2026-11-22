@@ -36,6 +36,44 @@ for rel in FILES:
     emit(f"RAM_WRITE line={n} {line[:300]}")
     for k in range(max(0,n-4),min(len(lines),n+4)):
      emit(f"  {k+1}: {lines[k][:240]}")
+
+  # Identify generated 68k routines that touch work-RAM variables or sound
+  # chip ports. The sound-RAM upload helper alone is not enough to locate a
+  # menu SFX request; this also shows caller/callee relationships and the
+  # nearby writes to the game's shared command/state variables.
+  fn_starts=[]
+  fn_re=re.compile(r"^\s*static\s+void\s+(f_[A-Za-z0-9_]+)\s*\(M68K\s*\*c\)")
+  for i,line in enumerate(lines):
+   m=fn_re.match(line)
+   if m: fn_starts.append((i,m.group(1)))
+  sound_re=re.compile(r"0x(?:FFFF)?(?:A0400[0-3]|C00011|A000[0-9A-Fa-f]{4}|A11100|A11200)",re.I)
+  work_re=re.compile(r"0xFFFF(?:BC|BD|BE|BF)[0-9A-Fa-f]{2}",re.I)
+  relevant_names=set()
+  emit("GENERATED_SOUND_AND_WORKRAM_FUNCTIONS")
+  for fi,(start,name) in enumerate(fn_starts):
+   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
+   body=lines[start:end]
+   sound_lines=[(start+k,line) for k,line in enumerate(body) if sound_re.search(line)]
+   work_lines=[(start+k,line) for k,line in enumerate(body) if work_re.search(line)]
+   if not sound_lines and not work_lines: continue
+   relevant_names.add(name)
+   emit(f"CODE_FUNCTION name={name} declaration_line={start+1} sound_refs={len(sound_lines)} workram_refs={len(work_lines)}")
+   shown={}
+   for idx,line in sound_lines+work_lines:
+    for q in range(max(start,idx-3),min(end,idx+4)):
+     shown[q]=lines[q]
+   for q,line in sorted(shown.items()):
+    emit(f"  {q+1}: {line[:320]}")
+  emit("GENERATED_SOUND_FUNCTION_CALLERS")
+  for fi,(start,name) in enumerate(fn_starts):
+   end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
+   body=lines[start:end]
+   for target in relevant_names:
+    if target==name: continue
+    pat=re.compile(r"\b"+re.escape(target)+r"\s*\(c\)")
+    hits=[(start+k,line) for k,line in enumerate(body) if pat.search(line)]
+    for idx,line in hits:
+     emit(f"CALLER {name} line={idx+1} -> {target} : {line[:260]}")
  in_struct=False
  struct_depth=0
  for n,line in enumerate(lines,1):
