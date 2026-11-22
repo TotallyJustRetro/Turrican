@@ -60,7 +60,7 @@ for rel in FILES:
    calls_by_name[name]=calls
 
   sound_re=re.compile(r"0x(?:FFFF)?(?:A0400[0-3]|C00011|A000[0-9A-Fa-f]{4}|A11100|A11200)",re.I)
-  sound_state_re=re.compile(r"0xFFFF(?:B[0-3][0-9A-Fa-f]{2}|08[0-9A-Fa-f]{2})",re.I)
+  sound_state_re=re.compile(r"0xFFFF(?:B[0-9A-Fa-f][0-9A-Fa-f]{2}|08[0-9A-Fa-f]{2})",re.I)
   emit("GENERATED_SOUND_CHIP_WRITERS")
   sound_targets=set()
   for name,(start,end,body) in fn_data.items():
@@ -157,7 +157,7 @@ for rel in FILES:
   if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render|input|restart|quit",m.group(1),re.I):
    params=re.sub(r"\s+"," ",m.group(2).strip())
    emit(f"FUNCTION line={n} name={m.group(1)} params={params[:120] or '-'}")
-   if (rel=="runtime/harness.c" and m.group(1) in ("md_boot","md_load_rom","md_audio_read","md_frame_hook","readpad","sound_tick")) or (rel=="runtime/ym2612.c" and re.search(r"ym_(?:write|sample|init)",m.group(1))) or (rel=="runtime/vdp.c" and re.search(r"sprite|plane|shade|render|window",m.group(1),re.I)) or (rel=="runtime/sdl_main.c" and re.search(r"shade|draw_str|present|frame|input|event",m.group(1),re.I)):
+   if (rel=="runtime/harness.c" and m.group(1) in ("md_boot","md_load_rom","md_audio_read","md_frame_hook","readpad","sound_tick")) or (rel=="runtime/sdl_main.c" and m.group(1) in ("md_frame_hook","readpad")) or (rel=="runtime/ym2612.c" and re.search(r"ym_(?:write|sample|init)",m.group(1))) or (rel=="runtime/vdp.c" and re.search(r"sprite|plane|shade|render|window",m.group(1),re.I)) or (rel=="runtime/sdl_main.c" and re.search(r"shade|draw_str|present|frame|input|event",m.group(1),re.I)):
     depth=0; brace=-1; end=-1
     for q in range(n-1,min(len(lines),n+300)):
      if "{" in lines[q] and brace<0: brace=q
