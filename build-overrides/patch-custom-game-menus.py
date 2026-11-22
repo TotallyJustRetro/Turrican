@@ -24,7 +24,8 @@ def replace_function(s: str, signature: str, replacement: str, label: str) -> st
     return s[:a]+replacement+s[end:]
 
 CUSTOM_GLOBALS = r'''
-/* Reborn Extras: stored beside the portable game, separate from launcher config. */
+/* Reborn title menu state. The original ROM START/OPTIONS page remains intact;
+   the added menu is composed into the completed VDP framebuffer each frame. */
 static int native_extras_parent=1;
 static int native_game_level_modern=0;
 static int native_cheat_energy=0, native_cheat_lives=0, native_cheat_timer=0;
@@ -35,12 +36,13 @@ static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static int native_title_menu_selection=0;
 static int native_title_page_mode=0;
 static int native_title_game_options_focus=0;
-static int native_title_backup_valid=0, native_title_backup_cols=32;
-static uint16_t native_title_backup[12*64];
 static int native_title_scene_active=0;
-static int native_title_suppress_frames=0;
 static int native_title_transition_guard=0;
 static int native_title_input_block=0;
+static int native_title_compose_enabled=0;
+static unsigned int native_title_blink_ticks=0;
+static int native_title_last_selection=-1, native_title_last_page=-1, native_title_last_focus=-1;
+
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
 
@@ -49,9 +51,6 @@ extern void md_apply_custom_gameplay_options(void);
 extern void md_copy_main_ram(uint8_t *dst);
 extern uint32_t md_cpu_state_size(void);
 extern void md_copy_cpu_state(void *dst, uint32_t bytes);
-extern int md_save_slot(int slot);
-extern int md_load_slot(int slot);
-extern int md_save_slot_exists(int slot);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
@@ -120,87 +119,105 @@ static uint16_t native_options_font_tile(char ch) {
     if(ch>='A' && ch<='Z') return (uint16_t)(0x531 + (ch-'A'));
     if(ch==' ') return 0x530;
     if(ch=='-') return 0x55A;
-    if(ch=='.') return 0x557;
-    if(ch==',') return 0x555;
     if(ch>='0' && ch<='9') return (uint16_t)(0x54B + (ch-'0'));
     return 0x530;
 }
-static void native_options_put_entry(int row,int col,uint16_t entry) {
+static int native_title_tile_row_matches(int row,int col,const uint16_t *tiles,size_t count) {
     int cols=native_options_window_cols();
-    if(row<0 || row>=64 || col<0 || col>=cols) return;
-    uint32_t at=(native_options_window_base()+((uint32_t)row*(uint32_t)cols+(uint32_t)col)*2u)&0xFFFFu;
-    vdp.vram[at]=(uint8_t)(entry>>8);
-    vdp.vram[(at+1u)&0xFFFFu]=(uint8_t)entry;
+    if(row<0 || row>=64 || col<0 || col+(int)count>cols)return 0;
+    uint32_t base=native_options_window_base();
+    for(size_t i=0;i<count;i++) {
+        uint32_t at=(base+((uint32_t)row*(uint32_t)cols+(uint32_t)col+(uint32_t)i)*2u)&0xFFFFu;
+        uint16_t entry=(uint16_t)(((uint16_t)vdp.vram[at]<<8)|vdp.vram[(at+1u)&0xFFFFu]);
+        if((entry&0x07FFu)!=tiles[i])return 0;
+    }
+    return 1;
 }
-static void native_options_put_tile(int row,int col,uint16_t tile,int palette) {
-    native_options_put_entry(row,col,(uint16_t)((tile&0x07FFu)|((palette&3)<<13)));
+/* These exact title-row strings are present in the uploaded title trace.
+   Unlike logo/pixel thresholds, they identify the menu as soon as the ROM
+   creates it and remain valid while its selection highlight changes. */
+static int native_title_menu_scene_visible(void) {
+    static const uint16_t start_tiles[]={0x543,0x544,0x531,0x542,0x544};
+    static const uint16_t options_tiles[]={0x53F,0x540,0x544,0x539,0x53F,0x53E,0x543};
+    if(vdp.width<256 || vdp.width>320 || vdp.height<200 || vdp.height>240)return 0;
+    return native_title_tile_row_matches(16,13,start_tiles,sizeof start_tiles/sizeof start_tiles[0]) &&
+           native_title_tile_row_matches(18,12,options_tiles,sizeof options_tiles/sizeof options_tiles[0]);
 }
-static uint16_t native_options_get_tile(int row,int col) {
-    int cols=native_options_window_cols();
-    if(row<0 || row>=64 || col<0 || col>=cols) return 0;
-    uint32_t at=(native_options_window_base()+((uint32_t)row*(uint32_t)cols+(uint32_t)col)*2u)&0xFFFFu;
-    return (uint16_t)(((uint16_t)vdp.vram[at]<<8)|vdp.vram[(at+1u)&0xFFFFu]);
+static int native_title_text_width(const char *s) {
+    int n=(int)strlen(s);
+    return n>0 ? n*7-1 : 0; /* 6-pixel glyph plus one pixel tracking */
 }
-static void native_options_write_text(int row,int col,const char *text,int palette) {
-    for(int i=0;text[i] && col+i<native_options_window_cols();i++)
-        native_options_put_tile(row,col+i,native_options_font_tile(text[i]),palette);
+static void native_title_draw_text_at(int x,int y,const char *s,int selected,int blink_on) {
+    static const uint32_t normal[4]={0x000000u,0xFFFFFFu,0xB6DBDBu,0x496D6Du};
+    static const uint32_t active[4]={0x000000u,0xFF4900u,0xDB0000u,0x920000u};
+    const uint32_t *colors=(selected && blink_on)?active:normal;
+    int W=vdp.width?vdp.width:320, H=vdp.height?vdp.height:224;
+    for(int i=0;s[i];i++) {
+        uint16_t tile=native_options_font_tile(s[i]);
+        if(s[i]!=' ') {
+            for(int dy=0;dy<6;dy++) {
+                int sy=(dy*8+3)/6;
+                int py=y+dy;
+                if(py<0 || py>=H)continue;
+                uint32_t *row=&vdp.fb[py*320];
+                for(int dx=0;dx<6;dx++) {
+                    int sx=(dx*8+3)/6;
+                    int px=x+i*7+dx;
+                    if(px<0 || px>=W)continue;
+                    uint8_t packed=vdp.vram[(size_t)tile*32u+(size_t)sy*4u+(size_t)(sx>>1)];
+                    unsigned index=(sx&1)?(packed&15u):(packed>>4);
+                    if(index && index<4)row[px]=colors[index];
+                }
+            }
+        }
+    }
 }
-static void native_title_clear_menu_area(void) {
-    int cols=native_options_window_cols();
-    for(int row=16;row<=27;row++)
-        for(int col=0;col<cols;col++)
-            native_options_put_tile(row,col,0,0);
+static void native_title_draw_text_center(const char *s,int y,int selected,int blink_on) {
+    int center=(vdp.width?vdp.width:320)/2+8;
+    native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
 }
-static void native_title_backup_capture(void) {
-    int cols=native_options_window_cols();
-    if(cols<32 || cols>64)return;
-    native_title_backup_cols=cols;
-    for(int row=0;row<12;row++)
-        for(int col=0;col<cols;col++)
-            native_title_backup[row*64+col]=native_options_get_tile(16+row,col);
-    native_title_backup_valid=1;
-}
-static void native_title_backup_restore(void) {
-    if(!native_title_backup_valid)return;
-    int cols=native_options_window_cols();
-    if(cols!=native_title_backup_cols)return;
-    for(int row=0;row<12;row++)
-        for(int col=0;col<cols;col++)
-            native_options_put_entry(16+row,col,native_title_backup[row*64+col]);
-    native_title_backup_valid=0;
-}
-static void native_title_copy_footer(void) {
-    if(!native_title_backup_valid || native_title_backup_cols!=native_options_window_cols())return;
-    for(int col=0;col<native_title_backup_cols;col++)
-        native_options_put_entry(27,col,native_title_backup[(25-16)*64+col]);
-}
-static void native_title_draw_menu(void) {
-    native_title_clear_menu_area();
-    native_options_write_text(16,13,"START",native_title_menu_selection==0?2:1);
-    native_options_write_text(18,12,"OPTIONS",native_title_menu_selection==1?2:1);
-    native_options_write_text(20,10,"GAME OPTIONS",native_title_menu_selection==2?2:1);
-    native_options_write_text(22,9,"LEVEL BUILDER",native_title_menu_selection==3?2:1);
-    native_options_write_text(24,13,"CHEATS",native_title_menu_selection==4?2:1);
-    native_options_write_text(26,13,"SAVES",native_title_menu_selection==5?2:1);
-    native_title_copy_footer();
-}
-static void native_title_draw_game_options(void) {
-    native_title_clear_menu_area();
-    native_options_write_text(16,10,"GAME OPTIONS",1);
-    native_options_write_text(18,10,"VANILLA GAME",native_title_game_options_focus==0?2:1);
-    native_options_write_text(20,13,"MODERN",native_title_game_options_focus==1?2:1);
+static void native_title_compose_frame(void) {
+    if(!native_title_compose_enabled)return;
+    int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
+    if(W<256 || W>320 || H<200 || H>240)return;
+
+    /* The title's lower field is black in the cartridge art. Clear the
+       original blinking START/OPTIONS and copyright rows without touching
+       VRAM, sprites, scroll registers, or the Turrican/Reborn logo. */
+    for(int y=124;y<H;y++) {
+        uint32_t *row=&vdp.fb[y*320];
+        for(int x=0;x<W;x++)row[x]=0;
+    }
+
+    int blink_on=(native_title_blink_ticks%60u)<30u;
+    if(!native_title_page_mode) {
+        static const char *items[]={"START","OPTIONS","GAME OPTIONS","LEVEL BUILDER","CHEATS","SAVES"};
+        for(int i=0;i<6;i++)
+            native_title_draw_text_center(items[i],128+i*14,
+                native_title_menu_selection==i,blink_on);
+        return;
+    }
+
+    native_title_draw_text_center("GAME OPTIONS",128,0,blink_on);
+    native_title_draw_text_center("VANILLA GAME",148,native_title_game_options_focus==0,blink_on);
+    native_title_draw_text_center("MODERN",163,native_title_game_options_focus==1,blink_on);
+
     if(native_game_level_modern) {
-        char lives[20],continues[20],timer[24];
+        char lives[24],continues[24],timer[24];
         snprintf(lives,sizeof lives,"LIVES %s",native_modern_lives?"ON":"OFF");
         snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
-        snprintf(timer,sizeof timer,"NO-TIME %s",native_modern_no_timer?"ON":"OFF");
-        native_options_write_text(22,10,"MODERN OPTIONS",1);
-        native_options_write_text(24,0,lives,native_title_game_options_focus==2?2:1);
-        native_options_write_text(24,10,continues,native_title_game_options_focus==3?2:1);
-        native_options_write_text(24,21,timer,native_title_game_options_focus==4?2:1);
+        snprintf(timer,sizeof timer,"NO TIMER %s",native_modern_no_timer?"ON":"OFF");
+        const char *toggles[]={lives,continues,timer};
+        int widths[3],total=0;
+        for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
+        total+=14;
+        int x=((W-total)/2)+8;
+        for(int i=0;i<3;i++) {
+            native_title_draw_text_at(x,190,toggles[i],
+                native_title_game_options_focus==i+2,blink_on);
+            x+=widths[i]+7;
+        }
     }
-    native_options_write_text(26,12,"ESC BACK",1);
-    native_title_copy_footer();
 }
 static void native_title_open_selected(void) {
     native_extras_parent=0;
@@ -217,14 +234,21 @@ static void native_title_open_selected(void) {
     }
 }
 static void native_title_menu_update(void) {
-    if(!reborn_title_scene_visible()) {
+    if(native_menu_state>0) {
+        native_title_compose_enabled=0;
+        native_title_input_block=1;
+        return;
+    }
+    if(!native_title_menu_scene_visible()) {
         native_title_scene_active=0;
-        native_title_backup_valid=0;
         native_title_page_mode=0;
         native_title_menu_selection=0;
-        native_title_suppress_frames=0;
         native_title_transition_guard=0;
         native_title_input_block=0;
+        native_title_compose_enabled=0;
+        native_title_last_selection=-1;
+        native_title_last_page=-1;
+        native_title_last_focus=-1;
         return;
     }
     if(!native_title_scene_active) {
@@ -232,18 +256,22 @@ static void native_title_menu_update(void) {
         native_title_menu_selection=0;
         native_title_page_mode=0;
         native_title_game_options_focus=native_game_level_modern?1:0;
+        native_title_blink_ticks=0;
     }
-    if(!native_title_backup_valid)native_title_backup_capture();
-    if(native_title_suppress_frames>0) {
-        native_title_input_block=0;
-        native_title_suppress_frames--;
-        return;
+    if(native_title_menu_selection!=native_title_last_selection ||
+       native_title_page_mode!=native_title_last_page ||
+       native_title_game_options_focus!=native_title_last_focus) {
+        native_title_blink_ticks=0;
+        native_title_last_selection=native_title_menu_selection;
+        native_title_last_page=native_title_page_mode;
+        native_title_last_focus=native_title_game_options_focus;
+    } else {
+        native_title_blink_ticks=(native_title_blink_ticks+1u)%60u;
     }
     native_title_input_block=(native_title_page_mode || native_title_menu_selection>=2 ||
                               native_title_transition_guard) ? 1 : 0;
     native_title_transition_guard=0;
-    if(native_title_page_mode)native_title_draw_game_options();
-    else native_title_draw_menu();
+    native_title_compose_enabled=1;
 }
 static void native_custom_page_back(int extras_selection) {
     if(native_extras_parent==0) {
@@ -788,8 +816,7 @@ confirm:
                             native_title_open_selected();
                             continue;
                         }
-                        native_title_backup_restore();
-                        native_title_suppress_frames=2;
+                        break;
                         break; /* vanilla START/OPTIONS confirm stays with the cartridge */
                     case SDLK_ESCAPE:
                         if(native_title_menu_selection>=2) {
@@ -832,8 +859,7 @@ confirm:
                             native_title_open_selected();
                             continue;
                         }
-                        native_title_backup_restore();
-                        native_title_suppress_frames=2;
+                        break;
                     }
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B &&
                        native_title_menu_selection>=2) {
@@ -848,6 +874,31 @@ confirm:
 
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
+
+    # Compose title UI into the already-rendered VDP framebuffer, never into live VRAM.
+    hook_start=s.find("void md_frame_hook(void)")
+    if hook_start<0:
+        raise RuntimeError("Could not locate md_frame_hook for title framebuffer composition.")
+    hook_brace=s.find("{",hook_start)
+    depth=0
+    hook_end=-1
+    for i in range(hook_brace,len(s)):
+        if s[i]=="{": depth+=1
+        elif s[i]=="}":
+            depth-=1
+            if depth==0:
+                hook_end=i+1
+                break
+    if hook_end<0:
+        raise RuntimeError("Could not isolate md_frame_hook.")
+    hook=s[hook_start:hook_end]
+    if "native_title_compose_frame();" not in hook:
+        shade=re.search(r"(?m)^(\\s*)shade\\(\\s*w\\s*,\\s*h\\s*\\);",hook)
+        if not shade:
+            raise RuntimeError("Could not locate the completed-frame shade call in md_frame_hook.")
+        at=shade.start()
+        hook=hook[:at]+shade.group(1)+"native_title_compose_frame();\\n"+hook[at:]
+        s=s[:hook_start]+hook+s[hook_end:]
 
     # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
