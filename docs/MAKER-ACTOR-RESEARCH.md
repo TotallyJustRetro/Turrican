@@ -315,3 +315,16 @@ The common transfer path now has a clear first half:
 - The helper can append a second command record when a transfer crosses an internal address boundary. That's why `f_6E6` can call `f_71C` twice.
 
 This is a queue producer, not yet the final hardware/VBlank consumer. We now have the concrete queue locations: base `$FFD2DA`, 16 bytes per entry, write index `$FFBCA4`, and busy flag `$FFBCA6`. Build #347 adds a scan for every user of these fields to find the routine that drains the queue and writes its commands to the VDP.
+
+
+## Build #347: DMA queue consumer confirmed
+
+The scan of `$FFD2DA`, `$FFBCA4`, and `$FFBCA6` found the queue drain routine:
+
+- `f_554` sets A6 to the VDP control port `$C00004`, A0 to the queue base `$FFD2DA`, and reads the number of queued entries from `$FFBCA4`.
+- For each 16-byte entry, it writes VDP register command `0x8174`, streams three longwords and two words from the queue to the VDP control port, then writes `0x8164`. After all entries it resets `$FFBCA4` to zero.
+- `f_6C3E` is a higher-level update/flush path: it runs `f_7D04`, dispatches the global callback stored at `$FFBC18`, calls `f_7AB6` to append renderer-related DMA work, checks the busy flag `$FFBCA6`, and conditionally invokes `f_554` to flush the queue.
+- `f_1D10` is another queue synchronization path. It dispatches the callback at `$FFBC18`, checks `$FFBCA6`, invokes `f_554` when required, and then continues its interrupt/state work.
+- `f_897A` is a separate higher-level transfer setup path: it installs `f_8A22` in `$FFBC10`, prepares source/destination pointers from `$FFBC5A` and `$FFBCB4`, configures transfer parameters (`D4=0xC000`, `D5=0x80`), calls `f_6E6`, polls the transfer state, and uses `f_554` to drain the same queue. The exact source buffer/asset class for this path is still under investigation.
+
+The graphics transfer mechanism is now mapped end-to-end at the queue level: prepare a transfer with `f_6DE/f_6E6` → append a 16-byte command entry with `f_71C` → flush queued VDP commands with `f_554`. The next static pass traces the source/destination parameters and data builders for the ROM-backed asset families; it must distinguish this generic DMA queue from object-render output, font/UI transfers, and ordinary plane setup.
