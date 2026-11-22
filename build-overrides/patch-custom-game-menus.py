@@ -618,9 +618,10 @@ confirm:
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT)
                         native_options_tool_index=(native_options_tool_index+1)%3;
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN ||
-                       e.cbutton.button==SDL_CONTROLLER_BUTTON_B)
+                       e.cbutton.button==SDL_CONTROLLER_BUTTON_B) {
                         native_options_tool_active=0;
                         native_menu_resume_guard=1;
+                    }
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A)
                         native_options_open_tool();
                     continue;
