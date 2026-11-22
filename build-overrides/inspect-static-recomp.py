@@ -102,6 +102,44 @@ for rel in FILES:
       frontier.append((parent,depth+1,path+[parent]))
    emit(f"  UNIQUE_CALLERS={len(seen)-1}")
 
+  # Title and menu flow is a state-machine callback stored at $FFBC18.
+  # Map every generated routine that loads or changes it, including the table
+  # address from which the ROM installs the next state handler.
+  emit("GENERATED_TITLE_STATE_DISPATCHERS")
+  state_targets=set()
+  state_ptr_re=re.compile(r"0xFFFFBC18",re.I)
+  state_table_re=re.compile(r"0xFFFFBC1[0-9A-Fa-f]",re.I)
+  for name,(start,end,body) in fn_data.items():
+   hits=[(start+k,line) for k,line in enumerate(body) if state_ptr_re.search(line)]
+   if hits:
+    state_targets.add(name)
+    emit(f"TITLE_STATE_FUNCTION name={name} declaration_line={start+1} refs={len(hits)}")
+    for idx,line in hits:
+     emit(f"  {idx+1}: {line[:360]}")
+     for q in range(max(start,idx-3),min(end,idx+4)):
+      if q!=idx:emit(f"    {q+1}: {lines[q][:300]}")
+  emit("GENERATED_TITLE_STATE_CALLBACK_CALLERS")
+  for seed in sorted(state_targets):
+   emit(f"TITLE_STATE_CALLER_CHAIN seed={seed}")
+   frontier=[(seed,0,[seed])]
+   seen={seed}
+   while frontier:
+    target,depth,path=frontier.pop(0)
+    if depth>=7:continue
+    for parent,idx,line in callers_by_name.get(target,[]):
+     if parent in path:continue
+     emit(f"  DEPTH={depth+1} caller={parent} line={idx+1} calls={target}")
+     emit(f"    {line[:420]}")
+     if parent not in seen and depth<6:
+      seen.add(parent);frontier.append((parent,depth+1,path+[parent]))
+   emit(f"  UNIQUE_CALLERS={len(seen)-1}")
+  # Dump adjacent state-table lookup routines and title handler candidates.
+  for name in ("f_1B96","f_1D10","f_1D54","f_1DE6","f_156A","f_1994","f_2280","f_6C3E"):
+   if name in fn_data:
+    start,end,body=fn_data[name]
+    emit(f"TITLE_HANDLER_CANDIDATE name={name} declaration_line={start+1}")
+    for q in range(start,end):emit(f"  {q+1}: {lines[q][:360]}")
+
   emit("GENERATED_SOUND_CHIP_WRITERS")
   sound_targets=set()
   for name,(start,end,body) in fn_data.items():
