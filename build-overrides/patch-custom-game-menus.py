@@ -32,9 +32,15 @@ static int native_modern_lives=0, native_modern_continues=0, native_modern_no_ti
 static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
-static int native_options_tool_active=0, native_options_tool_index=0;
-static int native_options_tool_row_written=0;
-static int native_options_tool_restore_gamelevel=0;
+static int native_title_menu_selection=0;
+static int native_title_page_mode=0;
+static int native_title_game_options_focus=0;
+static int native_title_backup_valid=0, native_title_backup_cols=32;
+static uint16_t native_title_backup[12*64];
+static int native_title_scene_active=0;
+static int native_title_suppress_frames=0;
+static int native_title_transition_guard=0;
+static int native_title_input_block=0;
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
 
@@ -114,16 +120,20 @@ static uint16_t native_options_font_tile(char ch) {
     if(ch>='A' && ch<='Z') return (uint16_t)(0x531 + (ch-'A'));
     if(ch==' ') return 0x530;
     if(ch=='-') return 0x55A;
+    if(ch=='.') return 0x557;
+    if(ch==',') return 0x555;
     if(ch>='0' && ch<='9') return (uint16_t)(0x54B + (ch-'0'));
     return 0x530;
 }
-static void native_options_put_tile(int row,int col,uint16_t tile,int palette) {
+static void native_options_put_entry(int row,int col,uint16_t entry) {
     int cols=native_options_window_cols();
     if(row<0 || row>=64 || col<0 || col>=cols) return;
     uint32_t at=(native_options_window_base()+((uint32_t)row*(uint32_t)cols+(uint32_t)col)*2u)&0xFFFFu;
-    uint16_t entry=(uint16_t)((tile&0x07FFu)|((palette&3)<<13));
     vdp.vram[at]=(uint8_t)(entry>>8);
     vdp.vram[(at+1u)&0xFFFFu]=(uint8_t)entry;
+}
+static void native_options_put_tile(int row,int col,uint16_t tile,int palette) {
+    native_options_put_entry(row,col,(uint16_t)((tile&0x07FFu)|((palette&3)<<13)));
 }
 static uint16_t native_options_get_tile(int row,int col) {
     int cols=native_options_window_cols();
@@ -135,59 +145,109 @@ static void native_options_write_text(int row,int col,const char *text,int palet
     for(int i=0;text[i] && col+i<native_options_window_cols();i++)
         native_options_put_tile(row,col+i,native_options_font_tile(text[i]),palette);
 }
-static void native_options_clear_text_if_matches(int row,int col,const char *text) {
-    for(int i=0;text[i] && col+i<native_options_window_cols();i++) {
-        uint16_t current=native_options_get_tile(row,col+i);
-        if((current&0x07FFu)==native_options_font_tile(text[i]))
-            native_options_put_tile(row,col+i,0,0);
+static void native_title_clear_menu_area(void) {
+    int cols=native_options_window_cols();
+    for(int row=16;row<=27;row++)
+        for(int col=0;col<cols;col++)
+            native_options_put_tile(row,col,0,0);
+}
+static void native_title_backup_capture(void) {
+    int cols=native_options_window_cols();
+    if(cols<32 || cols>64)return;
+    native_title_backup_cols=cols;
+    for(int row=0;row<12;row++)
+        for(int col=0;col<cols;col++)
+            native_title_backup[row*64+col]=native_options_get_tile(16+row,col);
+    native_title_backup_valid=1;
+}
+static void native_title_backup_restore(void) {
+    if(!native_title_backup_valid)return;
+    int cols=native_options_window_cols();
+    if(cols!=native_title_backup_cols)return;
+    for(int row=0;row<12;row++)
+        for(int col=0;col<cols;col++)
+            native_options_put_entry(16+row,col,native_title_backup[row*64+col]);
+    native_title_backup_valid=0;
+}
+static void native_title_copy_footer(void) {
+    if(!native_title_backup_valid || native_title_backup_cols!=native_options_window_cols())return;
+    for(int col=0;col<native_title_backup_cols;col++)
+        native_options_put_entry(27,col,native_title_backup[(25-16)*64+col]);
+}
+static void native_title_draw_menu(void) {
+    native_title_clear_menu_area();
+    native_options_write_text(16,13,"START",native_title_menu_selection==0?2:1);
+    native_options_write_text(18,12,"OPTIONS",native_title_menu_selection==1?2:1);
+    native_options_write_text(20,10,"GAME OPTIONS",native_title_menu_selection==2?2:1);
+    native_options_write_text(22,9,"LEVEL BUILDER",native_title_menu_selection==3?2:1);
+    native_options_write_text(24,13,"CHEATS",native_title_menu_selection==4?2:1);
+    native_options_write_text(26,13,"SAVES",native_title_menu_selection==5?2:1);
+    native_title_copy_footer();
+}
+static void native_title_draw_game_options(void) {
+    native_title_clear_menu_area();
+    native_options_write_text(16,10,"GAME OPTIONS",1);
+    native_options_write_text(18,10,"VANILLA GAME",native_title_game_options_focus==0?2:1);
+    native_options_write_text(20,13,"MODERN",native_title_game_options_focus==1?2:1);
+    if(native_game_level_modern) {
+        char lives[20],continues[20],timer[24];
+        snprintf(lives,sizeof lives,"LIVES %s",native_modern_lives?"ON":"OFF");
+        snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
+        snprintf(timer,sizeof timer,"NO-TIME %s",native_modern_no_timer?"ON":"OFF");
+        native_options_write_text(22,10,"MODERN OPTIONS",1);
+        native_options_write_text(24,0,lives,native_title_game_options_focus==2?2:1);
+        native_options_write_text(24,10,continues,native_title_game_options_focus==3?2:1);
+        native_options_write_text(24,21,timer,native_title_game_options_focus==4?2:1);
     }
+    native_options_write_text(26,12,"ESC BACK",1);
+    native_title_copy_footer();
 }
-static int native_options_item_selected(int row,int col) {
-    return ((native_options_get_tile(row,col)>>13)&3u)==2u;
-}
-static void native_options_set_row_palette(int row,int col,int count,int palette) {
-    for(int i=0;i<count;i++) {
-        uint16_t tile=(uint16_t)(native_options_get_tile(row,col+i)&0x07FFu);
-        if(tile)native_options_put_tile(row,col+i,tile,palette);
-    }
-}
-/* The three additional choices are real Window Plane tilemap entries using
-   the game's A-Z font tiles and its normal/selected palettes. */
-static void native_options_tools_draw(void) {
-    if(reborn_game_options_visible()) {
-        if(native_options_tool_active)
-            native_options_set_row_palette(8,3,10,1);
-        else if(native_options_tool_restore_gamelevel) {
-            native_options_set_row_palette(8,3,10,2);
-            native_options_tool_restore_gamelevel=0;
-        }
-        native_options_write_text(4,1,"LEVEL BUILDER",
-            native_options_tool_active && native_options_tool_index==0 ? 2 : 1);
-        native_options_write_text(4,16,"CHEATS",
-            native_options_tool_active && native_options_tool_index==1 ? 2 : 1);
-        native_options_write_text(4,25,"SAVES",
-            native_options_tool_active && native_options_tool_index==2 ? 2 : 1);
-        native_options_tool_row_written=1;
-    } else if(native_options_tool_row_written) {
-        native_options_clear_text_if_matches(4,1,"LEVEL BUILDER");
-        native_options_clear_text_if_matches(4,16,"CHEATS");
-        native_options_clear_text_if_matches(4,25,"SAVES");
-        native_options_tool_row_written=0;
-        native_options_tool_active=0;
-        native_options_tool_restore_gamelevel=0;
-    }
-}
-static void native_options_open_tool(void) {
+static void native_title_open_selected(void) {
     native_extras_parent=0;
-    native_options_tool_active=0;
     native_menu_sel=0;
-    native_menu_state=native_options_tool_index==0 ? 11 :
-                      native_options_tool_index==1 ? 9 : 10;
+    if(native_title_menu_selection==2) {
+        native_title_page_mode=1;
+        native_title_game_options_focus=native_game_level_modern?1:0;
+    } else if(native_title_menu_selection==3) {
+        native_menu_state=11;
+    } else if(native_title_menu_selection==4) {
+        native_menu_state=9;
+    } else if(native_title_menu_selection==5) {
+        native_menu_state=10;
+    }
+}
+static void native_title_menu_update(void) {
+    if(!reborn_title_scene_visible()) {
+        native_title_scene_active=0;
+        native_title_backup_valid=0;
+        native_title_page_mode=0;
+        native_title_menu_selection=0;
+        native_title_suppress_frames=0;
+        native_title_transition_guard=0;
+        native_title_input_block=0;
+        return;
+    }
+    if(!native_title_scene_active) {
+        native_title_scene_active=1;
+        native_title_menu_selection=0;
+        native_title_page_mode=0;
+        native_title_game_options_focus=native_game_level_modern?1:0;
+    }
+    if(!native_title_backup_valid)native_title_backup_capture();
+    if(native_title_suppress_frames>0) {
+        native_title_input_block=0;
+        native_title_suppress_frames--;
+        return;
+    }
+    native_title_input_block=(native_title_page_mode || native_title_menu_selection>=2 ||
+                              native_title_transition_guard) ? 1 : 0;
+    native_title_transition_guard=0;
+    if(native_title_page_mode)native_title_draw_game_options();
+    else native_title_draw_menu();
 }
 static void native_custom_page_back(int extras_selection) {
     if(native_extras_parent==0) {
         native_menu_state=0;
-        native_options_tool_active=0;
     } else {
         native_menu_state=8;
         native_menu_sel=extras_selection;
