@@ -41,7 +41,7 @@ for rel in FILES:
   # Earlier scans found only Z80 driver uploads; a title click usually enters a
   # shared high-level routine which queues a cue for the per-frame sound engine.
   fn_starts=[]
-  fn_re=re.compile(r"^\s*static\s+void\s+(f_[A-Za-z0-9_]+)\s*\(M68K\s*\*c\)\s*\\{")
+  fn_re=re.compile(r"^\s*static\s+void\s+(f_[A-Za-z0-9_]+)\s*\(M68K\s*\*c\)\s*\{")
   for i,line in enumerate(lines):
    m=fn_re.match(line)
    if m: fn_starts.append((i,m.group(1)))
