@@ -153,8 +153,8 @@ static void apply_theme()
     ImGuiStyle &s = ImGui::GetStyle();
 
     s.WindowPadding = ImVec2(8.0f, 7.0f);
-    s.FramePadding = ImVec2(8.0f, 6.0f);
-    s.ItemSpacing = ImVec2(6.0f, 5.0f);
+    s.FramePadding = ImVec2(4.0f, 2.0f);
+    s.ItemSpacing = ImVec2(5.0f, 2.0f);
     s.ItemInnerSpacing = ImVec2(6.0f, 5.0f);
     s.ScrollbarSize = 12.0f;
     s.WindowBorderSize = 1.0f;
@@ -392,25 +392,26 @@ static void draw_node_graph();
 static void draw_stage_canvas();
 static void draw_bottom_workspace()
 {
-    ImGui::BeginChild("##workspace_bottom",ImVec2(0,23),true);
-    ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"UNTITLED LEVEL");
+    ImGui::BeginChild("##workspace_bottom",ImVec2(0,25),true);
+    ImGui::TextColored(ImVec4(.42f,.82f,.88f,1),"%s",g_level_name);
     ImGui::SameLine();
-    if(g_undo_count>0){if(ImGui::SmallButton("UNDO"))undo_level_edit();}
-    else{ImGui::BeginDisabled();ImGui::SmallButton("UNDO");ImGui::EndDisabled();}
+    if(g_undo_count>0){if(ImGui::SmallButton("U"))undo_level_edit();}
+    else{ImGui::BeginDisabled();ImGui::SmallButton("U");ImGui::EndDisabled();}
     ImGui::SameLine();
-    if(g_redo_count>0){if(ImGui::SmallButton("REDO"))redo_level_edit();}
-    else{ImGui::BeginDisabled();ImGui::SmallButton("REDO");ImGui::EndDisabled();}
+    if(g_redo_count>0){if(ImGui::SmallButton("R"))redo_level_edit();}
+    else{ImGui::BeginDisabled();ImGui::SmallButton("R");ImGui::EndDisabled();}
     ImGui::SameLine();
     if(ImGui::SmallButton("SAVE")){bool ok=mtlb_map_save();std::snprintf(g_status,sizeof(g_status),"%s",ok?"LEVEL SAVED":"SAVE FAILED");}
     ImGui::SameLine();
     ImGui::BeginDisabled();ImGui::SmallButton("TEST");ImGui::EndDisabled();
-    ImGui::SameLine();if(ImGui::SmallButton("EXIT"))g_exit_requested=true;
+    ImGui::SameLine();
+    if(ImGui::SmallButton("EXIT"))g_exit_requested=true;
     ImGui::EndChild();
 }
 
 static void draw_layer_bar()
 {
-    ImGui::BeginChild("##categories",ImVec2(0,23),true);
+    ImGui::BeginChild("##categories",ImVec2(0,28),true);
     const struct {const char *label;EditorMode mode;} tabs[]={
         {"TILES",MODE_TILES},{"OBJECTS",MODE_ENTITY},
         {"BOSSES",MODE_BOSS},{"DRAW",MODE_ASSETS},{"EVENTS",MODE_EVENTS}
@@ -1027,7 +1028,7 @@ extern "C" int mtlb_render_to_framebuffer(uint32_t *framebuffer,int width,int he
     draw_layer_bar();
     draw_asset_shelf();
     const float bottomHeight=25;
-    const float workspaceHeight=std::max(58.0f,io.DisplaySize.y-20.0f-23.0f-34.0f-22.0f-bottomHeight-14.0f);
+    const float workspaceHeight=std::max(58.0f,io.DisplaySize.y-20.0f-28.0f-34.0f-26.0f-bottomHeight-14.0f);
     draw_tool_palette();
     ImGui::BeginChild("##maker_workspace",ImVec2(0,workspaceHeight),false);
     ImGui::BeginChild("##maker_stage",ImVec2(0,0),true);
