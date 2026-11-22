@@ -47,6 +47,14 @@ static unsigned int native_title_blink_ticks=0;
 static int native_title_last_selection=-1, native_title_last_page=-1, native_title_last_focus=-1;
 static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
+static unsigned int native_pause_anim_ticks=0;
+static int native_pause_confirm_action=0,native_pause_confirm_choice=1;
+static int native_pause_request_title=0,native_pause_skip_backdrop_restore=0;
+static int native_pause_no_checkpoint=0;
+static int native_pause_control_config=0,native_pause_rapid_fire=0;
+static int native_pause_sound_track=-1;
+static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
+static void native_pause_enter_confirm(int action);
 
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
@@ -930,44 +938,85 @@ def patch_sdl(project: Path) -> None:
     s=once(s,anchor,anchor+"\n"+CUSTOM_GLOBALS,"custom menu state globals")
 
     # Pause main menu now exposes Extras and retains all prior entries.
-    pause_render=r'''static void render_native_pause_main(void) {
-    static const char *items[]={"RESUME GAME","OPTIONS","EXTRAS","CONTROLS","ACHIEVEMENTS","QUIT GAME"};
-    int n=6, scale=2;
-    int pw=202,ph=n*22+30;
-    int px,py; native_menu_panel(pw,ph,&px,&py);
-    native_menu_title(px+(pw-str_w("PAUSED",scale+1))/2,py+8,"PAUSED",scale+1);
-    for(int i=0;i<n;i++)
-        native_menu_item(px+(pw-str_w(items[i],scale))/2,py+34+i*22,items[i],i==native_menu_sel,scale);
-}'''
+pause_render=r'''static void render_native_pause_main(void) {
+    int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
+    int x=8,y=7,w=W-16,h=H-14;
+    native_menu_rect(x,y,w,h,0x6A,0x74,0x88,255);
+    native_menu_rect(x+2,y+2,w-4,h-4,0x08,0x0D,0x17,255);
+    native_menu_rect(x+4,y+4,w-8,h-8,0x1A,0x22,0x2E,255);
+    for(int i=0;i<w-12;i++) {
+        int t=i*255/(w-13);
+        native_menu_rect(x+6+i,y+6,1,20,
+            (uint8_t)(105+150*t/255),(uint8_t)(8+118*t/255),(uint8_t)(18+18*t/255),255);
+    }
+    native_menu_rect(x+6,y+26,w-12,2,0xE8,0xA8,0x46,255);
+    native_pause_draw_text(x+16,y+12,"MISSION PAUSED",0xFFF0C8);
+    native_pause_draw_text(x+w-112,y+12,"BREN MCGUIRE",0xFFF0C8);
+    const int rx[4]={x+7,x+w-12,x+7,x+w-12};
+    const int ry[4]={y+7,y+7,y+h-12,y+h-12};
+    for(int i=0;i<4;i++) {
+        native_menu_rect(rx[i],ry[i],5,5,0xB6,0xC0,0xCE,255);
+        native_menu_rect(rx[i]+1,ry[i]+1,3,3,0x34,0x3B,0x48,255);
+    }
+    for(int i=0;i<4;i++) {
+        int on=((native_pause_anim_ticks/12u+i*3u)&1u)!=0;
+        native_menu_rect(x+w-32+i*6,y+9,4,4,on?0xF4:0x65,on?0x28:0x18,on?0xDA:0x47,255);
+    }
+    static const char *items[]={"RESUME MISSION","SUIT STATUS AND ARSENAL","OPTIONS AND SOUND TEST",
+        "ABORT / RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
+    for(int i=0;i<6;i++) {
+        int iy=y+40+i*23;
+        if(i==native_menu_sel) {
+            native_menu_rect(x+10,iy-3,174,19,0x9C,0x0A,0x7B,190);
+            native_menu_rect(x+12,iy-1,170,15,0x24,0x0F,0x2C,245);
+            native_menu_rect(x+10,iy-3,2,19,0xF0,0x26,0xD8,255);
+        }
+        native_pause_draw_text(x+20,iy,items[i],i==native_menu_sel?0xFFF0D0:0xC4CFDA);
+    }
+    uint8_t ram_snapshot[0x10000];md_copy_main_ram(ram_snapshot);
+    unsigned energy=((unsigned)ram_snapshot[0xBF20]<<8)|ram_snapshot[0xBF21];
+    if(energy>0x40)energy=0x40;
+    int bx=x+198,by=y+42,bw=w-210;
+    native_menu_rect(bx,by,bw,85,0x05,0x08,0x11,255);
+    native_menu_rect(bx,by,bw,1,0x9D,0x18,0x83,255);
+    native_pause_draw_text(bx+8,by+8,"SUIT STATUS",0xEDB5E8);
+    native_pause_draw_text(bx+8,by+25,"ENERGY",0xDCE5EF);
+    native_menu_rect(bx+8,by+39,bw-16,8,0x3A,0x30,0x44,255);
+    if(energy)native_menu_rect(bx+8,by+39,(bw-16)*(int)energy/0x40,8,0xE9,0xA5,0x25,255);
+    native_pause_draw_text(bx+8,by+54,"MISSION ACTIVE",0xA9B5C6);
+    native_menu_rect(bx+8,by+69,bw-16,1,0xB7,0x1D,0x9D,255);
+    native_pause_draw_text(bx+8,by+76,"FM LINK ONLINE",0xC7B0D0);
+    native_pause_draw_text(x+16,y+h-17,"UP / DOWN SELECT   A / ENTER OK   B / ESC RESUME",0xAAB8C7);
+}''''''
     s=replace_function(s,"static void render_native_pause_main(void)",pause_render,"pause menu Extras row")
 
     pause_proc=r'''static void proc_pause_main(SDL_Event *e) {
-    int n=6;
+    const int n=6;
     if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
         switch(e->key.keysym.sym) {
-        case SDLK_UP: native_menu_sel=(native_menu_sel-1+n)%n; break;
-        case SDLK_DOWN: native_menu_sel=(native_menu_sel+1)%n; break;
-        case SDLK_RETURN: case SDLK_x: goto confirm;
-        case SDLK_ESCAPE: native_menu_state=0; break;
+        case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
+        case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
+        case SDLK_RETURN:case SDLK_x:goto confirm;
+        case SDLK_ESCAPE:native_menu_state=0;break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel-1+n)%n;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)goto confirm;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A)goto confirm;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_menu_state=0;
     }
     return;
 confirm:
     switch(native_menu_sel) {
     case 0:native_menu_state=0;break;
-    case 1:native_menu_state=6;native_menu_sel=0;break;
-    case 2:native_extras_parent=1;native_menu_state=8;native_menu_sel=0;break;
-    case 3:native_menu_state=4;native_menu_sel=0;break;
-    case 4:native_menu_state=5;native_menu_sel=0;break;
-    case 5:exit(0);
+    case 1:native_menu_state=15;native_menu_sel=0;break;
+    case 2:native_menu_state=16;native_menu_sel=0;break;
+    case 3:native_pause_enter_confirm(0);break;
+    case 4:native_pause_enter_confirm(1);break;
+    case 5:native_pause_enter_confirm(2);break;
     }
-}'''
+}''''''
     s=replace_function(s,"static void proc_pause_main(SDL_Event *e)",pause_proc,"pause menu Extras action")
 
     # Put page functions after the pause backdrop is declared, but before menu present/event helpers.
