@@ -364,7 +364,8 @@ if gen.exists():
   "f_A3A0","f_A3D6","f_BF50","f_BFF2","f_C008","f_C01A",
   "f_A18A","f_A932","f_A490","f_A3C","f_A2A",
   "f_5432","f_543C","f_5444","f_5448","f_544A",
-  "f_552A","f_5578","f_558C","f_5232","f_5D8A"
+  "f_552A","f_5578","f_558C","f_5232","f_5D8A",
+  "f_5300","f_5400","f_5232","f_1BDE","f_19FA"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -846,6 +847,54 @@ if gen.exists():
      callback_call_count+=1
     recent=[x for x in recent if n-x[0]<=48]
   emit(f"OBJECT_RECORD_INDIRECT_CALLBACK_CALL_COUNT {callback_call_count}")
+
+ # Separate stage-context callback reads from per-object record field consumers.
+ # Scan exact +30/+34/+38 loads through all address registers, then follow the
+ # destination register into any later rt_call_addr in the same generated routine.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_VS_STAGE_CONTEXT_CALLBACK_FIELD_CONSUMERS]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  load=re.compile(r"uint32_t\s+s\s*=\s*A\(([0-7])\)\s*\+\s*\(int32_t\)(30|34|38);\s*uint32_t\s+v\s*=\s*RD32\(s\);\s*A\(([0-7])\)\s*=\s*v;")
+  indirect=re.compile(r"uint32_t\s+e\s*=\s*A\(([0-7])\);\s*\{.*?rt_call_addr\(c,_t\)")
+  current="(global)"
+  rows=[]
+  fn_ranges=[]
+  for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+   lm=load.search(line)
+   if not lm: continue
+   src_reg,offset,dst_reg=map(int,lm.groups())
+   later=[]
+   for q in range(i+1,min(len(gen_lines),i+180)):
+    fm2=fn_start.search(gen_lines[q])
+    if fm2: break
+    cm=indirect.search(gen_lines[q])
+    if cm and int(cm.group(1))==dst_reg:
+     later.append((q+1,gen_lines[q].strip()[:280]))
+   rows.append((current,src_reg,offset,dst_reg,i+1,line.strip()[:280],later))
+  for fn,src_reg,offset,dst_reg,n,code,later in rows:
+   struct=("stage/profile context" if fn=="f_19FA" else "object-or-other record (needs caller correlation)")
+   emit(f"CALLBACK_FIELD_READ function={fn} base=A{src_reg} offset=+{offset} dst=A{dst_reg} line={n} class={struct}")
+   emit(f"  read: {code}")
+   for call_line,call_code in later[:4]:
+    emit(f"  indirect_call line={call_line}: {call_code}")
+  emit(f"CALLBACK_FIELD_READ_COUNT {len(rows)}")
+
+  # Emit callers of the object list traversal and the routines that populate
+  # the two list heads, to establish exactly when the frame walker runs.
+  emit("[OBJECT_LIST_WALKER_CALLERS_AND_HEAD_WRITES]")
+  current="(global)"
+  for i,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if "f_5432(c)" in line or "f_543C(c)" in line:
+    emit(f"OBJECT_LIST_WALKER_CALL function={current} line={i} code={line.strip()[:280]}")
+   if re.search(r"uint32_t\s+d\s*=\s*0xFFFFBC(?:28|30|2C)u",line):
+    emit(f"OBJECT_LIST_HEAD_WRITE owner={current} line={i} code={line.strip()[:280]}")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
