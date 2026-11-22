@@ -85,7 +85,7 @@ def main() -> None:
     render_anchor = "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n    SDL_RenderPresent(ren);"
     render_patch = (
         "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
-        "    if(native_menu_state==11) mtlb_set_stage_texture(tex,tw,h);\n"
+        "    if(native_menu_state==11) mtlb_set_stage_texture(native_title_gameplay_hud_visible()?tex:NULL,tw,h);\n"
         "    if(native_menu_state==11 && mtlb_render(ren)) {\n"
         "        mtlb_shutdown();\n"
         "        native_custom_enter_parent();\n"
