@@ -29,7 +29,10 @@ CUSTOM_GLOBALS = r'''
 static int native_extras_parent=1;
 static int native_game_level_modern=0;
 static int native_cheat_energy=0, native_cheat_lives=0, native_cheat_timer=0;
-static int native_modern_lives=0, native_modern_continues=0, native_modern_no_timer=0;
+static int native_modern_continues=0;
+static int native_modern_map=0, native_modern_no_timer_hud=0;
+static int native_modern_persistent_weapon=0, native_modern_checkpoints=0, native_modern_iframes=0;
+static int native_modern_scroll_offset=0;
 static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
@@ -347,17 +350,21 @@ static void native_custom_page_back(int extras_selection) {
 
 static void native_custom_apply(void) {
     md_set_custom_gameplay_options(native_cheat_energy,native_cheat_lives,native_cheat_timer,
-        native_game_level_modern && native_modern_lives,
         native_game_level_modern && native_modern_continues,
-        native_game_level_modern && native_modern_no_timer);
+        native_game_level_modern && native_modern_no_timer_hud,
+        native_game_level_modern && native_modern_persistent_weapon,
+        native_game_level_modern && native_modern_checkpoints,
+        native_game_level_modern && native_modern_iframes);
 }
 static void native_custom_save_config(void) {
     FILE *f=fopen("custom-game-options.ini.tmp","w");
     if(!f)return;
     fprintf(f,"game_level=%d\ncheat_energy=%d\ncheat_lives=%d\ncheat_timer=%d\n"
-              "modern_lives=%d\nmodern_continues=%d\nmodern_no_timer=%d\n",
+              "modern_continues=%d\nmodern_map=%d\nmodern_no_timer_hud=%d\n"
+              "modern_persistent_weapon=%d\nmodern_checkpoints=%d\nmodern_iframes=%d\n",
         native_game_level_modern,native_cheat_energy,native_cheat_lives,native_cheat_timer,
-        native_modern_lives,native_modern_continues,native_modern_no_timer);
+        native_modern_continues,native_modern_map,native_modern_no_timer_hud,
+        native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes);
     if(fclose(f)!=0){remove("custom-game-options.ini.tmp");return;}
     remove("custom-game-options.ini");
     rename("custom-game-options.ini.tmp","custom-game-options.ini");
@@ -374,9 +381,12 @@ static void native_custom_load_config(void) {
             else if(!strcmp(line,"cheat_energy"))native_cheat_energy=!!v;
             else if(!strcmp(line,"cheat_lives"))native_cheat_lives=!!v;
             else if(!strcmp(line,"cheat_timer"))native_cheat_timer=!!v;
-            else if(!strcmp(line,"modern_lives"))native_modern_lives=!!v;
             else if(!strcmp(line,"modern_continues"))native_modern_continues=!!v;
-            else if(!strcmp(line,"modern_no_timer"))native_modern_no_timer=!!v;
+            else if(!strcmp(line,"modern_map"))native_modern_map=!!v;
+            else if(!strcmp(line,"modern_no_timer_hud"))native_modern_no_timer_hud=!!v;
+            else if(!strcmp(line,"modern_persistent_weapon"))native_modern_persistent_weapon=!!v;
+            else if(!strcmp(line,"modern_checkpoints"))native_modern_checkpoints=!!v;
+            else if(!strcmp(line,"modern_iframes"))native_modern_iframes=!!v;
         }
         fclose(f);
     }
