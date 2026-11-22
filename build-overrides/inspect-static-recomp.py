@@ -895,7 +895,7 @@ if gen.exists():
   for i,line in enumerate(gen_lines):
    fm=fn_start.search(line)
    if fm: current=fm.group(1)
-   called=sorted(set(re.findall(r"\\b(f_[0-9A-Fa-f]+)\\s*\\(c\\)",line))&interesting)
+   called=sorted(set(re.findall(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)",line))&interesting)
    for target in called:
     lo=max(0,i-20);hi=min(len(gen_lines),i+16)
     emit(f"OBJECT_DESCRIPTOR_CALL caller={current} target={target} lines={lo+1}-{hi}")
@@ -906,9 +906,9 @@ if gen.exists():
   # object records, linked lists and the VDP sprite/plane output buffers.
   emit("[OBJECT_RENDER_AND_FRAME_UPDATE_ROUTINES]")
   render_names={"f_5472","f_54A6","f_552A","f_5450","f_5644","f_56CE","f_3BD8","f_3D80","f_5DB2"}
-  source="\\n".join(gen_lines)
+  source="\n".join(gen_lines)
   for name in sorted(render_names):
-   pat=re.compile(r"(?m)^\\s*static\\s+void\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
    hit=pat.search(source)
    if not hit: continue
    brace=source.find("{",hit.start());depth=0;end=-1
