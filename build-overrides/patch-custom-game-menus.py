@@ -1245,36 +1245,42 @@ def patch_sdl(project: Path) -> None:
         int on=((native_pause_anim_ticks/12u+i*3u)&1u)!=0;
         native_menu_rect(x+w-32+i*6,y+9,4,4,on?0xF4:0x65,on?0x28:0x18,on?0xDA:0x47,255);
     }
-    static const char *items[]={"RESUME MISSION","SUIT STATUS ARSENAL","OPTIONS SOUND TEST",
+    /* Preserve the original pause-menu destinations: Options, Controls, and
+       Achievements. The Options root contains separate Video, Audio, and
+       Controller Setup pages. Reborn's new suit and sound-test pages follow. */
+    static const char *items[]={"RESUME MISSION","VIDEO AUDIO OPTIONS","CONTROLS",
+        "ACHIEVEMENTS","SUIT STATUS ARSENAL","OPTIONS SOUND TEST",
         "ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
-    for(int i=0;i<6;i++) {
-        int iy=y+40+i*23;
+    for(int i=0;i<9;i++) {
+        int iy=y+38+i*16;
         if(i==native_menu_sel) {
-            native_menu_rect(x+10,iy-3,172,19,0x9C,0x0A,0x7B,190);
-            native_menu_rect(x+12,iy-1,168,15,0x24,0x0F,0x2C,245);
-            native_menu_rect(x+10,iy-3,2,19,0xF0,0x26,0xD8,255);
+            native_menu_rect(x+10,iy-2,174,13,0x9C,0x0A,0x7B,190);
+            native_menu_rect(x+12,iy-1,170,11,0x24,0x0F,0x2C,245);
+            native_menu_rect(x+10,iy-2,2,13,0xF0,0x26,0xD8,255);
         }
         native_pause_draw_text(x+20,iy,items[i],i==native_menu_sel?0xFFF0D0:0xC4CFDA);
     }
     uint8_t ram_snapshot[0x10000];md_copy_main_ram(ram_snapshot);
     unsigned energy=((unsigned)ram_snapshot[0xBF20]<<8)|ram_snapshot[0xBF21];
     if(energy>0x40)energy=0x40;
-    int bx=x+186,by=y+42,bw=w-198;
-    native_menu_rect(bx,by,bw,85,0x05,0x08,0x11,255);
-    native_menu_rect(bx,by,bw,1,0x9D,0x18,0x83,255);
-    native_pause_draw_text(bx+8,by+8,"SUIT STATUS",0xEDB5E8);
-    native_pause_draw_text(bx+8,by+25,"ENERGY",0xDCE5EF);
-    native_menu_rect(bx+8,by+39,bw-16,8,0x3A,0x30,0x44,255);
-    if(energy)native_menu_rect(bx+8,by+39,(bw-16)*(int)energy/0x40,8,0xE9,0xA5,0x25,255);
-    native_pause_draw_text(bx+8,by+54,"MISSION LIVE",0xA9B5C6);
-    native_menu_rect(bx+8,by+69,bw-16,1,0xB7,0x1D,0x9D,255);
-    native_pause_draw_text(bx+8,by+76,"FM READY",0xC7B0D0);
+    if(W>=300) {
+        int bx=x+186,by=y+42,bw=w-198;
+        native_menu_rect(bx,by,bw,85,0x05,0x08,0x11,255);
+        native_menu_rect(bx,by,bw,1,0x9D,0x18,0x83,255);
+        native_pause_draw_text(bx+8,by+8,"SUIT STATUS",0xEDB5E8);
+        native_pause_draw_text(bx+8,by+25,"ENERGY",0xDCE5EF);
+        native_menu_rect(bx+8,by+39,bw-16,8,0x3A,0x30,0x44,255);
+        if(energy)native_menu_rect(bx+8,by+39,(bw-16)*(int)energy/0x40,8,0xE9,0xA5,0x25,255);
+        native_pause_draw_text(bx+8,by+54,"MISSION LIVE",0xA9B5C6);
+        native_menu_rect(bx+8,by+69,bw-16,1,0xB7,0x1D,0x9D,255);
+        native_pause_draw_text(bx+8,by+76,"FM READY",0xC7B0D0);
+    }
     native_pause_draw_text(x+16,y+h-17,"ARROWS SELECT  ENTER OK  ESC BACK",0xAAB8C7);
 }'''
     s=replace_function(s,"static void render_native_pause_main(void)",pause_render,"pause menu Extras row")
 
     pause_proc=r'''static void proc_pause_main(SDL_Event *e) {
-    const int n=6;
+    const int n=9;
     if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
@@ -1293,11 +1299,14 @@ def patch_sdl(project: Path) -> None:
 confirm:
     switch(native_menu_sel) {
     case 0:native_menu_state=0;break;
-    case 1:native_menu_state=15;native_menu_sel=0;break;
-    case 2:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
-    case 3:native_pause_enter_confirm(0);break;
-    case 4:native_pause_enter_confirm(1);break;
-    case 5:native_pause_enter_confirm(2);break;
+    case 1:native_menu_state=6;native_menu_sel=0;break; /* Video, Audio, Controller Setup */
+    case 2:native_menu_state=4;native_menu_sel=0;break; /* Original Controls page */
+    case 3:native_menu_state=5;native_menu_sel=0;break; /* Original Achievements page */
+    case 4:native_menu_state=15;native_menu_sel=0;break;
+    case 5:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
+    case 6:native_pause_enter_confirm(0);break;
+    case 7:native_pause_enter_confirm(1);break;
+    case 8:native_pause_enter_confirm(2);break;
     }
 }'''
     s=replace_function(s,"static void proc_pause_main(SDL_Event *e)",pause_proc,"pause menu Extras action")
