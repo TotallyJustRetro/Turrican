@@ -15,6 +15,7 @@ int mtlb_init(SDL_Window *window, int width, int height);
 void mtlb_shutdown(void);
 void mtlb_process_event(const SDL_Event *event);
 int mtlb_render_to_framebuffer(uint32_t *framebuffer, int width, int height, int pitch_pixels);
+void mtlb_update_vdp_resources(const uint8_t *vram, const uint16_t *cram);
 
 int mtlb_map_cols(void);
 int mtlb_map_rows(void);
