@@ -436,7 +436,7 @@ static void native_toggle_option(int state,int item) {
 }
 static void render_native_toggle_page(int state) {
     const char *title=state==9?"CHEATS":"MODERN OPTIONS";
-    const char *cheat_labels[4]={"INFINITE ENERGY","INFINITE LIVES","NO TIMER","BACK"};
+    const char *cheat_labels[4]={"INFINITE ENERGY","INFINITE LIVES","FREEZE TIMER","BACK"};
     const char *modern_labels[4]={"MAP KEY M","HIDE TIMER HUD","ONE-TIER DROP","BACK"};
     const char **labels=state==9?cheat_labels:modern_labels;
     int pw=234,ph=144,px,py;
