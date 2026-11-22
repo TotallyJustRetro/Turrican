@@ -346,6 +346,32 @@ if gen.exists():
    for q in range(max(1,n-5),min(len(lines),n+5)+1):
     emit(f"  {q}: {lines[q-1][:240]}")
 
+ # Trace the low work-RAM staging locations seen in the VDP upload helpers.
+ # These are not the actor RAM window: they hold transfer queues, source
+ # pointers and temporary graphics staging fields used by startup/streaming code.
+ emit("[VDP_STAGING_RAM_REFERENCES]")
+ low_ram=re.compile(r"0xFFFF(085[0-9A-F]|086[0-9A-F]|9A8[0-9A-F]|17D[0-9A-F])u",re.I)
+ active_fn="(global)"
+ low_summary={}
+ low_count=0
+ fn_decl=re.compile(r"^\s*static\s+(?:void|int|uint8_t|uint16_t|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\(")
+ for i,line in enumerate(lines,1):
+  fm=fn_decl.search(line)
+  if fm: active_fn=fm.group(1)
+  refs=sorted(set(m.group(1).upper() for m in low_ram.finditer(line)))
+  if not refs: continue
+  for address in refs:
+   low_summary.setdefault(address,{}).setdefault(active_fn,0)
+   low_summary[address][active_fn]+=1
+  emit(f"STAGING_REF function={active_fn} line={i} addresses={','.join(refs)} code={line[:280]}")
+  low_count+=1
+  if low_count>=400:
+   emit("STAGING_REF_LIMIT 400")
+   break
+ emit("STAGING_ADDRESS_SUMMARY")
+ for address,functions in sorted(low_summary.items()):
+  emit(f"STAGING_ADDRESS $FF{address} function_counts="+",".join(f"{fn}:{count}" for fn,count in sorted(functions.items(),key=lambda item:(-item[1],item[0]))))
+ 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
