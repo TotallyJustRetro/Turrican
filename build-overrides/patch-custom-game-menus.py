@@ -184,7 +184,7 @@ static void native_title_compose_frame(void) {
     /* Shade has already copied the cartridge frame into outbuf. Compose only
        in the presentation buffer, leaving the VDP framebuffer and cartridge
        planes untouched. This prevents logo motion and original-menu bleed. */
-    for(int y=124;y<H;y++) {
+    for(int y=132;y<H;y++) {
         uint32_t *row=&vdp.fb[y*320];
         for(int x=0;x<W;x++)row[x]=0;
     }
@@ -193,28 +193,28 @@ static void native_title_compose_frame(void) {
     if(!native_title_page_mode) {
         static const char *items[]={"START","OPTIONS","GAME OPTIONS","LEVEL BUILDER","CHEATS","SAVES"};
         for(int i=0;i<6;i++)
-            native_title_draw_text_center(items[i],128+i*14,
+            native_title_draw_text_center(items[i],134+i*14,
                 native_title_menu_selection==i,blink_on);
         return;
     }
 
-    native_title_draw_text_center("GAME OPTIONS",128,0,blink_on);
-    native_title_draw_text_center("VANILLA GAME",148,native_title_game_options_focus==0,blink_on);
-    native_title_draw_text_center("MODERN",163,native_title_game_options_focus==1,blink_on);
+    native_title_draw_text_center("GAME OPTIONS",134,0,blink_on);
+    native_title_draw_text_center("VANILLA GAME",154,native_title_game_options_focus==0,blink_on);
+    native_title_draw_text_center("MODERN",169,native_title_game_options_focus==1,blink_on);
 
     if(native_game_level_modern) {
         char lives[24],continues[24],timer[24];
         snprintf(lives,sizeof lives,"LIVES %s",native_modern_lives?"ON":"OFF");
         snprintf(continues,sizeof continues,"CONT %s",native_modern_continues?"ON":"OFF");
         snprintf(timer,sizeof timer,"NO TIMER %s",native_modern_no_timer?"ON":"OFF");
-        native_title_draw_text_center("MODERN OPTIONS",180,0,blink_on);
+        native_title_draw_text_center("MODERN OPTIONS",186,0,blink_on);
         const char *toggles[]={lives,continues,timer};
         int widths[3],total=0;
         for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
         total+=14;
         int x=(W-total)/2;
         for(int i=0;i<3;i++) {
-            native_title_draw_text_at(x,197,toggles[i],
+            native_title_draw_text_at(x,203,toggles[i],
                 native_title_game_options_focus==i+2,blink_on);
             x+=widths[i]+7;
         }
