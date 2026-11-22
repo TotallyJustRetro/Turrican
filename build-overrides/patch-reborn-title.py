@@ -294,73 +294,54 @@ static int reborn_title_scene_visible(void)
  * and a later return to the title restarts the pixelated reveal. */
 static int reborn_game_options_visible(void)
 {
-    int W = vdp.width, H = vdp.height;
-    if (W < 256 || W > 320 || H < 200 || H > 240) return 0;
+    /* The original Game Options menu is drawn into the VDP Window Plane.
+     * Detect its actual tilemap strings rather than screen-colour thresholds:
+     * the selected row changes from palette 1 to palette 2, so a pixel-based
+     * detector that expects one colour per item fails as the cursor moves. */
+    if (vdp.width < 256 || vdp.width > 320 || vdp.height < 200 || vdp.height > 240)
+        return 0;
 
-    int heading = 0, game_level = 0;
-    int normal = 0, rapid_fire = 0, controls = 0;
-    int music_test = 0, exit_label = 0;
+    const uint32_t base = ((uint32_t)vdp.reg[3] & 0x3Eu) << 10;
+    const int cols = (vdp.reg[16] & 0x02) ? 64 : 32;
 
-    for (int y = H * 4 / 100; y < H * 12 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 27 / 100; x < W * 73 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++heading;
-        }
-    }
-    for (int y = H * 22 / 100; y < H * 30 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 28 / 100; x < W * 72 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 120 && r > g + 35 && g < 125 && b < 105) ++game_level;
-        }
-    }
-    for (int y = H * 30 / 100; y < H * 37 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 29 / 100; x < W * 71 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++normal;
-        }
-    }
-    for (int y = H * 37 / 100; y < H * 45 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 27 / 100; x < W * 73 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++rapid_fire;
-        }
-    }
-    for (int y = H * 49 / 100; y < H * 59 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++controls;
-        }
-    }
-    for (int y = H * 67 / 100; y < H * 77 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 25 / 100; x < W * 75 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++music_test;
-        }
-    }
-    for (int y = H * 85 / 100; y < H * 96 / 100; ++y) {
-        const uint32_t *row = &vdp.fb[y * 320];
-        for (int x = W * 30 / 100; x < W * 70 / 100; ++x) {
-            uint32_t p = row[x];
-            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (r > 125 && g > 125 && b > 135) ++exit_label;
-        }
-    }
+    static const uint16_t heading[] = {
+        0x537,0x531,0x53D,0x535,0x530,0x53F,0x540,0x544,0x539,0x53F,0x53E,0x543
+    }; /* GAME OPTIONS */
+    static const uint16_t game_level[] = {
+        0x537,0x531,0x53D,0x535,0x530,0x53C,0x535,0x546,0x535,0x53C
+    }; /* GAME LEVEL */
+    static const uint16_t rapid_fire[] = {
+        0x542,0x531,0x540,0x539,0x534,0x530,0x536,0x539,0x542,0x535
+    }; /* RAPID FIRE */
+    static const uint16_t controls[] = {
+        0x533,0x53F,0x53E,0x544,0x542,0x53F,0x53C,0x543
+    }; /* CONTROLS */
+    static const uint16_t music_test[] = {
+        0x53D,0x545,0x543,0x539,0x533,0x55A,0x544,0x535,0x543,0x544
+    }; /* MUSIC-TEST */
+    static const uint16_t exit_text[] = {0x535,0x548,0x539,0x544}; /* EXIT */
 
-    return heading > 45 && game_level > 25 &&
-           normal > 18 && rapid_fire > 25 &&
-           controls > 20 && music_test > 20 && exit_label > 15;
+    const struct { int row, col; const uint16_t *tiles; size_t count; } marks[] = {
+        {2,10,heading,sizeof heading/sizeof heading[0]},
+        {7,11,game_level,sizeof game_level/sizeof game_level[0]},
+        {11,11,rapid_fire,sizeof rapid_fire/sizeof rapid_fire[0]},
+        {15,12,controls,sizeof controls/sizeof controls[0]},
+        {20,11,music_test,sizeof music_test/sizeof music_test[0]},
+        {25,14,exit_text,sizeof exit_text/sizeof exit_text[0]}
+    };
+
+    for (size_t m=0; m<sizeof marks/sizeof marks[0]; ++m) {
+        for (size_t i=0; i<marks[m].count; ++i) {
+            uint32_t at=base + ((uint32_t)marks[m].row*(uint32_t)cols +
+                               (uint32_t)marks[m].col + (uint32_t)i)*2u;
+            at &= 0xFFFFu;
+            uint16_t entry=(uint16_t)(((uint16_t)vdp.vram[at] << 8) |
+                                      vdp.vram[(at+1u)&0xFFFFu]);
+            if ((entry & 0x07FFu) != marks[m].tiles[i])
+                return 0;
+        }
+    }
+    return 1;
 }
 
 static void reborn_title_update(void)
