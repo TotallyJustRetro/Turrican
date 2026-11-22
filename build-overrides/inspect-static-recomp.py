@@ -7,9 +7,9 @@ from pathlib import Path
 
 ROOT=Path(sys.argv[1]).resolve()
 FILES=[
- "recomp_gen.c","runtime/harness.c","runtime/m68k_rt.h","runtime/m68k_interp.c",
- "runtime/z80.h","runtime/ym2612.h","runtime/ym2612.c",
- "runtime/psg.h","runtime/psg.c","runtime/vdp.h",
+ "recomp_gen.c","runtime/harness.c","runtime/sdl_main.c","runtime/vdp.c","runtime/vdp.h",
+ "runtime/m68k_rt.h","runtime/m68k_interp.c","runtime/z80.h",
+ "runtime/ym2612.h","runtime/ym2612.c","runtime/psg.h","runtime/psg.c",
 ]
 OUT=[]
 def emit(s=""): OUT.append(s)
@@ -59,9 +59,12 @@ for rel in FILES:
    if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
     emit(f"STATE_DECL line={n} {t[:220]}")
   m=func.match(line)
-  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot",m.group(1),re.I):
+  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render",m.group(1),re.I):
    params=re.sub(r"\s+"," ",m.group(2).strip())
-   emit(f"FUNCTION line={n} name={m.group(1)} params={params[:100] or '-'}")
+   emit(f"FUNCTION line={n} name={m.group(1)} params={params[:120] or '-'}")
+  if rel in ("runtime/sdl_main.c","runtime/vdp.c","runtime/vdp.h","runtime/ym2612.c"):
+   if re.search(r"md_frame_hook|shade\s*\(|draw_(?:plane|sprite)|sprite.*(?:draw|render)|(?:draw|render).*sprite|ym_(?:init|write|sample)|YM2612|SDL_.*Audio|timer|window plane|window.*plane|hscroll|vscroll|sprite_table|sat_base|SAT",t,re.I):
+    emit(f"RENDER_AUDIO_HOOK line={n} {t[:260]}")
   if rel=="runtime/harness.c" and re.search(r"\b(?:static\s+)?(?:M68K\s*\*CPU|uint8_t\s+ram|static\s+Z80\s+zcpu|zbank|zbusreq|zreset|fm_acc|psg_acc|z80_over|long\s+frame|md_frame_hook)\b",t):
    emit(f"RUNTIME line={n} {t[:180]}")
 report="\n".join(OUT)+"\n"
