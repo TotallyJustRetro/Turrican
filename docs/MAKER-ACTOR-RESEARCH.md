@@ -13,6 +13,15 @@ Branch: `feature/level-builder-maker-ui-vdp`
 
 The native harness loads the user's Mega Drive ROM as a runtime byte array (`md_load_rom` reads the external ROM file into `rom` / `romlen`). The generated C contains recompiled 68000 routines, but the artwork is not currently packaged as a named PC-side sprite/enemy/boss library. The cartridge's graphics data is loaded from the ROM and transferred through the emulated VDP into VRAM/CRAM.
 
+The Build #303 source report confirmed the precise VDP DMA paths:
+
+- `dma_run()` reads the transfer mode from VDP register 23 and the byte/word count from registers 19–20.
+- Mode 3 performs VRAM-to-VRAM copy; mode 2 performs fill; the other DMA path derives a 24-bit source from registers 21–23 and reads words via `vdp_dma_read()`.
+- `vdp_dma_read()` reads through the harness memory bus (`rd8_raw`), so ROM-backed transfer sources are available to the emulator without having to infer pixel data from the displayed framebuffer.
+- The VDP stores 64 KiB VRAM, 64 CRAM words, 64 VSRAM words, and 32 registers. The sprite renderer follows the SAT links and reads the referenced tile patterns from VRAM.
+
+This gives us a concrete asset-indexing strategy: index ROM-backed VDP DMA transfers by source address, length, destination address and transfer type, then associate the resulting VRAM patterns with SAT compositions and the actor/object callbacks identified by the static code report. The DMA metadata and tile bytes can be handled as a bounded asset cache; we do not need a full CPU/RAM/recompiler-stack snapshot.
+
 The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
 
 ## Static runtime findings (Build #296 report)
