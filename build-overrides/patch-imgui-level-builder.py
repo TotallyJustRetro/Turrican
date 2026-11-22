@@ -36,10 +36,6 @@ def main() -> None:
     if include not in s:
         anchor = "#include <SDL.h>\n"
         s = once(s, anchor, anchor + include + "\n", "ImGui framebuffer bridge include")
-    if "extern void md_maker_capture_for_editor(void);" not in s:
-        s = once(s, include + "\n",
-            include + "\nextern void md_maker_capture_for_editor(void);\n",
-            "Maker runtime snapshot API declaration")
 
     # ImGui receives the same SDL input events as the native pause screen.
     route_anchor = (
@@ -96,7 +92,6 @@ def main() -> None:
     # software surface constrained to 320x224.
     init_anchor = "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
     init_patch = init_anchor + (
-        "\n    if(native_menu_state==11) md_maker_capture_for_editor();\n"
         "    if(native_menu_state==11 && !mtlb_init(SDL_RenderGetWindow(ren),ren)) {\n"
         "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn\","
         "\"Could not initialize the Level Builder renderer.\",NULL);\n"
