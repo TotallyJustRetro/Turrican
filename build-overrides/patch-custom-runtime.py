@@ -339,26 +339,28 @@ def patch_harness(project: Path) -> None:
     path=project/"runtime"/"harness.c"
     s=path.read_text(encoding="utf-8-sig")
     if "int md_infinite_continues_enabled = 0;" not in s:
-        # The harness already includes these core types, and the frame/RAM/sound
-        # objects are translation-unit globals so the serializer lives here.
         s=add_system_include(s,"errno.h")
         s=add_system_include(s,"sys/stat.h")
         if "#include <direct.h>" not in s:
-            s=once(s,'#include <sys/stat.h>\n',
-                   '#include <sys/stat.h>\n#ifdef _WIN32\n#include <direct.h>\n#endif\n',
+            s=once(s,'#include <sys/stat.h>\\n',
+                   '#include <sys/stat.h>\\n#ifdef _WIN32\\n#include <direct.h>\\n#endif\\n',
                    "portable save directory header")
-        api=RUNTIME_API
-        s=s.rstrip()+"\n\n"+api+"\n"
-        if "void md_modern_runtime_frame(void);" not in s:
-        s=once(s,"void md_frame_hook(void);","void md_frame_hook(void); void md_modern_runtime_frame(void);",
+        s=s.rstrip()+"\\n\\n"+RUNTIME_API+"\\n"
+
+    if "void md_modern_runtime_frame(void);" not in s:
+        s=once(s,"void md_frame_hook(void);",
+               "void md_frame_hook(void); void md_modern_runtime_frame(void);",
                "Modern runtime frame hook declaration")
-    s=once(s,"void md_frame_hook(void){}","void md_frame_hook(void){ md_modern_runtime_frame(); }",
-           "Modern runtime per-frame hook")
+    if "md_modern_runtime_frame();" not in s:
+        s=once(s,"void md_frame_hook(void){}",
+               "void md_frame_hook(void){ md_modern_runtime_frame(); }",
+               "Modern runtime per-frame hook")
     path.write_text(s,encoding="utf-8")
-    # Assert that the state globals used by the snapshot are actually declared.
+
     for name in ["ram[0x10000]","zram[0x2000]","static M68K *CPU","static Z80 zcpu",
                  "zbank","zbusreq","zreset","fm_acc","psg_acc","z80_over"]:
-        if name not in s: raise RuntimeError(f"Save-state runtime anchor missing: {name}")
+        if name not in s:
+            raise RuntimeError(f"Save-state runtime anchor missing: {name}")
 
 def patch_recompiled_continues(project: Path) -> None:
     path=project/"recomp_gen.c"
