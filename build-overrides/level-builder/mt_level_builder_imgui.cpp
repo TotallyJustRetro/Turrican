@@ -63,10 +63,10 @@ struct EditorEntity { float x,y; int type,hp; };
 static EditorEntity g_entities[64] = {};
 struct EventNode { int type; float x,y; char title[28]; char detail[56]; };
 static EventNode g_nodes[12] = {
- {0,24,66,"TRG_01","PLAYER ENTERS ZONE"},
- {1,230,66,"NPC DIALOGUE","CMD. BREN"},
- {3,440,66,"BOSS SPAWN","MECH-V1"},
- {2,440,205,"BLAST DOOR","OPEN ON DEFEAT"}
+ {0,18,66,"TRG_01","PLAYER ENTERS ZONE"},
+ {1,178,66,"NPC DIALOGUE","CMD. BREN"},
+ {3,338,66,"BOSS SPAWN","MECH-V1"},
+ {2,338,205,"BLAST DOOR","OPEN ON DEFEAT"}
 };
 static int g_node_count=4, g_selected_node=1;
 static int g_link_from[12]={0,1,2}, g_link_to[12]={1,2,3}, g_link_count=3;
@@ -340,6 +340,87 @@ static void draw_boss_mech(ImDrawList *d,ImVec2 p,float z)
     for(int i=0;i<5;i++){d->AddCircleFilled(ImVec2(p.x+(-42+i*21)*z,p.y+49*z),7*z,dark);d->AddCircle(ImVec2(p.x+(-42+i*21)*z,p.y+49*z),4*z,light,12,1.5f*z);}
     d->AddCircleFilled(ImVec2(p.x,p.y-34*z),8*z,orange);d->AddCircle(ImVec2(p.x,p.y-34*z),12*z,light,16,2*z);
 }
+static void draw_reactor_preview(ImDrawList *d,ImVec2 a,ImVec2 b)
+{
+    const float w=b.x-a.x,h=b.y-a.y;
+    auto box=[&](float x,float y,float rw,float rh,ImU32 c) {
+        d->AddRectFilled(ImVec2(a.x+x*w,a.y+y*h),ImVec2(a.x+(x+rw)*w,a.y+(y+rh)*h),c);
+    };
+    auto line=[&](float x1,float y1,float x2,float y2,ImU32 c,float t=1.0f) {
+        d->AddLine(ImVec2(a.x+x1*w,a.y+y1*h),ImVec2(a.x+x2*w,a.y+y2*h),c,t);
+    };
+    box(0,0,1,1,IM_COL32(16,15,28,255));
+    // Deep reactor wall: segmented bulkheads, cable channels and three neon coil banks.
+    for(int col=0;col<3;col++) {
+        float x=.025f+col*.325f;
+        box(x, .02f, .30f, .66f, IM_COL32(25,23,36,255));
+        box(x+.012f,.035f,.276f,.615f,IM_COL32(8,9,16,255));
+        for(int rib=0;rib<7;rib++) {
+            float rx=x+.02f+rib*.039f;
+            box(rx,.045f,.008f,.58f,IM_COL32(67,65,78,255));
+        }
+        for(int row=0;row<9;row++) {
+            float y=.075f+row*.061f;
+            box(x+.035f,y,.23f,.030f,IM_COL32(73,18,83,255));
+            box(x+.045f,y+.006f,.21f,.018f,IM_COL32(183,31,164,255));
+            line(x+.05f,y+.007f,x+.25f,y+.007f,IM_COL32(255,99,229,255),2.0f);
+            line(x+.05f,y+.024f,x+.25f,y+.024f,IM_COL32(98,36,120,255),2.0f);
+        }
+        box(x+.005f,.03f,.020f,.60f,IM_COL32(96,101,110,255));
+        box(x+.275f,.03f,.020f,.60f,IM_COL32(96,101,110,255));
+        for(int bolt=0;bolt<7;bolt++) {
+            float yy=.06f+bolt*.085f;
+            d->AddCircleFilled(ImVec2(a.x+(x+.015f)*w,a.y+yy*h),2.1f,IM_COL32(195,196,190,255));
+            d->AddCircleFilled(ImVec2(a.x+(x+.285f)*w,a.y+yy*h),2.1f,IM_COL32(195,196,190,255));
+        }
+    }
+    // Side ducts and the overhead structural rails.
+    for(int i=0;i<8;i++) {
+        float x=i/8.0f;
+        box(x,.0f,.008f,.70f,IM_COL32(66,72,84,255));
+    }
+    box(0,.0f,1,.035f,IM_COL32(94,100,114,255));
+    box(0,.655f,1,.055f,IM_COL32(74,78,88,255));
+    box(0,.672f,1,.018f,IM_COL32(202,205,194,255));
+    // Raised catwalk, hazard plates and illuminated magenta beacons.
+    box(0,.70f,1,.07f,IM_COL32(104,105,101,255));
+    box(0,.705f,1,.014f,IM_COL32(221,213,179,255));
+    for(int i=0;i<10;i++) {
+        float x=i*.10f;
+        box(x+.004f,.723f,.092f,.036f,(i&1)?IM_COL32(58,61,65,255):IM_COL32(82,84,86,255));
+        line(x+.006f,.732f,x+.094f,.732f,IM_COL32(172,165,139,255),1.1f);
+    }
+    for(int i=0;i<8;i++) {
+        float x=.04f+i*.132f;
+        d->AddCircleFilled(ImVec2(a.x+x*w,a.y+.698f*h),5.5f,IM_COL32(119,27,130,150));
+        d->AddCircleFilled(ImVec2(a.x+x*w,a.y+.698f*h),3.0f,IM_COL32(255,74,219,255));
+    }
+    // Lower maintenance trench: grates, girders and a central conduit.
+    box(0,.77f,1,.23f,IM_COL32(14,17,24,255));
+    for(int i=0;i<34;i++) {
+        float x=.012f+i*.0295f;
+        line(x,.795f,x,.985f,IM_COL32(71,78,87,255),1.0f);
+    }
+    for(int row=0;row<5;row++) {
+        float y=.80f+row*.038f;
+        line(.0f,y,1.0f,y,IM_COL32(58,66,76,255),1.5f);
+    }
+    for(int i=0;i<5;i++) {
+        float x=.04f+i*.22f;
+        line(x,.99f,x+.14f,.77f,IM_COL32(124,130,132,255),7.0f);
+        line(x+.01f,.99f,x+.15f,.77f,IM_COL32(35,42,51,255),3.0f);
+        line(x+.07f,.91f,x+.10f,.86f,IM_COL32(243,192,70,255),2.0f);
+    }
+    box(.47f,.77f,.07f,.23f,IM_COL32(91,73,93,255));
+    box(.49f,.77f,.03f,.23f,IM_COL32(174,105,159,255));
+    for(int i=0;i<4;i++) line(.49f,.80f+i*.05f,.52f,.80f+i*.05f,IM_COL32(242,159,221,255),1.4f);
+    // Small maintenance labels and a hazard stripe across the rail.
+    for(int i=0;i<22;i++) {
+        float x=.02f+i*.045f;
+        if((i%2)==0) box(x,.687f,.022f,.010f,IM_COL32(218,168,59,255));
+    }
+}
+
 static void draw_stage_canvas()
 {
     int cols=std::max(1,mtlb_map_cols()),rows=std::max(1,mtlb_map_rows());
@@ -357,7 +438,7 @@ static void draw_stage_canvas()
     ImVec2 finish(origin.x+w,origin.y+h);ImDrawList *d=ImGui::GetWindowDrawList();
     d->AddRectFilled(ImVec2(origin.x-5,origin.y-5),ImVec2(finish.x+5,finish.y+5),IM_COL32(4,7,12,255),3);
     if(g_stage_texture)d->AddImage(ImTextureRef((ImTextureID)(intptr_t)g_stage_texture),origin,finish);
-    else d->AddRectFilled(origin,finish,IM_COL32(16,22,31,255));
+    else draw_reactor_preview(d,origin,finish);
     d->AddRect(origin,finish,IM_COL32(123,151,169,255),1.0f,2.0f);
     if(g_layers[2]&&g_show_grid){for(int i=0;i<=16;i++){float x=origin.x+i*w/16;float y=origin.y+i*h/16;d->AddLine(ImVec2(x,origin.y),ImVec2(x,finish.y),IM_COL32(112,156,169,95));d->AddLine(ImVec2(origin.x,y),ImVec2(finish.x,y),IM_COL32(112,156,169,95));}}
     if(g_layers[4])for(int i=0;i<8;i++){float x=origin.x+i*w/8;d->AddLine(ImVec2(x,origin.y),ImVec2(x-18,finish.y),IM_COL32(80,203,212,65));}
@@ -373,6 +454,7 @@ static void draw_stage_canvas()
         else if(g_mode==MODE_BOSS&&ImGui::IsMouseClicked(ImGuiMouseButton_Left)){g_selected_entity=(int)(m.x-origin.x)*5/(int)w;}
     }
     for(int i=0;i<g_entity_count;i++){EditorEntity &e=g_entities[i];ImVec2 p(origin.x+e.x*w,origin.y+e.y*h);d->AddCircleFilled(p,7,IM_COL32(245,157,48,240));d->AddCircle(p,10,IM_COL32(255,224,147,255),16,2);}
+    if(g_mode==MODE_TILES||g_mode==MODE_ENTITY)draw_bren_marker(d,ImVec2(origin.x+w*.53f,origin.y+h*.76f),.95f);
     if(g_mode==MODE_BOSS){ImVec2 bp(origin.x+w*.69f,origin.y+h*.67f);draw_boss_mech(d,bp,1.05f);draw_bren_marker(d,ImVec2(origin.x+w*.28f,origin.y+h*.76f),.85f);d->AddRect(ImVec2(bp.x-74,bp.y-77),ImVec2(bp.x+138,bp.y+61),IM_COL32(243,151,48,235),2.0f,2.0f);d->AddText(ImVec2(bp.x-66,bp.y-96),IM_COL32(255,206,112,255),"PHASE_01_CORE");d->AddText(ImVec2(bp.x+34,bp.y+20),IM_COL32(220,232,237,255),"ARM_L_CANNON");}
     if(g_mode==MODE_TILES){int sx=g_selected_x-g_map_origin_x,sy=g_selected_y-g_map_origin_y;ImVec2 a(origin.x+sx*w/16,origin.y+sy*h/16),b(origin.x+(sx+1)*w/16,origin.y+(sy+1)*h/16);d->AddRect(a,b,IM_COL32(255,179,62,255),0.0f,3.0f);d->AddRect(ImVec2(a.x+3,a.y+3),ImVec2(b.x-3,b.y-3),IM_COL32(255,234,175,225));}
     ImGui::SetCursorScreenPos(ImVec2(origin.x,finish.y+5));
@@ -381,7 +463,7 @@ static void draw_stage_canvas()
 }
 static void add_event_node(int type)
 {
-    if(g_node_count>=12)return;EventNode &n=g_nodes[g_node_count];n.type=type;n.x=28+(g_node_count%3)*190;n.y=62+(g_node_count/3)*112;
+    if(g_node_count>=12)return;EventNode &n=g_nodes[g_node_count];n.type=type;n.x=18+(g_node_count%3)*160;n.y=62+(g_node_count/3)*112;
     const char *t=type==0?"NEW_TRIGGER":type==1?"NPC DIALOGUE":type==3?"BOSS SPAWN":"NEW ACTION";
     const char *v=type==0?"PLAYER ENTERS ZONE":type==1?"COMMANDER MESSAGE":"SET STAGE FLAG";
     std::snprintf(n.title,sizeof(n.title),"%s",t);std::snprintf(n.detail,sizeof(n.detail),"%s",v);
