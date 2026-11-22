@@ -1755,7 +1755,9 @@ confirm:
            "        while(SDL_PollEvent(&e))native_menu_route_event(&e);\n        native_pause_audio_pump();",
            "pause FM sound-test pump")
     s=once(s,
-           "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n    if(adev)SDL_PauseAudioDevice(adev,0);",
+           "    memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n"
+           "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,0);\n"
+           "    native_menu_resume_guard=1;",
            "    native_pause_audio_pump();\n"
            "    if(native_pause_request_title) {\n"
            "        native_pause_request_title=0;\n"
@@ -1766,7 +1768,8 @@ confirm:
            "    }\n"
            "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n"
            "    native_pause_skip_backdrop_restore=0;\n"
-           "    if(adev)SDL_PauseAudioDevice(adev,0);",
+           "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,0);\n"
+           "    native_menu_resume_guard=1;",
            "pause checkpoint/title transition restore")
     path.write_text(s,encoding="utf-8")
 
