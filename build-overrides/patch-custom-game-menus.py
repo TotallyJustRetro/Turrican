@@ -575,8 +575,8 @@ confirm:
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (overlay_state==0) ? readpad() : 0;",
-           "md_live_mask = (overlay_state==0 && !native_options_tool_active) ? readpad() : 0;",
-           "pause gamepad polling while the tools row has focus")
+           "md_live_mask = (overlay_state==0 && native_menu_state==0 && !native_options_tool_active) ? readpad() : 0;",
+           "pause gamepad polling while native menus or the tools row have focus")
 
     # Route the new page states.
     s=once(s,"    else if(native_menu_state==7)proc_native_controller_options(e);",
