@@ -518,6 +518,21 @@ def patch_vdp(project: Path) -> None:
 extern int md_modern_timer_hud_present(void);
 static int md_modern_timer_hud_this_frame=0;
 
+/* The countdown is red HUD ink in the central TIME column. Mask only pixels
+   whose CRAM colour is the same saturated red used by the side HUD labels.
+   This removes the actual glyph pixels from whichever VDP layer owns them;
+   replacing a whole rectangle with Plane B/A creates the visible texture box. */
+static int md_modern_is_timer_ink(uint8_t pixel) {
+    unsigned index=pixel&15u;
+    if(!index)return 0;
+    unsigned palette=(pixel>>4)&3u;
+    uint16_t c=vdp.cram[palette*16u+index];
+    int r=((c>>1)&7)*255/7;
+    int g=((c>>5)&7)*255/7;
+    int b=((c>>9)&7)*255/7;
+    return r>145 && g<115 && b<105 && r>g+45 && r>b+55;
+}
+
 """
         s=once(s,anchor,helper+anchor,"VDP timer HUD suppression state")
         frame_anchor="    int W = (vdp.reg[12] & 1) ? 320 : 256; vdp.width = W; vdp.height = (vdp.reg[1] & 8) ? 240 : 224;"
@@ -528,16 +543,16 @@ static int md_modern_timer_hud_this_frame=0;
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* Replace only the timer's narrow foreground rectangle with the exact
-       Plane B pixels already rendered for this scanline. This removes the TIME
-       text and digits while preserving the scene behind them; score and energy
-       remain untouched. Detection is latched from those side HUD labels at y=0. */
+    /* Scrub only red TIME label/digit pixels. Leave every non-timer plane and
+       sprite pixel untouched, so the level scenery is never replaced by a
+       rectangular sample from the other scrolling plane. */
     if(md_modern_timer_hud_this_frame && y>=vdp.height*4/100 && y<vdp.height*24/100) {
-        int x0=W*39/100, x1=W*62/100;
+        int x0=W*37/100, x1=W*64/100;
         if(x1>W)x1=W;
         for(int x=x0;x<x1;x++) {
-            pa[x]=pb[x];
-            sp[x]=0;
+            if(md_modern_is_timer_ink(pa[x]))pa[x]=0;
+            if(md_modern_is_timer_ink(pb[x]))pb[x]=0;
+            if(md_modern_is_timer_ink(sp[x]))sp[x]=0;
         }
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
