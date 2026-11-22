@@ -48,14 +48,29 @@ extern int md_save_slot_exists(int slot);
 
 CUSTOM_PAGES = r'''
 static unsigned int native_menu_trace_index=0;
+/* Always place diagnostic captures beside the running game executable.
+   The process working directory may be inherited from the launcher and can
+   point somewhere completely different. SDL_GetBasePath returns the EXE path. */
+static int native_menu_trace_fullpath(char *dst,size_t capacity,const char *filename) {
+    char *base=SDL_GetBasePath();
+    if(!base)return 0;
+    int written=snprintf(dst,capacity,"%s%s",base,filename);
+    SDL_free(base);
+    return written>=0 && (size_t)written<capacity;
+}
 static void native_menu_dump_snapshot(const char *scene) {
     uint8_t ram_snapshot[0x10000], cpu_snapshot[128];
-    char filename[96];
+    char filename[96], fullpath[4096];
     snprintf(filename,sizeof filename,"menu-trace-%s-%02u.bin",scene,++native_menu_trace_index);
-    FILE *f=fopen(filename,"wb");
+    if(!native_menu_trace_fullpath(fullpath,sizeof fullpath,filename)) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican menu trace",
+                                 "Could not resolve the game executable folder.",NULL);
+        return;
+    }
+    FILE *f=fopen(fullpath,"wb");
     if(!f) {
-        char message[256];
-        snprintf(message,sizeof message,"Could not create %s. Check that the game folder is writable.",filename);
+        char message[4608];
+        snprintf(message,sizeof message,"Could not create the diagnostic capture:\n%s\n\nCheck that the game folder is writable.",fullpath);
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican menu trace",message,NULL);
         return;
     }
@@ -76,10 +91,10 @@ static void native_menu_dump_snapshot(const char *scene) {
     if(ok)ok=fwrite(ram_snapshot,sizeof ram_snapshot,1,f)==1;
     if(ok)ok=fwrite(vdp.fb,sizeof vdp.fb,1,f)==1;
     if(fclose(f)!=0)ok=0;
-    if(!ok)remove(filename);
-    char message[320];
-    if(ok)snprintf(message,sizeof message,"Saved %s\n\nThe file is beside MegaTurrican.exe. Zip the menu-trace-*.bin files and attach them here.",filename);
-    else snprintf(message,sizeof message,"Could not finish writing %s. Check free disk space and folder permissions.",filename);
+    if(!ok)remove(fullpath);
+    char message[4608];
+    if(ok)snprintf(message,sizeof message,"Saved diagnostic capture to:\n%s\n\nThis is the exact file location. Zip the menu-trace-*.bin files from this folder and attach them here.",fullpath);
+    else snprintf(message,sizeof message,"Could not finish writing:\n%s\n\nCheck free disk space and folder permissions.",fullpath);
     SDL_ShowSimpleMessageBox(ok?SDL_MESSAGEBOX_INFORMATION:SDL_MESSAGEBOX_ERROR,
                              "Mega Turrican menu trace",message,NULL);
 }
