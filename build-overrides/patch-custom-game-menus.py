@@ -688,7 +688,7 @@ confirm:
                         break;
                     case SDLK_LEFT:
                         if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus+1)%3;
+                            native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
                         else native_title_game_options_focus=1-native_title_game_options_focus;
                         break;
                     case SDLK_RIGHT:
@@ -728,7 +728,7 @@ confirm:
                     }
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
                         if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus+1)%3;
+                            native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
                         else native_title_game_options_focus=1-native_title_game_options_focus;
                     }
                     if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
@@ -869,7 +869,7 @@ def main() -> int:
     root=Path(sys.argv[1]).resolve()
     patch_harness(root)
     patch_sdl(root)
-    print("Installed Extras pages and F8 original-menu CPU/RAM/VRAM snapshots with visible save confirmation; removed fixed-position gold title/options labels.")
+    print("Installed native-font title buttons, Vanilla/Modern Game Options, and title-entry access to Level Builder, Cheats, and Saves; kept the original cartridge OPTIONS menu vanilla.")
     return 0
 
 if __name__=="__main__":
