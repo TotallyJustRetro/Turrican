@@ -452,6 +452,16 @@ void md_pause_fm_test_render(int16_t *dst,int frames,int channels) {
         md_pause_ym_sample_index++;
     }
 }
+
+/* Read-only ROM access for the Maker's offline asset browser. This does not
+   execute game code or inspect mutable CPU/Work RAM. Bounds are checked against
+   the ROM already loaded by the launcher. */
+int md_rom_copy_region(uint32_t offset, void *destination, uint32_t bytes) {
+    if(!destination || !rom || offset>(uint32_t)romlen) return 0;
+    if((size_t)bytes>romlen-(size_t)offset) return 0;
+    memcpy(destination,rom+offset,(size_t)bytes);
+    return 1;
+}
 '''
 
 def patch_audio_state(path: Path, prefix: str, symbol: str) -> None:
