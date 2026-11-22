@@ -14,34 +14,7 @@ def once(source: str, anchor: str, replacement: str, label: str) -> str:
     return source.replace(anchor, replacement, 1)
 
 
-BRIDGE = r'''
-/* Dear ImGui Level Builder bridge to the existing Genesis VDP tile plane. */
-int mtlb_map_cols(void) { return native_level_cols(); }
-int mtlb_map_rows(void) { return native_level_rows(); }
-int mtlb_map_get(int x,int y) {
-    int cols=native_level_cols(),rows=native_level_rows();
-    if(x<0||y<0||x>=cols||y>=rows)return 0;
-    uint32_t at=(native_level_plane_a()+(uint32_t)(y*cols+x)*2)&0xFFFF;
-    return ((int)vdp.vram[at]<<8 | (int)vdp.vram[(at+1)&0xFFFF]) & 0x7FF;
-}
-void mtlb_map_set(int x,int y,int tile) {
-    native_editor_x=x;native_editor_y=y;
-    native_editor_tile=tile&0x7FF;
-    native_level_paint();
-}
-int mtlb_map_save(void) {
-#ifdef _WIN32
-    _mkdir("levels");
-#else
-    mkdir("levels",0775);
-#endif
-    return native_level_export();
-}
-int mtlb_map_load(void) { return native_level_import(); }
-int mtlb_map_cursor_x(void) { return native_editor_x; }
-int mtlb_map_cursor_y(void) { return native_editor_y; }
-int mtlb_map_brush(void) { return native_editor_tile; }
-'''
+
 
 
 def main() -> None:
@@ -67,10 +40,6 @@ def main() -> None:
         anchor = "#include <SDL.h>\n"
         s = once(s, anchor, anchor + include + "\n", "ImGui bridge include")
 
-    if "Dear ImGui Level Builder bridge to the existing Genesis VDP tile plane" not in s:
-        anchor = "static void render_native_level_builder(void) {"
-        s = once(s, anchor, BRIDGE + "\n" + anchor, "VDP bridge functions")
-
     route_anchor = (
         "    if(e->type==SDL_WINDOWEVENT&&e->window.event==SDL_WINDOWEVENT_RESIZED)"
         "{ws_update();make_texture();}\n"
@@ -82,20 +51,34 @@ def main() -> None:
     if "ImGui owns pointer/keyboard interaction" not in s:
         s = once(s, route_anchor, route_patch, "Level Builder SDL event routing")
 
-    render_anchor = "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n    SDL_RenderPresent(ren);"
-    render_patch = (
-        "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
-        "    if(native_menu_state==11) mtlb_set_stage_texture(native_editor_stage_has_gameplay()?tex:NULL,tw,h);\n"
-        "    if(native_menu_state==11 && mtlb_render(ren)) {\n"
-        "        mtlb_shutdown();\n"
-        "        native_custom_enter_parent();\n"
-        "    } else if(native_menu_state!=11) {\n"
-        "        mtlb_shutdown();\n"
+    # Level Builder is a dedicated game screen, not a VDP-frame overlay.
+    present_anchor = "static void native_menu_present_frame(void) {"
+    present_patch = present_anchor + (
+        "\n    if(native_menu_state==11) {\n"
+        "        SDL_SetRenderDrawColor(ren,0,0,0,255);\n"
+        "        SDL_RenderClear(ren);\n"
+        "        if(mtlb_render(ren)) {\n"
+        "            mtlb_shutdown();\n"
+        "            native_custom_enter_parent();\n"
+        "        }\n"
+        "        SDL_RenderPresent(ren);\n"
+        "        return;\n"
         "    }\n"
-        "    SDL_RenderPresent(ren);"
     )
-    if "mtlb_render(ren)" not in s:
-        s = once(s, render_anchor, render_patch, "ImGui frame presentation hook")
+    if "Level Builder is a dedicated game screen" not in s:
+        s = once(s, present_anchor, present_patch, "standalone Level Builder render state")
+
+    init_anchor = "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
+    init_patch = init_anchor + (
+        "\n    if(native_menu_state==11 && !mtlb_init(SDL_RenderGetWindow(ren),ren)) {\n"
+        "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn\","
+        "\"Could not initialize the Level Builder renderer.\",NULL);\n"
+        "        native_custom_enter_parent();\n"
+        "    }"
+    )
+    if "initialize Dear ImGui before routing editor input" not in s:
+        s = once(s, init_anchor, init_patch + "\n    /* initialize Dear ImGui before routing editor input */",
+                 "initialize Dear ImGui before routing editor input")
 
     sdl_path.write_text(s, encoding="utf-8")
     print("Installed custom ImGui Level Builder shell and live VDP tile-plane bridge.")
