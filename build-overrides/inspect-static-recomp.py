@@ -73,6 +73,35 @@ for rel in FILES:
    emit(f"RELEVANT_FUNCTION_BODY name={name} lines={start+1}-{end}")
    for q in range(start,end):
     emit(f"  {q+1}: {lines[q][:360]}")
+  # Sound-effect request/queue routines are distinct from the per-frame
+  # sound service and the raw YM/PSG chip setup functions. Dump these entries
+  # and walk every caller so we can identify the menu's actual effect request.
+  queue_seeds={"f_D00EC","f_D0102","f_D012A","f_D04BC","f_D04A0","f_D04AE",
+               "f_D0638","f_D070E","f_D07BA","f_D0FFE","f_D0F02","f_D0FA8"}
+  emit("GENERATED_SOUND_EFFECT_QUEUE_BODIES")
+  for name in sorted(queue_seeds):
+   if name not in fn_data:continue
+   start,end,body=fn_data[name]
+   emit(f"SOUND_EFFECT_ROUTINE name={name} declaration_line={start+1} lines={start+1}-{end}")
+   for q in range(start,end):emit(f"  {q+1}: {lines[q][:360]}")
+  emit("GENERATED_SOUND_EFFECT_QUEUE_CALLERS")
+  for seed in sorted(queue_seeds):
+   if seed not in fn_data:continue
+   emit(f"SOUND_EFFECT_CALLER_CHAIN seed={seed}")
+   frontier=[(seed,0,[seed])]
+   seen={seed}
+   while frontier:
+    target,depth,path=frontier.pop(0)
+    if depth>=8:continue
+    for parent,idx,line in callers_by_name.get(target,[]):
+     if parent in path:continue
+     emit(f"  DEPTH={depth+1} caller={parent} line={idx+1} calls={target}")
+     emit(f"    {line[:420]}")
+     if parent not in seen and depth<7:
+      seen.add(parent)
+      frontier.append((parent,depth+1,path+[parent]))
+   emit(f"  UNIQUE_CALLERS={len(seen)-1}")
+
   emit("GENERATED_SOUND_CHIP_WRITERS")
   sound_targets=set()
   for name,(start,end,body) in fn_data.items():
