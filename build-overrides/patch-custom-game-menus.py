@@ -642,47 +642,84 @@ static void proc_native_level_builder(SDL_Event *e) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(4);
     }
 }
+static const char *native_modern_option_labels[6]={
+    "MAP (M KEY)","HIDE TIMER HUD","PERSISTENT WEAPON","CHECKPOINT AUTO-SAVE",
+    "HIT I-FRAMES","UNLIMITED CONTINUES"
+};
+static int native_modern_option_value(int item) {
+    switch(item) {
+    case 0:return native_modern_map;
+    case 1:return native_modern_no_timer_hud;
+    case 2:return native_modern_persistent_weapon;
+    case 3:return native_modern_checkpoints;
+    case 4:return native_modern_iframes;
+    case 5:return native_modern_continues;
+    default:return 0;
+    }
+}
+static void native_modern_option_toggle(int item) {
+    switch(item) {
+    case 0:native_modern_map^=1;break;
+    case 1:native_modern_no_timer_hud^=1;break;
+    case 2:native_modern_persistent_weapon^=1;break;
+    case 3:native_modern_checkpoints^=1;break;
+    case 4:native_modern_iframes^=1;break;
+    case 5:native_modern_continues^=1;break;
+    }
+    native_custom_save_config();
+}
+static void native_title_scroll_ensure_visible(void) {
+    int item=native_title_game_options_focus-2;
+    if(item<0)return;
+    if(item<native_modern_scroll_offset)native_modern_scroll_offset=item;
+    if(item>=native_modern_scroll_offset+4)native_modern_scroll_offset=item-3;
+    if(native_modern_scroll_offset<0)native_modern_scroll_offset=0;
+    if(native_modern_scroll_offset>2)native_modern_scroll_offset=2;
+}
+static void native_title_game_options_move(int delta) {
+    int next=native_title_game_options_focus+delta;
+    if(next<0)next=8;
+    if(next>8)next=0;
+    if(!native_game_level_modern && next>=2 && next<=7)
+        next=(delta>0)?8:1;
+    native_title_game_options_focus=next;
+    native_title_scroll_ensure_visible();
+}
 static void render_native_title_game_options(void) {
     int W=vdp.width?vdp.width:320, H=vdp.height?vdp.height:224;
     if(W<256 || W>320 || H<200 || H>240)return;
-
-    /* Match the cartridge's original full-screen options page: no panel,
-       no border, no title art underneath, and no SDL overlay text. */
     for(int y=0;y<H;y++) {
         uint32_t *row=&vdp.fb[y*320];
         for(int x=0;x<W;x++)row[x]=0;
     }
 
     native_title_draw_text_center_palette("GAME OPTIONS",H*7/100,3);
-    native_title_draw_text_center("VANILLA GAME",H*25/100,
+    native_title_draw_text_center("VANILLA GAME",H*19/100,
                                   native_title_game_options_focus==0,1);
-    native_title_draw_text_center("MODERN",H*35/100,
+    native_title_draw_text_center("MODERN",H*29/100,
                                   native_title_game_options_focus==1,1);
 
     if(native_game_level_modern) {
-        char lives[24],continues[24],timer[24];
-        snprintf(lives,sizeof lives,"LIVES: %s",native_modern_lives?"ON":"OFF");
-        snprintf(continues,sizeof continues,"CONTINUES: %s",native_modern_continues?"ON":"OFF");
-        snprintf(timer,sizeof timer,"NO TIMER: %s",native_modern_no_timer?"ON":"OFF");
-        const char *items[]={lives,continues,timer};
-        int widths[3],total=8;
-        for(int i=0;i<3;i++) {
-            widths[i]=native_title_text_width(items[i]);
-            total+=widths[i];
+        native_title_draw_text_center_palette("MODERN SETTINGS",H*38/100,1);
+        const int first_y=H*45/100;
+        const int row_step=H*7/100;
+        for(int row=0;row<4;row++) {
+            int item=native_modern_scroll_offset+row;
+            if(item>=6)break;
+            char text[48];
+            snprintf(text,sizeof text,"%s: %s",native_modern_option_labels[item],
+                     native_modern_option_value(item)?"ON":"OFF");
+            native_title_draw_text_center(text,first_y+row*row_step,
+                native_title_game_options_focus==item+2,1);
         }
-        int x=(W-total)/2;
-        const int y=H*68/100;
-        for(int i=0;i<3;i++) {
-            native_title_draw_text_at(x,y,items[i],
-                                      native_title_game_options_focus==i+2,1);
-            x+=widths[i]+4;
-        }
+        char scroll[24];
+        snprintf(scroll,sizeof scroll,"SCROLL %d/3",native_modern_scroll_offset+1);
+        native_title_draw_text_center_palette(scroll,H*78/100,1);
     }
 
-    native_title_draw_text_center("EXIT",H*90/100,
-                                  native_title_game_options_focus==5,1);
+    native_title_draw_text_center("EXIT",H*91/100,
+                                  native_title_game_options_focus==8,1);
 }
-
 static void native_title_game_options_exit(void) {
     native_title_page_mode=0;
     native_title_menu_selection=2;
@@ -693,7 +730,6 @@ static void native_title_game_options_exit(void) {
     native_menu_state=0;
     native_menu_sel=0;
 }
-
 static void native_title_game_options_confirm(void) {
     switch(native_title_game_options_focus) {
     case 0:
@@ -705,108 +741,154 @@ static void native_title_game_options_confirm(void) {
         native_game_level_modern=1;
         native_custom_save_config();
         native_title_game_options_focus=2;
+        native_modern_scroll_offset=0;
         break;
-    case 2:
-        native_modern_lives^=1;
-        native_custom_save_config();
+    case 2:case 3:case 4:case 5:case 6:case 7:
+        if(native_game_level_modern)
+            native_modern_option_toggle(native_title_game_options_focus-2);
         break;
-    case 3:
-        native_modern_continues^=1;
-        native_custom_save_config();
-        break;
-    case 4:
-        native_modern_no_timer^=1;
-        native_custom_save_config();
-        break;
-    case 5:
+    case 8:
         native_title_game_options_exit();
         break;
     }
 }
-
 static void proc_native_title_game_options(SDL_Event *e) {
     if(e->type==SDL_KEYDOWN && !e->key.repeat) {
         switch(e->key.keysym.sym) {
-        case SDLK_UP:
-            if(native_title_game_options_focus==5)
-                native_title_game_options_focus=native_game_level_modern?2:1;
-            else if(native_title_game_options_focus>=2)
-                native_title_game_options_focus=1;
-            else if(native_title_game_options_focus==1)
+        case SDLK_UP:native_title_game_options_move(-1);break;
+        case SDLK_DOWN:native_title_game_options_move(1);break;
+        case SDLK_LEFT:case SDLK_RIGHT:
+            if(native_title_game_options_focus==0) {
+                native_game_level_modern=1;native_custom_save_config();
+                native_title_game_options_focus=2;native_modern_scroll_offset=0;
+            } else if(native_title_game_options_focus==1) {
+                native_game_level_modern=0;native_custom_save_config();
                 native_title_game_options_focus=0;
+            } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
+                native_modern_option_toggle(native_title_game_options_focus-2);
+            }
             break;
-        case SDLK_DOWN:
-            if(native_title_game_options_focus==0)
-                native_title_game_options_focus=1;
-            else if(native_title_game_options_focus==1)
-                native_title_game_options_focus=native_game_level_modern?2:5;
-            else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=4)
-                native_title_game_options_focus=5;
-            else
-                native_title_game_options_focus=0;
-            break;
-        case SDLK_LEFT:
-            if(native_title_game_options_focus<2)
-                native_title_game_options_focus=1-native_title_game_options_focus;
-            else if(native_title_game_options_focus<=4)
-                native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
-            break;
-        case SDLK_RIGHT:
-            if(native_title_game_options_focus<2)
-                native_title_game_options_focus=1-native_title_game_options_focus;
-            else if(native_title_game_options_focus<=4)
-                native_title_game_options_focus=2+(native_title_game_options_focus-2+1)%3;
-            break;
-        case SDLK_RETURN: case SDLK_x:
-            native_title_game_options_confirm();
-            break;
-        case SDLK_ESCAPE:
-            native_title_game_options_exit();
-            break;
+        case SDLK_RETURN:case SDLK_x:native_title_game_options_confirm();break;
+        case SDLK_ESCAPE:native_title_game_options_exit();break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         switch(e->cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:
-            if(native_title_game_options_focus==5)
-                native_title_game_options_focus=native_game_level_modern?2:1;
-            else if(native_title_game_options_focus>=2)
-                native_title_game_options_focus=1;
-            else if(native_title_game_options_focus==1)
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:native_title_game_options_move(-1);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:native_title_game_options_move(1);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+            if(native_title_game_options_focus==0) {
+                native_game_level_modern=1;native_custom_save_config();
+                native_title_game_options_focus=2;native_modern_scroll_offset=0;
+            } else if(native_title_game_options_focus==1) {
+                native_game_level_modern=0;native_custom_save_config();
                 native_title_game_options_focus=0;
+            } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
+                native_modern_option_toggle(native_title_game_options_focus-2);
+            }
             break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-            if(native_title_game_options_focus==0)
-                native_title_game_options_focus=1;
-            else if(native_title_game_options_focus==1)
-                native_title_game_options_focus=native_game_level_modern?2:5;
-            else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=4)
-                native_title_game_options_focus=5;
-            else
-                native_title_game_options_focus=0;
-            break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-            if(native_title_game_options_focus<2)
-                native_title_game_options_focus=1-native_title_game_options_focus;
-            else if(native_title_game_options_focus<=4)
-                native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
-            break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-            if(native_title_game_options_focus<2)
-                native_title_game_options_focus=1-native_title_game_options_focus;
-            else if(native_title_game_options_focus<=4)
-                native_title_game_options_focus=2+(native_title_game_options_focus-2+1)%3;
-            break;
-        case SDL_CONTROLLER_BUTTON_A:
-            native_title_game_options_confirm();
-            break;
+        case SDL_CONTROLLER_BUTTON_A:native_title_game_options_confirm();break;
         case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_START:
-            native_title_game_options_exit();
-            break;
+        case SDL_CONTROLLER_BUTTON_START:native_title_game_options_exit();break;
         }
     }
 }
+
+/* Decode VDP tile entries into a compact top-down area overview. */
+static uint32_t native_map_tile_sample(uint32_t map_base,int cols,int row,int col) {
+    uint32_t at=(map_base+(uint32_t)(row*cols+col)*2u)&0xFFFFu;
+    uint16_t entry=(uint16_t)(((uint16_t)vdp.vram[at]<<8)|vdp.vram[(at+1u)&0xFFFFu]);
+    unsigned tile=entry&0x07FFu,palette=(entry>>13)&3u;
+    int hflip=(entry&0x0800u)!=0,vflip=(entry&0x1000u)!=0;
+    unsigned accum_r=0,accum_g=0,accum_b=0,count=0;
+    for(int sy=1;sy<8;sy+=2)for(int sx=1;sx<8;sx+=2) {
+        int tx=hflip?7-sx:sx,ty=vflip?7-sy:sy;
+        unsigned bit=(unsigned)(7-tx),base=tile*32u+(unsigned)ty*4u,index=0;
+        for(unsigned plane=0;plane<4;plane++)
+            index|=((vdp.vram[(base+plane)&0xFFFFu]>>bit)&1u)<<plane;
+        if(index) {
+            uint32_t rgb=native_title_cram_rgb((int)palette,index);
+            accum_r+=(rgb>>16)&255;accum_g+=(rgb>>8)&255;accum_b+=rgb&255;count++;
+        }
+    }
+    if(!count)return 0;
+    return ((accum_r/count)<<16)|((accum_g/count)<<8)|(accum_b/count);
+}
+static uint32_t native_map_plane_b_pixel(int x,int y) {
+    int cols=native_level_cols(),rows=native_level_rows();
+    uint32_t base=(uint32_t)(vdp.reg[4]&7u)<<13;
+    uint32_t hbase=(uint32_t)(vdp.reg[13]&0x3Fu)<<10;
+    int hscroll=(int16_t)(((uint16_t)vdp.vram[(hbase+2u)&0xFFFFu]<<8)|
+                           vdp.vram[(hbase+3u)&0xFFFFu]);
+    int vscroll=(int16_t)vdp.vsram[1];
+    int world_x=(x-hscroll)%(cols*8),world_y=(y-vscroll)%(rows*8);
+    if(world_x<0)world_x+=cols*8;
+    if(world_y<0)world_y+=rows*8;
+    int tx=world_x&7,ty=world_y&7;
+    uint32_t at=(base+(uint32_t)(((world_y>>3)*cols+(world_x>>3))*2))&0xFFFFu;
+    uint16_t entry=(uint16_t)(((uint16_t)vdp.vram[at]<<8)|vdp.vram[(at+1u)&0xFFFFu]);
+    unsigned tile=entry&0x07FFu,palette=(entry>>13)&3u;
+    if(entry&0x0800u)tx=7-tx;
+    if(entry&0x1000u)ty=7-ty;
+    unsigned bit=(unsigned)(7-tx),tile_base=tile*32u+(unsigned)ty*4u,index=0;
+    for(unsigned plane=0;plane<4;plane++)
+        index|=((vdp.vram[(tile_base+plane)&0xFFFFu]>>bit)&1u)<<plane;
+    return native_title_cram_rgb((int)palette,index);
+}
+static void native_modern_apply_frame_features(void) {
+    if(!native_game_level_modern || !native_modern_no_timer_hud ||
+       !native_title_gameplay_hud_visible())return;
+    int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
+    int x0=W*41/100,x1=W*61/100,y0=H*2/100,y1=H*27/100;
+    for(int y=y0;y<y1;y++) {
+        uint32_t *row=&vdp.fb[y*320];
+        for(int x=x0;x<x1;x++)row[x]=native_map_plane_b_pixel(x,y);
+    }
+}
+static void render_native_area_map(void) {
+    int W=vdp.width?vdp.width:320,H=vdp.height?vdp.height:224;
+    int cols=native_level_cols(),rows=native_level_rows();
+    uint32_t plane_a=(uint32_t)(vdp.reg[2]&0x38u)<<10;
+    uint32_t plane_b=(uint32_t)(vdp.reg[4]&7u)<<13;
+    int cellx=(W-24)/cols,celly=(H-48)/rows,cell=cellx<celly?cellx:celly;
+    if(cell<1)cell=1;
+    if(cell>4)cell=4;
+    int mw=cols*cell,mh=rows*cell,mx=(W-mw)/2,my=(H-mh)/2;
+    for(int y=0;y<H;y++) {
+        uint32_t *row=&vdp.fb[y*320];
+        for(int x=0;x<W;x++)row[x]=0;
+    }
+    native_title_draw_text_center_palette("CURRENT AREA MAP",5,3);
+    for(int row=0;row<rows;row++)for(int col=0;col<cols;col++) {
+        uint32_t rgb=native_map_tile_sample(plane_a,cols,row,col);
+        if(!rgb)rgb=native_map_tile_sample(plane_b,cols,row,col);
+        if(!rgb)continue;
+        int r=(rgb>>16)&255,g=(rgb>>8)&255,b=rgb&255;
+        native_menu_rect(mx+col*cell,my+row*cell,cell,cell,(uint8_t)r,(uint8_t)g,(uint8_t)b,255);
+    }
+    uint32_t hbase=(uint32_t)(vdp.reg[13]&0x3Fu)<<10;
+    int hscroll=(int16_t)(((uint16_t)vdp.vram[(hbase+2u)&0xFFFFu]<<8)|vdp.vram[(hbase+3u)&0xFFFFu]);
+    int vscroll=(int16_t)vdp.vsram[1];
+    int vx=mx+(((hscroll%(cols*8))+cols*8)%(cols*8))/8*cell;
+    int vy=my+(((vscroll%(rows*8))+rows*8)%(rows*8))/8*cell;
+    int vw=(W/8)*cell,vh=(H/8)*cell;
+    native_menu_rect(vx,vy,vw,1,0xA8,0xE8,0xFF,255);
+    native_menu_rect(vx,vy+vh-1,vw,1,0xA8,0xE8,0xFF,255);
+    native_menu_rect(vx,vy,1,vh,0xA8,0xE8,0xFF,255);
+    native_menu_rect(vx+vw-1,vy,1,vh,0xA8,0xE8,0xFF,255);
+}
+static void proc_native_area_map(SDL_Event *e) {
+    if(e->type==SDL_KEYDOWN&&!e->key.repeat &&
+       (e->key.keysym.sym==SDLK_m||e->key.keysym.sym==SDLK_ESCAPE||
+        e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_x))
+        native_menu_state=0;
+    if(e->type==SDL_CONTROLLERBUTTONDOWN &&
+       (e->cbutton.button==SDL_CONTROLLER_BUTTON_B||
+        e->cbutton.button==SDL_CONTROLLER_BUTTON_START||
+        e->cbutton.button==SDL_CONTROLLER_BUTTON_A))
+        native_menu_state=0;
+}
+
 
 '''
 
@@ -912,7 +994,8 @@ confirm:
         "    case 10: render_native_saves(); break;\n"
         "    case 11: render_native_level_builder(); break;\n"
         "    case 12: render_native_toggle_page(12); break;\n"
-        "    case 13: render_native_title_game_options(); break;",
+        "    case 13: render_native_title_game_options(); break;\\n"
+        "    case 14: render_native_area_map(); break;",
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
@@ -927,7 +1010,8 @@ confirm:
         "    else if(native_menu_state==10)proc_native_saves(e);\n"
         "    else if(native_menu_state==11)proc_native_level_builder(e);\n"
         "    else if(native_menu_state==12)proc_native_toggle_page(e,12);\n"
-        "    else if(native_menu_state==13)proc_native_title_game_options(e);",
+        "    else if(native_menu_state==13)proc_native_title_game_options(e);\\n"
+        "    else if(native_menu_state==14)proc_native_area_map(e);",
         "native Extras event routing")
 
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
@@ -936,6 +1020,14 @@ confirm:
             if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
             else if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
             else native_menu_dump_snapshot("other");
+            continue;
+        }
+
+        if(native_menu_state==0 && native_game_level_modern && native_modern_map &&
+           e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_m &&
+           native_title_gameplay_hud_visible()) {
+            native_menu_state=14;
+            native_menu_pause_loop();
             continue;
         }
 
@@ -1134,7 +1226,7 @@ confirm:
         if not shade:
             raise RuntimeError("Could not locate shade(w,h) in md_frame_hook.")
         at=shade.start()
-        hook=hook[:at]+"native_title_compose_frame(); "+hook[at:]
+        hook=hook[:at]+"native_title_compose_frame(); native_modern_apply_frame_features(); "+hook[at:]
         s=s[:hook_start]+hook+s[hook_end:]
 
     # Title-screen updates and first-run settings load run before md_live_mask.
