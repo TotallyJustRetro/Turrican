@@ -34,6 +34,7 @@ static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static int native_options_tool_active=0, native_options_tool_index=0;
 static int native_options_tool_row_written=0;
+static int native_options_tool_restore_gamelevel=0;
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
 
@@ -144,10 +145,22 @@ static void native_options_clear_text_if_matches(int row,int col,const char *tex
 static int native_options_item_selected(int row,int col) {
     return ((native_options_get_tile(row,col)>>13)&3u)==2u;
 }
+static void native_options_set_row_palette(int row,int col,int count,int palette) {
+    for(int i=0;i<count;i++) {
+        uint16_t tile=(uint16_t)(native_options_get_tile(row,col+i)&0x07FFu);
+        if(tile)native_options_put_tile(row,col+i,tile,palette);
+    }
+}
 /* The three additional choices are real Window Plane tilemap entries using
    the game's A-Z font tiles and its normal/selected palettes. */
 static void native_options_tools_draw(void) {
     if(reborn_game_options_visible()) {
+        if(native_options_tool_active)
+            native_options_set_row_palette(7,11,10,1);
+        else if(native_options_tool_restore_gamelevel) {
+            native_options_set_row_palette(7,11,10,2);
+            native_options_tool_restore_gamelevel=0;
+        }
         native_options_write_text(4,1,"LEVEL BUILDER",
             native_options_tool_active && native_options_tool_index==0 ? 2 : 1);
         native_options_write_text(4,16,"CHEATS",
@@ -161,6 +174,7 @@ static void native_options_tools_draw(void) {
         native_options_clear_text_if_matches(4,25,"SAVES");
         native_options_tool_row_written=0;
         native_options_tool_active=0;
+        native_options_tool_restore_gamelevel=0;
     }
 }
 static void native_options_open_tool(void) {
@@ -634,6 +648,7 @@ confirm:
                        native_options_item_selected(7,11))) {
                 /* UP from the first original option focuses the added tools row. */
                 native_options_tool_active=1;
+                native_options_tool_restore_gamelevel=1;
                 native_options_tool_index=0;
                 continue;
             }
