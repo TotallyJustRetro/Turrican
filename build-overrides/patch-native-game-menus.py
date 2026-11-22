@@ -186,6 +186,7 @@ PAUSE_LOOP = r'''
  * as the cartridge picture, then goes through the ordinary game presentation. */
 static uint32_t native_pause_backdrop[320*240];
 static int native_menu_resume_guard=0;
+static int native_pause_keep_title_audio=0;
 
 static void native_menu_present_frame(void) {
     int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;
@@ -263,8 +264,10 @@ static void native_menu_route_event(SDL_Event *e) {
 
 static void native_menu_pause_loop(void) {
     if(native_menu_state<=0)return;
+    int pause_audio=!native_pause_keep_title_audio;
+    native_pause_keep_title_audio=0;
     memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);
-    if(adev)SDL_PauseAudioDevice(adev,1);
+    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);
     while(native_menu_state>0) {
         SDL_Event e;
         while(SDL_PollEvent(&e))native_menu_route_event(&e);
@@ -275,7 +278,7 @@ static void native_menu_pause_loop(void) {
         }
     }
     memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);
-    if(adev)SDL_PauseAudioDevice(adev,0);
+    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,0);
     native_menu_resume_guard=1;
 }
 '''
