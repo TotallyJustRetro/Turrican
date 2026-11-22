@@ -29,7 +29,7 @@ The expanded static report now includes the full bodies of several routines that
 - `f_7D04` reads a 32-bit pointer from `$FF085A`, a word from `$FF0858`, and two words from `$FF0852/$FF0854`. It issues VDP control words `0x54000000` and `0x40000010`, writes the two words to the VDP data port, advances two pointers by 4,480 bytes, then invokes a helper with `D0=0x1180` and `D1=2`. This is a concrete staged graphics-transfer candidate, but we still need to identify who fills the staging buffer and what graphic class it represents.
 - `f_8A22` reads a current source pointer from `$FFBC00`, issues VDP command `0x40020010`, transfers one longword to the data port, advances the source pointer by four, and saves it back to `$FFBC00`. It looks like a generic sequential VDP upload primitive, not an asset definition by itself.
 - `f_D75E` checks a flag at `$FF9A86`, builds a descriptor under `$FFBC00` (length/size field `0x50`, source pointer `$FF9A88`, another field `0x90`), installs handler `f_D7A0` at `$FFBC10`, and issues VDP control/data writes. This is consistent with a queued/small transfer descriptor, but the exact content and owner of `$FF9A88` remain to be identified.
-- `f_19FA` stores its input pointer at `$FFBC50`, checks a byte at offset +48, copies fields from the record into several shared dispatch slots (offsets +4, +18, +22, +26, +30, +34, +42), and calls through pointers loaded from nested offsets +10, +8, and +38. This is much stronger evidence of a structured runtime context with multiple callback fields than a flat sprite table. It is not yet proven to be the global enemy/boss definition format.
+- `f_19FA` stores its input pointer at `$FFBC50`, checks a byte at offset +48, copies fields from the record into several shared dispatch slots (offsets +4, +18, +22, +26, +30, +34, +42), and calls through pointers loaded from nested offsets +10, +8, and +38. This is strong evidence of a structured runtime context with multiple callback fields. Combined with the indexed lookup in `f_156A`, the current best interpretation is a stage/profile context, not a global enemy/boss definition format.
 
 The Build #308 caller index found two direct call relationships:
 
@@ -59,7 +59,9 @@ The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` 
 
 The generated code reveals a callback/context mechanism:
 
-- `f_156A` and `f_1994` read several 32-bit addresses from fixed work-RAM slots and dispatch through them with `rt_call_addr`.
+- `f_156A` is part of the main game-frame/update path. It reads the 16-bit word at `$FFBF1E`, multiplies it by four, indexes a longword pointer table based at ROM address `0x1994`, and passes the selected pointer to `f_19FA`.
+- The low byte of `$FFBF1E` is `$FFBF1F`, the byte previously recorded as the current stage. Therefore, the `0x1994` lookup is more plausibly a stage/profile selection table than an enemy catalogue. The high byte may distinguish a world, mode, or profile; that interpretation still needs confirmation.
+- `f_19FA` initializes the selected stage/runtime context and installs its callbacks into shared RAM dispatch slots. It is not proven to describe an individual enemy or boss.
 - Observed callback slots include `$FFBC3C`, `$FFBC44`, `$FFBC4C`, `$FFBC1C`, `$FFBC62`, `$FFBC20`, `$FFBC5A`, and `$FFBC5E`.
 - `f_19FA` stores its incoming A0 value in `$FFBC50`, then copies 32-bit values from offsets in the pointed-to structure into callback slots. Notable offsets include +18, +22, +30, +34, and +42.
 - This is strong evidence for a runtime object/context descriptor whose fields include callback pointers. It is not yet proof that each descriptor is an enemy or boss definition.
