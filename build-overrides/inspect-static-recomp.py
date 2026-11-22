@@ -338,10 +338,10 @@ if gen.exists():
   "f_DC4","f_6DE","f_4BA","f_4FE","f_12976","f_D0014","f_D0018",
   "f_6C3E","f_D75E","f_D7A0","f_D7B4","f_D7C8"
  ]
- support_def=re.compile(r"(?m)^\\s*static\\s+void\\s+(f_[0-9A-Fa-f]+)\\s*\\([^;{}]*\\)\\s*\\{")
+ support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
  for name in support_names:
-  pat=re.compile(r"(?m)^\\s*static\\s+void\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
   hit=pat.search(source)
   if not hit:
    emit(f"TRANSFER_SUPPORT_MISSING {name}")
@@ -366,7 +366,7 @@ if gen.exists():
  support_set=set(support_names)
  current_support=""
  ptr_pat=re.compile(r"0x([0-9A-Fa-f]{4,6})u")
- support_start=re.compile(r"^\\s*static\\s+void\\s+(f_[0-9A-Fa-f]+)\\s*\\(")
+ support_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
  for n,line in enumerate(lines,1):
   sm=support_start.search(line)
   if sm: current_support=sm.group(1)
