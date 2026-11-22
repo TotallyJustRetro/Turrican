@@ -341,7 +341,12 @@ if gen.exists():
   "f_7636","f_760A","f_D0010","f_4A8","f_5EC","f_6D6",
   "f_554","f_76C","f_652","f_7AB6","f_7D04","f_7B8A",
   "f_7CC6","f_79B6","f_6E7E","f_6FCE","f_751A","f_75D6",
-  "f_200","f_76EA","f_6B80","f_6C3E","f_19FA","f_156A"
+  "f_200","f_76EA","f_6B80","f_6C3E","f_19FA","f_156A",
+  "f_B0A","f_1CFE","f_B38","f_B62","f_AD2","f_B7E","f_8CA",
+  "f_1E38","f_1D54","f_1BDE","f_1E00","f_2130","f_2150",
+  "f_2230","f_223E","f_224C","f_2A18","f_20000","f_24000",
+  "f_2640","f_26A2","f_31E4","f_3284","f_3368","f_3BD8",
+  "f_5432","f_552A","f_5578","f_5D8A","f_5DB2","f_6C3E"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -385,7 +390,7 @@ if gen.exists():
  # Locate direct call sites and immediate setup for each transfer helper.
  # A helper body is not enough: its callers reveal which asset/job class feeds it.
  emit("[VDP_TRANSFER_HELPER_CALLERS]")
- helper_names=set(candidates) | set(support_names)
+ helper_names=set(candidates) | set(support_names) | set(vdp_summary)
  call_re=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)")
  caller=""
  for n,line in enumerate(lines,1):
