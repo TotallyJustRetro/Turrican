@@ -550,17 +550,24 @@ static int md_modern_is_timer_ink(uint8_t pixel) {
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* Scrub only red TIME label/digit pixels. Leave every non-timer plane and
-       sprite pixel untouched, so the level scenery is never replaced by a
-       rectangular sample from the other scrolling plane. */
-    if(md_modern_timer_hud_this_frame && y>=vdp.height*4/100 && y<vdp.height*24/100) {
-        int x0=W*37/100, x1=W*64/100;
+    /* The USA HUD places SCORE, TIME and ENERGY in three distinct top-row
+       columns. The TIME widget occupies only this center column. If its red
+       glyphs are on Plane A, replace that widget's whole Plane-A tile strip
+       with the correctly scrolled/priority-aware Plane-B pixels underneath;
+       if they are sprites, clear only the sprite row. This removes its backing
+       tile as well as its digits without blanking a broad screen rectangle. */
+    if(md_modern_timer_hud_this_frame && y>=vdp.height*3/100 && y<vdp.height*15/100) {
+        int x0=W*41/100, x1=W*60/100;
         if(x1>W)x1=W;
+        int red_a=0,red_b=0,red_s=0;
         for(int x=x0;x<x1;x++) {
-            if(md_modern_is_timer_ink(pa[x]))pa[x]=0;
-            if(md_modern_is_timer_ink(pb[x]))pb[x]=0;
-            if(md_modern_is_timer_ink(sp[x]))sp[x]=0;
+            red_a+=md_modern_is_timer_ink(pa[x]);
+            red_b+=md_modern_is_timer_ink(pb[x]);
+            red_s+=md_modern_is_timer_ink(sp[x]);
         }
+        if(red_a)for(int x=x0;x<x1;x++)pa[x]=pb[x];
+        if(red_b)for(int x=x0;x<x1;x++)pb[x]=0;
+        if(red_s)for(int x=x0;x<x1;x++)sp[x]=0;
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
     path.write_text(s,encoding="utf-8")
