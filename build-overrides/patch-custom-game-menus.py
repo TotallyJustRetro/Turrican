@@ -49,6 +49,7 @@ static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
 static int native_title_checkpoint_saved=0;
+static int native_pause_achievement_first=0;
 static uint8_t native_pause_font_cache[43][32];
 static int native_pause_font_cache_valid=0;
 static void native_pause_font_capture(void);
@@ -1305,28 +1306,51 @@ static void render_native_pause_achievements(void) {
     int show=count>9?9:count,unlocked=0;
     char header[40],row[64];
     for(int i=0;i<count;i++)if(achievements[i].unlocked)unlocked++;
+    if(native_pause_achievement_first<0)native_pause_achievement_first=0;
+    if(native_pause_achievement_first>count-show)native_pause_achievement_first=count-show;
+    if(native_menu_sel>=count)native_menu_sel=0;
+    if(native_menu_sel<native_pause_achievement_first)native_pause_achievement_first=native_menu_sel;
+    if(native_menu_sel>=native_pause_achievement_first+show)
+        native_pause_achievement_first=native_menu_sel-show+1;
     native_pause_panel("ACHIEVEMENTS");
     snprintf(header,sizeof header,"%d OF %d UNLOCKED",unlocked,count);
     native_pause_draw_text(24,34,header,0xE8C0E8);
     for(int i=0;i<show;i++) {
-        snprintf(row,sizeof row,"%s %s",achievements[i].unlocked?"UNLOCKED":"LOCKED",achievements[i].name);
+        int index=native_pause_achievement_first+i;
+        snprintf(row,sizeof row,"%s %s",achievements[index].unlocked?"UNLOCKED":"LOCKED",achievements[index].name);
         int y=51+i*15;
-        if(i==native_menu_sel) {
+        if(index==native_menu_sel) {
             native_menu_rect(18,y-2,(vdp.width?vdp.width:320)-36,14,0x72,0x12,0x68,190);
             native_menu_rect(18,y-2,2,14,0xF0,0x26,0xD8,255);
         }
-        native_pause_draw_text(26,y,row,i==native_menu_sel?0xFFF0D0:0xC9D4E0);
+        native_pause_draw_text(26,y,row,index==native_menu_sel?0xFFF0D0:0xC9D4E0);
     }
     native_pause_draw_text(22,202,"UP DOWN SELECT  B BACK",0xAAB8C7);
 }
 static void proc_native_pause_info_back(SDL_Event *e) {
+    if(native_menu_state==22) {
+        int count=(int)(sizeof achievements/sizeof achievements[0]);
+        if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
+            if(e->key.keysym.sym==SDLK_UP)native_menu_sel=(native_menu_sel+count-1)%count;
+            else if(e->key.keysym.sym==SDLK_DOWN)native_menu_sel=(native_menu_sel+1)%count;
+            else if(e->key.keysym.sym==SDLK_ESCAPE||e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_x)
+                native_pause_page_back(5);
+        }
+        if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+            if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+count-1)%count;
+            else if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%count;
+            else if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_A||
+                    e->cbutton.button==SDL_CONTROLLER_BUTTON_START)native_pause_page_back(5);
+        }
+        return;
+    }
     if(e->type==SDL_KEYDOWN&&!e->key.repeat &&
        (e->key.keysym.sym==SDLK_ESCAPE||e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_x))
-        native_pause_page_back(native_menu_state==21?4:5);
+        native_pause_page_back(4);
     if(e->type==SDL_CONTROLLERBUTTONDOWN &&
        (e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_A||
         e->cbutton.button==SDL_CONTROLLER_BUTTON_START))
-        native_pause_page_back(native_menu_state==21?4:5);
+        native_pause_page_back(4);
 }
 
 static void native_title_menu_sfx(int confirm) {
@@ -1441,7 +1465,7 @@ def patch_sdl(project: Path) -> None:
        Options overlay is not used as a nested menu. */
     static const char *items[]={"RESUME MISSION","VIDEO SETTINGS","AUDIO SETTINGS",
         "CONTROLLER SETUP","CONTROLS","ACHIEVEMENTS","SUIT STATUS ARSENAL",
-        "OPTIONS SOUND TEST","ABORT RESTART STAGE","QUIT TO TITLE","QUIT GAME"};
+        "OPTIONS SOUND TEST","ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
     for(int i=0;i<11;i++) {
         int iy=y+36+i*14;
         if(i==native_menu_sel) {
