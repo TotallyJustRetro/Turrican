@@ -173,7 +173,7 @@ static void native_title_draw_text_at(int x,int y,const char *s,int selected,int
     }
 }
 static void native_title_draw_text_center(const char *s,int y,int selected,int blink_on) {
-    int center=(vdp.width?vdp.width:320)/2+8;
+    int center=(vdp.width?vdp.width:320)/2;
     native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
 }
 static void native_title_compose_frame(void) {
@@ -212,7 +212,7 @@ static void native_title_compose_frame(void) {
         int widths[3],total=0;
         for(int i=0;i<3;i++){widths[i]=native_title_text_width(toggles[i]);total+=widths[i];}
         total+=14;
-        int x=((W-total)/2)+8;
+        int x=(W-total)/2;
         for(int i=0;i<3;i++) {
             native_title_draw_text_at(x,197,toggles[i],
                 native_title_game_options_focus==i+2,blink_on);
