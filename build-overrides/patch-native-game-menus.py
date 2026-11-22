@@ -206,13 +206,15 @@ static void native_menu_present_frame(void) {
 static void native_menu_draw_frame(const uint32_t *backdrop) {
     int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;
     memcpy(vdp.fb,backdrop,sizeof native_pause_backdrop);
-    for(int y=0;y<h;y++) {
-        uint32_t *row=&vdp.fb[y*320];
-        for(int x=0;x<w;x++) {
-            uint32_t p=row[x];
-            row[x]=(((p>>16)&255)*150/255<<16)|
-                   (((p>>8)&255)*150/255<<8)|
-                   ((p&255)*150/255);
+    if(native_menu_state!=11) {
+        for(int y=0;y<h;y++) {
+            uint32_t *row=&vdp.fb[y*320];
+            for(int x=0;x<w;x++) {
+                uint32_t p=row[x];
+                row[x]=(((p>>16)&255)*150/255<<16)|
+                       (((p>>8)&255)*150/255<<8)|
+                       ((p&255)*150/255);
+            }
         }
     }
     switch(native_menu_state) {
