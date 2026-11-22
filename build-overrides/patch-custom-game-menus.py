@@ -65,14 +65,48 @@ static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
 static void native_pause_enter_confirm(int action);
 static void native_pause_audio_pump(void);
 static void native_pause_apply_control_config(void);
-static int native_title_menu_sfx(int confirm) {
-    /* Let only navigation reach the original cartridge menu for one normal
-       frame. Its own handler produces the authentic movement cue; confirm is
-       withheld because it could activate the hidden vanilla menu selection. */
-    if(confirm)return 0;
-    native_title_forced_mask=readpad();
-    native_title_input_passthrough=1;
-    return 1;
+static int native_title_menu_sfx(int confirm);
+static void render_native_pause_video_settings(void);
+static void render_native_pause_audio_settings(void);
+static void render_native_pause_controller_setup(void);
+static void render_native_pause_controls(void);
+static void render_native_pause_achievements(void);
+static void proc_native_pause_video_settings(SDL_Event *e);
+static void proc_native_pause_audio_settings(SDL_Event *e);
+static void proc_native_pause_controller_setup(SDL_Event *e);
+static void proc_native_pause_info_back(SDL_Event *e);
+static void native_custom_save_config(void);
+extern void md_set_ram_byte(uint32_t address,uint8_t value);
+extern void md_pause_fm_test_start(int track);
+extern void md_pause_fm_test_stop(void);
+extern void md_pause_fm_test_render(int16_t *dst,int frames,int channels);
+
+static int reborn_game_options_visible(void);
+static int reborn_title_scene_visible(void);
+static void native_menu_pause_loop(void);
+
+extern void md_set_custom_gameplay_options(int,int,int,int,int,int,int,int);
+extern void md_apply_custom_gameplay_options(void);
+extern void md_copy_main_ram(uint8_t *dst);
+extern uint32_t md_cpu_state_size(void);
+extern void md_copy_cpu_state(void *dst, uint32_t bytes);
+extern int md_save_slot(int slot);
+extern int md_load_slot(int slot);
+extern int md_save_slot_exists(int slot);
+extern void md_restart_to_title(void);
+'''
+
+CUSTOM_PAGES = r'''
+static unsigned int native_menu_trace_index=0;
+/* Always place diagnostic captures beside the running game executable.
+   The process working directory may be inherited from the launcher and can
+   point somewhere completely different. SDL_GetBasePath returns the EXE path. */
+static int native_menu_trace_fullpath(char *dst,size_t capacity,const char *filename) {
+    char *base=SDL_GetBasePath();
+    if(!base)return 0;
+    int written=snprintf(dst,capacity,"%s%s",base,filename);
+    SDL_free(base);
+    return written>=0 && (size_t)written<capacity;
 }
 static void native_menu_dump_snapshot(const char *scene) {
     uint8_t ram_snapshot[0x10000], cpu_snapshot[128];
@@ -1342,13 +1376,13 @@ static void proc_native_pause_info_back(SDL_Event *e) {
 }
 
 static int native_title_menu_sfx(int confirm) {
-    /* Do not forward title navigation into the hidden cartridge menu and do
-       not reload a full core checkpoint to simulate a sound. That rewinds the
-       animated Reborn logo and can invalidate the live frame state. Keep the
-       custom title navigation isolated until the game's exact SFX routine is
-       mapped and can be called without advancing the underlying menu. */
-    (void)confirm;
-    return 0;
+    /* Navigation passes through the original cartridge handler for one normal
+       frame so its own movement cue can play. Confirm is withheld because it
+       could activate the hidden vanilla Start/Options selection underneath us. */
+    if(confirm)return 0;
+    native_title_forced_mask=readpad();
+    native_title_input_passthrough=1;
+    return 1;
 }
 
 static int native_pause_audio_active=0;
@@ -1701,9 +1735,12 @@ confirm:
     if "if(native_title_reopen_options_next_frame)" not in hook:
         hook_anchor="void md_frame_hook(void) {\\n    static uint32_t next=0; SDL_Event e;"
         hook=once(hook,hook_anchor,hook_anchor+"\\n"+reopen_options,
-                  "reopen Game Options after original navigation sound frame")
+                  "reopen Game Options after original navigation frame")
         s=s[:hook_start]+hook+s[hook_end:]
         hook_end=hook_start+len(hook)
+
+    s=once(s,"    reborn_title_update();","    reborn_title_update();",
+           "keep Reborn title animation on uninterrupted frame flow")
 
     # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
