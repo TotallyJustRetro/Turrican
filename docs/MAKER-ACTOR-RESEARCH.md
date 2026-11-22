@@ -71,6 +71,16 @@ The full 64 KiB work-RAM frequency map shows several clusters outside the alread
 
 These are address-cluster leads, not confirmed enemy-object arrays. Build #320 is extracting those function bodies and their call edges to see whether the clusters represent actor instances, stage structures, collision/animation state, or unrelated systems.
 
+## Build #320 candidate routines — what the code suggests so far
+
+- `f_9222` reads an active flag from `$FF5600`, advances counters in `$FF5602/$FF5604`, uses ROM tables at `0x91E8` and `0x8F6E` to select a variable ROM pointer, and copies 32 longwords (128 bytes) into a RAM buffer at `$FFDC9E`. It also stores the selected pointer in `$FFBC5A`. This strongly resembles a timed frame/sequence resource loader. It is a promising place to investigate sprite animation data, but the data has not yet been decoded or linked to a named actor.
+- `f_9CA4` installs `f_9DD4` into the shared callback slot `$FFBC20`. `f_9DD4` then manages counters at `$FF578A`, coordinate-like values at `$FF5784/$FF5786/$FF5788`, and prepares a 7-longword descriptor from ROM `0x8FCE` into `$FFDCFE`. It also installs further callbacks. That looks like a state/sequence transition and associated data setup, not an actor spawn routine.
+- `f_932A` is called by `f_931A`. It uses bounds such as `0x1A0`, `0x2B0`, `0x5F0`, and `0x620`, updates paired coordinate-like words in `$FFDFD4-$FFDFDA`, and refreshes fields under `$FFBF0E`. This looks more like world/camera bounds or display-window positioning than an actor pool.
+- `f_DDAE`, `f_DF46`, `f_DAF6`, `f_DE60`, and `f_DEC8` mostly toggle flags, counters, and copy small tables in `$FF3Dxx`. At present they are not strong actor-instance candidates.
+- `f_10078` is still interesting: it uses an A5-relative structure with coordinate-like fields at +24/+26, state flags at +9/+11/+28, timers/state values at +44/+46/+48/+50, and a linked pointer at +52. This could be a reusable object/actor record, but we need to find the constructor or caller that supplies A5 and compare its fields against other routines before treating it as a confirmed actor structure.
+
+Build #321 adds a cross-function index of all A5-relative field layouts and pointer setup sites. The goal is to find other routines using the same +24/+26/+52 structure and, most importantly, locate where A5 is populated.
+
 The next static step is to map all callers and callers-of-callers for `f_19FA`, `f_156A`, `f_7360`, and `f_76EA`, then inspect the callback installers and object/level tables they consume. Keep graphics transfer routines separate from semantic actor definitions.
 
 The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
