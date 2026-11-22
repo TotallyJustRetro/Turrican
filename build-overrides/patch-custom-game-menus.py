@@ -1592,7 +1592,9 @@ confirm:
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
            "if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_title_menu_update();\n"
            "    md_live_mask = (native_menu_state==0 && (native_title_input_passthrough || !native_menu_resume_guard) && (native_title_input_passthrough || !native_title_input_block)) ? (readpad() | native_title_forced_mask) : 0;\n"
-           "    native_title_input_passthrough=0; native_title_forced_mask=0; native_menu_resume_guard=0;",
+           "    native_title_input_passthrough=0;\n"
+           "    native_title_forced_mask=0;\n"
+           "    native_menu_resume_guard=0;",
            "install original title input pass-through for authentic SFX")
 
     # Route the new page states.
