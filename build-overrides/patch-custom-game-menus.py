@@ -1493,9 +1493,9 @@ def patch_sdl(project: Path) -> None:
     s=path.read_text(encoding="utf-8-sig")
     s=ensure_sdl_headers(s)
     if "#include <stdlib.h>" not in s:
-        include=re.search(r"(?m)^#include <stdio\\.h>\\s*$",s)
+        include=re.search(r"(?m)^#include <stdio\.h>\s*$",s)
         if not include: raise RuntimeError("Could not add stdlib.h for portable config-directory lookup.")
-        s=s[:include.end()]+"\\n#include <stdlib.h>"+s[include.end():]
+        s=s[:include.end()]+"\n#include <stdlib.h>"+s[include.end():]
     if "pad_up=%d\\n" not in s:
         old_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\n"'
         new_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\npad_up=%d\\npad_down=%d\\npad_left=%d\\npad_right=%d\\npad_a=%d\\npad_b=%d\\npad_c=%d\\npad_start=%d\\n"'
@@ -1606,7 +1606,7 @@ confirm:
     # Put page functions after the pause backdrop is declared, but before menu present/event helpers.
     anchor="static int native_menu_resume_guard=0;"
     s=once(s,anchor,anchor+"\n"+CUSTOM_PAGES,"Extras/Cheats/Modern/Saves/Level Builder pages")
-    if "native pause root gameplay-only gate" not in s:
+    if "State 1 is the global pause root" not in s:
         s=once(s,"static void native_menu_pause_loop(void) {\n    if(native_menu_state<=0)return;","static void native_menu_pause_loop(void) {\n    /* State 1 is the global pause root. Reject it until gameplay HUD labels\n       are present; title/intro modals use their own states and remain usable. */\n    if(native_menu_state==1 && !native_title_gameplay_hud_visible()) {\n        native_menu_state=0;\n        return;\n    }\n    if(native_menu_state<=0)return;","native pause root gameplay-only gate")
 
     # Extend VDP framebuffer menu drawing dispatch.
