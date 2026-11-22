@@ -382,8 +382,19 @@ static void native_custom_apply(void) {
         native_game_level_modern && native_modern_checkpoints,
         native_game_level_modern && native_modern_iframes);
 }
+static int native_custom_config_file_path(char *dst,size_t capacity) {
+    char *base=SDL_GetPrefPath("TotallyJustRetro","MegaTurrican");
+    if(!base)return 0;
+    int n=snprintf(dst,capacity,"%scustom-game-options.ini",base);
+    SDL_free(base);
+    return n>0 && (size_t)n<capacity;
+}
 static void native_custom_save_config(void) {
-    FILE *f=fopen("custom-game-options.ini.tmp","w");
+    char path[4096],temp[4096];
+    if(!native_custom_config_file_path(path,sizeof path))return;
+    int n=snprintf(temp,sizeof temp,"%s.tmp",path);
+    if(n<0 || (size_t)n>=sizeof temp)return;
+    FILE *f=fopen(temp,"w");
     if(!f)return;
     fprintf(f,"game_level=%d\ncheat_energy=%d\ncheat_lives=%d\ncheat_timer=%d\n"
               "modern_continues=%d\nmodern_map=%d\nmodern_no_timer_hud=%d\n"
@@ -394,12 +405,13 @@ static void native_custom_save_config(void) {
         native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes,
         native_pause_rapid_fire,native_pause_control_config);
     if(fclose(f)!=0){remove("custom-game-options.ini.tmp");return;}
-    remove("custom-game-options.ini");
-    rename("custom-game-options.ini.tmp","custom-game-options.ini");
+    remove(path);
+    rename(temp,path);
     native_custom_apply();
 }
 static void native_custom_load_config(void) {
-    FILE *f=fopen("custom-game-options.ini","r");
+    char path[4096];
+    FILE *f=native_custom_config_file_path(path,sizeof path)?fopen(path,"r"):NULL;
     if(f) {
         char line[160];
         while(fgets(line,sizeof line,f)) {
@@ -1213,6 +1225,14 @@ static void native_pause_page_back(int root_selection) {
     native_menu_state=1;
     native_menu_sel=root_selection;
 }
+static void native_pause_adjust_video(int item,int direction) {
+    adjust_video(item,direction);
+    save_cfg();
+}
+static void native_pause_adjust_audio(int item,int direction) {
+    adjust_audio(item,direction);
+    save_cfg();
+}
 static void render_native_pause_video_settings(void) {
     /* Follow the real native Video Options order. Scanlines are a shader mode,
        not an independent toggle; Bilinear and Fullscreen are distinct rows. */
@@ -1239,11 +1259,11 @@ static void proc_native_pause_video_settings(SDL_Event *e) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
         case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
-        case SDLK_LEFT:if(native_menu_sel<6)adjust_video(native_menu_sel,-1);break;
-        case SDLK_RIGHT:if(native_menu_sel<6)adjust_video(native_menu_sel,1);break;
+        case SDLK_LEFT:if(native_menu_sel<6)native_pause_adjust_video(native_menu_sel,-1);break;
+        case SDLK_RIGHT:if(native_menu_sel<6)native_pause_adjust_video(native_menu_sel,1);break;
         case SDLK_RETURN:case SDLK_x:
             if(native_menu_sel==6)native_pause_page_back(1);
-            else adjust_video(native_menu_sel,1);
+            else native_pause_adjust_video(native_menu_sel,1);
             break;
         case SDLK_ESCAPE:native_pause_page_back(1);break;
         }
@@ -1251,11 +1271,11 @@ static void proc_native_pause_video_settings(SDL_Event *e) {
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<6)adjust_video(native_menu_sel,-1);
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<6)adjust_video(native_menu_sel,1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<6)native_pause_adjust_video(native_menu_sel,-1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<6)native_pause_adjust_video(native_menu_sel,1);
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
             if(native_menu_sel==6)native_pause_page_back(1);
-            else adjust_video(native_menu_sel,1);
+            else native_pause_adjust_video(native_menu_sel,1);
         }
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)
             native_pause_page_back(1);
@@ -1278,11 +1298,11 @@ static void proc_native_pause_audio_settings(SDL_Event *e) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
         case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
-        case SDLK_LEFT:if(native_menu_sel<2)adjust_audio(native_menu_sel,-1);break;
-        case SDLK_RIGHT:if(native_menu_sel<2)adjust_audio(native_menu_sel,1);break;
+        case SDLK_LEFT:if(native_menu_sel<2)native_pause_adjust_audio(native_menu_sel,-1);break;
+        case SDLK_RIGHT:if(native_menu_sel<2)native_pause_adjust_audio(native_menu_sel,1);break;
         case SDLK_RETURN:case SDLK_x:
             if(native_menu_sel==2)native_pause_page_back(2);
-            else adjust_audio(native_menu_sel,1);
+            else native_pause_adjust_audio(native_menu_sel,1);
             break;
         case SDLK_ESCAPE:native_pause_page_back(2);break;
         }
@@ -1290,11 +1310,11 @@ static void proc_native_pause_audio_settings(SDL_Event *e) {
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<2)adjust_audio(native_menu_sel,-1);
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<2)adjust_audio(native_menu_sel,1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<2)native_pause_adjust_audio(native_menu_sel,-1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<2)native_pause_adjust_audio(native_menu_sel,1);
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
             if(native_menu_sel==2)native_pause_page_back(2);
-            else adjust_audio(native_menu_sel,1);
+            else native_pause_adjust_audio(native_menu_sel,1);
         }
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)
             native_pause_page_back(2);
@@ -1319,8 +1339,11 @@ static void render_native_pause_controller_setup(void) {
     native_pause_draw_text(22,202,"LEFT RIGHT REBIND  A RESTORE  B BACK",0xAAB8C7);
 }
 static void proc_native_pause_controller_setup(SDL_Event *e) {
+    int old_pad_map[8];
+    memcpy(old_pad_map,pad_map,sizeof old_pad_map);
     native_menu_state=7;
     proc_native_controller_options(e);
+    if(memcmp(old_pad_map,pad_map,sizeof old_pad_map)!=0)save_cfg();
     if(native_menu_state==6)native_pause_page_back(3);
     else if(native_menu_state==7)native_menu_state=20;
 }
@@ -1460,6 +1483,13 @@ def patch_sdl(project: Path) -> None:
     path=project/"runtime"/"sdl_main.c"
     s=path.read_text(encoding="utf-8-sig")
     s=ensure_sdl_headers(s)
+    if "pad_up=%d\\n" not in s:
+        old_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\n"'
+        new_format='"fullscreen=%d\\nvsync=%d\\naudio=%d\\nvolume=%d\\naudio_mode=%d\\nbackground=%s\\npad_up=%d\\npad_down=%d\\npad_left=%d\\npad_right=%d\\npad_a=%d\\npad_b=%d\\npad_c=%d\\npad_start=%d\\n"'
+        s=once(s,old_format,new_format,"persist native controller bindings in config.ini")
+        old_values="cfg.fullscreen,cfg.vsync,cfg.audio,cfg.volume,cfg.audio_mode,cfg.bg,"
+        new_values=old_values+"pad_map[0],pad_map[1],pad_map[2],pad_map[3],pad_map[4],pad_map[5],pad_map[6],pad_map[7],"
+        s=once(s,old_values,new_values,"persist native controller binding values")
     if "static void render_native_extras(void)" in s:
         print("Native Extras pages already installed.")
         return
@@ -1812,6 +1842,9 @@ confirm:
     frame_anchor="    native_menu_pause_loop();"
     if s.count(frame_anchor)<1:
         raise RuntimeError("Could not locate the native pause frame hook.")
+    s=once(s,frame_anchor,
+           "    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();",
+           "allow pause entry only during active gameplay")
 
     s=once(s,"    memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);",
            "    if(native_menu_state==13 && native_title_options_backdrop_valid) {\n"
