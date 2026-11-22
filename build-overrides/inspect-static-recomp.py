@@ -428,6 +428,44 @@ if gen.exists():
  for address,functions in sorted(low_summary.items()):
   emit(f"STAGING_ADDRESS $FF{address} function_counts="+",".join(f"{fn}:{count}" for fn,count in sorted(functions.items(),key=lambda item:(-item[1],item[0]))))
  
+ # The 0x20000/0x24000 callback targets selected by f_2A18 were not found
+ # as standalone f_... functions by the regular extractor. Search both exact
+ # ROM labels and embedded function bodies so this cannot silently become a
+ # guessed actor classification.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[CALLBACK_TARGET_20000_24000_SEARCH]")
+  patterns=[
+   re.compile(r"\b(?:L_)?20000\b",re.I),
+   re.compile(r"\b(?:L_)?24000\b",re.I),
+   re.compile(r"0x0*20000u?\b",re.I),
+   re.compile(r"0x0*24000u?\b",re.I),
+  ]
+  hits=[]
+  for i,line in enumerate(gen_lines):
+   if any(p.search(line) for p in patterns):
+    hits.append(i)
+  # Merge overlapping neighborhoods to keep the report compact.
+  ranges=[]
+  for i in hits:
+   lo=max(0,i-8); hi=min(len(gen_lines),i+10)
+   if ranges and lo<=ranges[-1][1]:
+    ranges[-1]=(ranges[-1][0],max(ranges[-1][1],hi))
+   else:
+    ranges.append((lo,hi))
+  emit(f"CALLBACK_TARGET_HITS {len(hits)}")
+  for lo,hi in ranges[:80]:
+   active="(unknown)"
+   for q in range(lo,-1,-1):
+    fm=re.match(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(",gen_lines[q])
+    if fm:
+     active=fm.group(1);break
+   emit(f"CALLBACK_TARGET_CONTEXT function={active} lines={lo+1}-{hi}")
+   for q in range(lo,hi):
+    emit(f"  {q+1}: {gen_lines[q][:300]}")
+  if len(ranges)>80: emit(f"CALLBACK_TARGET_CONTEXTS_CLIPPED {len(ranges)-80}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
