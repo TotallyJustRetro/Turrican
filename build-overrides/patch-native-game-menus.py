@@ -186,7 +186,6 @@ PAUSE_LOOP = r'''
  * as the cartridge picture, then goes through the ordinary game presentation. */
 static uint32_t native_pause_backdrop[320*240];
 static int native_menu_resume_guard=0;
-static int native_pause_keep_title_audio=0;
 
 static void native_menu_present_frame(void) {
     int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;
