@@ -1107,7 +1107,7 @@ confirm:
                 }
             }
         }
-''
+'''
 
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
