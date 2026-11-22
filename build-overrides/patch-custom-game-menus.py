@@ -1799,7 +1799,7 @@ confirm:
         hook_end=hook_start+len(hook)
 
     if "native_title_compose_frame();" not in hook:
-        shade=re.search(r"shade\\s*\\(\\s*w\\s*,\\s*h\\s*\\)\\s*;",hook)
+        shade=re.search(r"shade\s*\(\s*w\s*,\s*h\s*\)\s*;",hook)
         if not shade:
             raise RuntimeError("Could not locate shade(w,h) in md_frame_hook.")
         at=shade.start()
