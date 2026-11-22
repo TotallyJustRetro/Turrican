@@ -165,7 +165,7 @@ static int native_title_menu_scene_visible(void) {
     static const uint16_t sega[]={0x543,0x535,0x537,0x531,0x530,0x535,0x53E,0x544,
         0x535,0x542,0x540,0x542,0x539,0x543,0x535,0x543}; /* SEGA ENTERPRISES */
     if(vdp.width<256 || vdp.width>320 || vdp.height<200 || vdp.height>240)return 0;
-    if(native_title_gameplay_hud_visible())return 0;
+    if(native_menu_state>0 || native_title_gameplay_hud_visible())return 0;
     return native_title_tile_row_matches(16,13,start_tiles,sizeof start_tiles/sizeof start_tiles[0]) &&
            native_title_tile_row_matches(18,12,options_tiles,sizeof options_tiles/sizeof options_tiles[0]) &&
            native_title_tile_row_matches(22,10,copyright_year,sizeof copyright_year/sizeof copyright_year[0]) &&
