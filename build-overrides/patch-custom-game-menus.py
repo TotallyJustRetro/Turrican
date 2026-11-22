@@ -1469,7 +1469,7 @@ def patch_sdl(project: Path) -> None:
        Options overlay is not used as a nested menu. */
     static const char *items[]={"RESUME MISSION","VIDEO SETTINGS","AUDIO SETTINGS",
         "CONTROLLER SETUP","CONTROLS","ACHIEVEMENTS","SUIT STATUS ARSENAL",
-        "LEVEL BUILDER","OPTIONS SOUND TEST","ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
+        "OPTIONS SOUND TEST","ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
     for(int i=0;i<11;i++) {
         int iy=y+36+i*14;
         if(i==native_menu_sel) {
@@ -1524,11 +1524,10 @@ confirm:
     case 4:native_menu_state=21;native_menu_sel=0;break; /* Controls */
     case 5:native_menu_state=22;native_menu_sel=0;break; /* Achievements */
     case 6:native_menu_state=15;native_menu_sel=0;break;
-    case 7:native_level_builder_from_pause=1;native_menu_state=11;native_menu_sel=0;break;
-    case 8:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
-    case 9:native_pause_enter_confirm(0);break;
-    case 10:native_pause_enter_confirm(1);break;
-    case 11:native_pause_enter_confirm(2);break;
+    case 7:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
+    case 8:native_pause_enter_confirm(0);break;
+    case 9:native_pause_enter_confirm(1);break;
+    case 10:native_pause_enter_confirm(2);break;
     }
 }'''
     s=replace_function(s,"static void proc_pause_main(SDL_Event *e)",pause_proc,"pause menu Extras action")
