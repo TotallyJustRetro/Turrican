@@ -383,7 +383,7 @@ if gen.exists():
  # Locate direct call sites and immediate setup for each transfer helper.
  # A helper body is not enough: its callers reveal which asset/job class feeds it.
  emit("[VDP_TRANSFER_HELPER_CALLERS]")
- helper_names=set(candidates)
+ helper_names=set(candidates) | set(support_names)
  call_re=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)")
  caller=""
  for n,line in enumerate(lines,1):
