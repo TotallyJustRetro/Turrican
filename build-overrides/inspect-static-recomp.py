@@ -898,6 +898,45 @@ if gen.exists():
    if re.search(r"uint32_t\s+d\s*=\s*0xFFFFBC(?:28|30|2C)u",line):
     emit(f"OBJECT_LIST_HEAD_WRITE owner={current} line={i} code={line.strip()[:280]}")
 
+ # For each routine that consumes object +30/+38 data pointers, recover its
+ # callers and the register setup immediately before the call. This ties the
+ # field's interpretation to the exact record/context supplied by its parent.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_RESOURCE_CONSUMER_CALLERS]")
+  targets={"f_4A5A","f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A","f_DBAA","f_DC78"}
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  current="(global)"
+  source="\n".join(gen_lines)
+  for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   called=sorted(set(re.findall(r"\b(f_[0-9A-Fa-f]+)\s*\(c\)",line))&targets)
+   for target in called:
+    lo=max(0,i-12);hi=min(len(gen_lines),i+12)
+    emit(f"RESOURCE_HELPER_CALL caller={current} target={target} lines={lo+1}-{hi}")
+    for q in range(lo,hi):
+     emit(f"  {q+1}: {gen_lines[q][:280]}")
+  emit("[OBJECT_RESOURCE_FIELD_POINTER_USE_PATTERNS]")
+  # For the routines above, show how the data pointer register is consumed:
+  # indexed word/long reads, sequential table walking, or writes into output.
+  keep=False
+  current="(global)"
+  emitted=0
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+    keep=current in targets
+   if not keep: continue
+   if re.search(r"RD(?:8|16|32)\(A\([0-7]\)(?:\s*\+\s*\(int32_t\)\s*\d+)?\)|A\([0-7]\)\s*\+=\s*(?:2|4)",line):
+    emit(f"RESOURCE_POINTER_USE function={current} line={n} code={line.strip()[:300]}")
+    emitted+=1
+    if emitted>=500:
+     emit("RESOURCE_POINTER_USE_LIMIT 500")
+     break
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
