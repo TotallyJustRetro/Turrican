@@ -96,6 +96,7 @@ extern void md_copy_cpu_state(void *dst, uint32_t bytes);
 extern int md_save_slot(int slot);
 extern int md_load_slot(int slot);
 extern int md_save_slot_exists(int slot);
+extern void md_restart_to_title(void);
 extern void md_preserve_audio_on_next_load(void);
 '''
 
@@ -1854,17 +1855,21 @@ confirm:
            "        native_pause_request_quit=0; exit(0);\n"
            "    }\n"
            "    if(native_pause_request_title) {\n"
-           "        native_pause_request_title=0;\n"
-           "        if(md_save_slot_exists(5) && md_load_slot(5)) {\n"
-           "            native_pause_skip_backdrop_restore=1;\n"
-           "            native_title_scene_active=0; native_title_compose_enabled=0; native_title_checkpoint_saved=1;\n"
-           "        } else {\n"
-           "            native_pause_skip_backdrop_restore=0;\n"
-           "            native_pause_no_checkpoint=1; native_menu_state=1; native_menu_sel=9;\n"
-           "            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\n"
-           "                \"Mega Turrican Reborn\",\n"
-           "                \"The branded title checkpoint could not be restored. The mission has not been reset.\",NULL);\n"
-           "        }\n"
+           "        native_pause_request_title=0; native_pause_request_quit=0;\n"
+           "        native_menu_state=0; native_menu_sel=0;\n"
+           "        native_pause_skip_backdrop_restore=0; native_pause_no_checkpoint=0;\n"
+           "        native_title_scene_active=0; native_title_page_mode=0;\n"
+           "        native_title_menu_selection=0; native_title_transition_guard=0;\n"
+           "        native_title_input_block=0; native_title_compose_enabled=0;\n"
+           "        native_title_last_selection=-1; native_title_last_page=-1; native_title_last_focus=-1;\n"
+           "        native_title_blink_ticks=0; native_title_checkpoint_saved=0;\n"
+           "        native_title_input_passthrough=0; native_title_forced_mask=0;\n"
+           "        native_title_restore_after_input=0; native_title_restore_ready=0;\n"
+           "        native_title_pending_open=0; native_title_pending_selection=0;\n"
+           "        native_title_reopen_options_after_input=0; native_title_reopen_focus=0;\n"
+           "        native_title_options_backdrop_valid=0;\n"
+           "        if(adev) { SDL_ClearQueuedAudio(adev); SDL_PauseAudioDevice(adev,0); }\n"
+           "        md_restart_to_title();\n"
            "    }\n"
            "    if(!native_pause_skip_backdrop_restore)memcpy(vdp.fb,native_pause_backdrop,sizeof native_pause_backdrop);\n"
            "    native_pause_skip_backdrop_restore=0;\n"
