@@ -663,6 +663,28 @@ if gen.exists():
     for q in range(lo,hi):
      emit(f"    {q+1}: {gen_lines[q][:280]}")
   emit(f"OBJECT_POOL_CALLER_COUNT {len(grouped)} total_calls={len(call_sites)}")
+  emit("[OBJECT_POOL_CALLER_FUNCTION_BODIES]")
+  for fn,sites in sorted(grouped.items(),key=lambda item:(-len(item[1]),item[0]))[:48]:
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(fn)+r"\s*\([^;{}]*\)\s*\{")
+   hit=pat.search("\n".join(gen_lines))
+   if not hit: continue
+   source="\n".join(gen_lines)
+   brace=source.find("{",hit.start())
+   depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{": depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:
+      end=pos+1;break
+   if end<=brace: continue
+   block=source[hit.start():end]
+   body_lines=block.splitlines()
+   emit(f"OBJECT_POOL_CALLER_BODY {fn} source_lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line in body_lines[:260]:
+    emit("  "+line[:280])
+   if len(body_lines)>260: emit(f"  ... clipped {len(body_lines)-260} additional function lines ...")
+
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
