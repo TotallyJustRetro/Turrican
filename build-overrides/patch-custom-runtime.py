@@ -63,6 +63,9 @@ void md_set_custom_gameplay_options(int energy,int lives,int timer,
     md_modern_checkpoints = checkpoints ? 1 : 0;
     md_modern_iframes = hit_iframes ? 1 : 0;
 }
+int md_modern_hide_timer_hud_enabled(void) {
+    return md_modern_hide_timer_hud;
+}
 
 /* Infinite time is deliberately not reasserted for Modern Mode: NO TIMER HUD
  * removes the timer artwork in the display path while the game clock continues. */
@@ -506,11 +509,45 @@ def patch_recompiled_continues(project: Path) -> None:
             raise RuntimeError(f"Expected two generated L_1796 weapon-death blocks, found {n}")
     path.write_text(s,encoding="utf-8",newline="\n")
 
+def patch_vdp(project: Path) -> None:
+    path=project/"runtime"/"vdp.c"
+    s=path.read_text(encoding="utf-8-sig")
+    if "md_modern_timer_hud_this_frame" not in s:
+        anchor="void vdp_render_line(int y){"
+        helper="""extern int md_modern_hide_timer_hud_enabled(void);
+extern int md_modern_timer_hud_present(void);
+static int md_modern_timer_hud_this_frame=0;
+
+"""
+        s=once(s,anchor,helper+anchor,"VDP timer HUD suppression state")
+        frame_anchor="    int W = (vdp.reg[12] & 1) ? 320 : 256; vdp.width = W; vdp.height = (vdp.reg[1] & 8) ? 240 : 224;"
+        frame_new=frame_anchor+"""
+    if(y==0)
+        md_modern_timer_hud_this_frame=md_modern_hide_timer_hud_enabled() && md_modern_timer_hud_present();
+"""
+        s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
+        layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
+        layers_new=layers+"""
+    /* Plane B is already fully rendered with the correct scroll, window geometry,
+       flips and tile attributes. Replace only the timer widget's foreground
+       layers with these real background pixels; never sample raw VRAM here. */
+    if(md_modern_timer_hud_this_frame && y>=vdp.height*2/100 && y<vdp.height*27/100) {
+        int x0=W*41/100, x1=W*61/100;
+        if(x1>W)x1=W;
+        for(int x=x0;x<x1;x++) {
+            pa[x]=pb[x];
+            sp[x]=0;
+        }
+    }"""
+        s=once(s,layers,layers_new,"replace timer widget with true rendered background")
+    path.write_text(s,encoding="utf-8",newline="\\n")
+
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
     patch_audio_state(project/"runtime"/"psg.c","md_psg","psg")
     patch_harness(project)
     patch_recompiled_continues(project)
+    patch_vdp(project)
     print("Installed real USA-ROM RAM cheats, conditional infinite-continues instruction, YM/PSG snapshots, and 3-slot full-state save/load.")
 
 if __name__=="__main__":
