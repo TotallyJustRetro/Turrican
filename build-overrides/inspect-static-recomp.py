@@ -770,58 +770,80 @@ if gen.exists():
     emit("  "+line[:280])
    if len(body_lines)>170: emit(f"  ... clipped {len(body_lines)-170} further source lines ...")
 
- # Correlate object record update handler (+34), graphics/resource pointer
- # (+30), and linked animation/context pointer (+38) by the function that
- # initializes each record. Values may be immediate ROM data pointers or copied
- # from a parent/template record; both forms are retained in this evidence index.
+ # Correlate object record callback fields using each write statement itself.
+ # The earlier rolling-local scan could incorrectly attach an unrelated earlier
+ # immediate to a later write; keep every classification strictly same-line.
  gen=ROOT/"recomp_gen.c"
  if gen.exists():
   gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
   emit("[OBJECT_RECORD_30_34_38_DESCRIPTOR_WRITES]")
   fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
-  dest=re.compile(r"\buint32_t\s+d\s*=\s*A\(([05])\)\s*\+\s*\(int32_t\)(30|34|38)")
+  dest=re.compile(r"\buint32_t\s+d\s*=\s*A\(([0-7])\)\s*\+\s*\(int32_t\)(30|34|38)")
   write=re.compile(r"\bWR32\s*\(\s*d\s*,\s*v\s*\)")
-  val_imm=re.compile(r"\buint32_t\s+v\s*=\s*0x([0-9A-Fa-f]{3,8})u")
-  val_copy=re.compile(r"\buint32_t\s+s\s*=\s*A\(([05])\)\s*\+\s*\(int32_t\)(30|34|38);\s*uint32_t\s+v\s*=\s*RD32\(s\)")
+  immediate=re.compile(r"\buint32_t\s+v\s*=\s*0x([0-9A-Fa-f]+)u")
+  copy_field=re.compile(r"\buint32_t\s+s\s*=\s*A\(([0-7])\)\s*\+\s*\(int32_t\)(\d+)\s*;\s*uint32_t\s+v\s*=\s*RD32\(s\)")
+  read_any=re.compile(r"\buint32_t\s+s\s*=\s*([^;]+);\s*uint32_t\s+v\s*=\s*RD32\(s\)")
+  value_expr=re.compile(r"\buint32_t\s+v\s*=\s*([^;]+)")
   current="(global)"
-  recent={}
-  writes=[]
+  descriptor_count=0
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   dm=dest.search(line)
+   if not dm or not write.search(line): continue
+   reg,offset=int(dm.group(1)),int(dm.group(2))
+   im=immediate.search(line)
+   cp=copy_field.search(line)
+   ra=read_any.search(line)
+   ve=value_expr.search(line)
+   if im:
+    value=f"0x{int(im.group(1),16):X}"
+    classification="constant_pointer_or_value"
+   elif cp:
+    value=f"READ32_FROM_A{cp.group(1)}_PLUS_{cp.group(2)}"
+    classification="copied_record_field"
+   elif ra:
+    value=f"READ32_FROM_{ra.group(1).strip()}"
+    classification="dynamic_source"
+   elif ve:
+    value=ve.group(1).strip()
+    classification="register_or_expression"
+   else:
+    value="unparsed"
+    classification="unparsed"
+   emit(f"OBJECT_RECORD_FIELD_WRITE owner={current} base=A{reg} offset=+{offset} value={value} class={classification} line={n}")
+   emit(f"  {line.strip()[:320]}")
+   descriptor_count+=1
+  emit(f"OBJECT_RECORD_DESCRIPTOR_WRITE_COUNT {descriptor_count}")
+
+  # A record field is a callback only if code later loads it and dispatches it.
+  # Search for indirect calls with a nearby A-register-relative +30/+34/+38
+  # load. Keep the exact call context so the slot's role can be inferred from
+  # actual consumers rather than the value stored into it.
+  emit("[OBJECT_RECORD_INDIRECT_CALLBACK_CALLS]")
+  current="(global)"
+  recent=[]
+  callback_call_count=0
+  field_load=re.compile(r"uint32_t\s+s\s*=\s*A\(([0-7])\)\s*\+\s*\(int32_t\)(30|34|38);\s*uint32_t\s+v\s*=\s*RD32\(s\)")
+  indirect=re.compile(r"rt_call_addr\s*\(\s*c\s*,")
   for n,line in enumerate(gen_lines,1):
    fm=fn_start.search(line)
    if fm:
-    current=fm.group(1); recent={}
-   dm=dest.search(line)
-   if dm:
-    recent["dest"]=(int(dm.group(1)),int(dm.group(2)),n,line.strip())
-   im=val_imm.search(line)
-   if im: recent["imm"]=(int(im.group(1),16),n)
-   cp=val_copy.search(line)
-   if cp: recent["copy"]=(int(cp.group(1)),int(cp.group(2)),n)
-   if write.search(line) and "dest" in recent:
-    reg,offset,dline,dcode=recent["dest"]
-    imm=recent.get("imm")
-    copy=recent.get("copy")
-    if imm and 0<=n-imm[1]<=5:
-     value=f"ROM_OR_CODE_0x{imm[0]:X}"
-     origin=f"immediate_at_{imm[1]}"
-    elif copy and 0<=n-copy[2]<=5:
-     value=f"COPY_FROM_A{copy[0]}_PLUS_{copy[1]}"
-     origin=f"copy_at_{copy[2]}"
-    else:
-     value="DYNAMIC_OR_REGISTER_VALUE"
-     origin="not_resolved_by_local_scan"
-    writes.append((current,reg,offset,value,origin,n,dcode,line.strip()))
-    recent.pop("dest",None)
-  # De-duplicate repeated reads of the same assignment line.
-  seen=set()
-  for fn,reg,offset,value,origin,n,dcode,code in writes:
-   key=(fn,reg,offset,n)
-   if key in seen: continue
-   seen.add(key)
-   emit(f"OBJECT_RECORD_FIELD_WRITE owner={fn} base=A{reg} offset=+{offset} value={value} origin={origin} line={n}")
-   emit(f"  destination: {dcode}")
-   emit(f"  write: {code}")
-  emit(f"OBJECT_RECORD_DESCRIPTOR_WRITE_COUNT {len(seen)}")
+    current=fm.group(1)
+    recent=[]
+   lm=field_load.search(line)
+   if lm:
+    recent.append((n,int(lm.group(1)),int(lm.group(2)),line.strip()[:280]))
+   if indirect.search(line):
+    nearby=[x for x in recent if n-x[0]<=24]
+    if nearby:
+     emit(f"OBJECT_CALLBACK_DISPATCH function={current} call_line={n} fields_loaded="+",".join(f"A{reg}+{off}@{ln}" for ln,reg,off,_ in nearby[-6:]))
+     for ln,reg,off,code in nearby[-6:]:
+      emit(f"  field_load line={ln}: {code}")
+     emit(f"  indirect_call: {line.strip()[:320]}")
+     callback_call_count+=1
+    recent=[x for x in recent if n-x[0]<=24]
+  emit(f"OBJECT_RECORD_INDIRECT_CALLBACK_CALL_COUNT {callback_call_count}")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
