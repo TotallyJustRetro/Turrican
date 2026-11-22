@@ -201,7 +201,7 @@ for rel in FILES:
    if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
     emit(f"STATE_DECL line={n} {t[:220]}")
   m=func.match(line)
-  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render|input|restart|quit",m.group(1),re.I):
+  if m and (re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render|input|restart|quit",m.group(1),re.I) or (rel=="runtime/harness.c" and re.search(r"vdp_dma_read|bus_rd|bus_wr|rd8_raw",m.group(1),re.I)) or (rel=="runtime/vdp.c" and re.search(r"dma|write_data|write_ctrl",m.group(1),re.I))):
    params=re.sub(r"\s+"," ",m.group(2).strip())
    emit(f"FUNCTION line={n} name={m.group(1)} params={params[:120] or '-'}")
    if (rel=="runtime/harness.c" and m.group(1) in ("md_boot","md_load_rom","md_audio_read","md_frame_hook","readpad","sound_tick")) or (rel=="runtime/ym2612.c" and re.search(r"ym_(?:write|sample|init)",m.group(1))) or (rel=="runtime/vdp.c" and re.search(r"sprite|plane|shade|render|window|dma|write_data|write_ctrl",m.group(1),re.I)) or (rel=="runtime/sdl_main.c" and re.search(r"shade|draw_str|present|frame|input|event",m.group(1),re.I)) or (rel=="runtime/harness.c" and re.search(r"vdp_dma_read|bus_rd|bus_wr|rd8_raw",m.group(1),re.I)):
