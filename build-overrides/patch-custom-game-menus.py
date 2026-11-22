@@ -404,7 +404,7 @@ static void native_custom_save_config(void) {
         native_modern_continues,native_modern_map,native_modern_no_timer_hud,
         native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes,
         native_pause_rapid_fire,native_pause_control_config);
-    if(fclose(f)!=0){remove("custom-game-options.ini.tmp");return;}
+    if(fclose(f)!=0){remove(temp);return;}
     remove(path);
     rename(temp,path);
     native_custom_apply();
@@ -1775,6 +1775,13 @@ confirm:
     if hook_end<0:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
+    pause_call="    native_menu_pause_loop();"
+    if "if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();" not in hook:
+        hook=once(hook,pause_call,
+                  "    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();",
+                  "allow pause entry only during active gameplay")
+        s=s[:hook_start]+hook+s[hook_end:]
+        hook_end=hook_start+len(hook)
     restore_arm=r"""
     if(native_title_restore_after_input)native_title_restore_ready=1;
 """
@@ -1842,9 +1849,6 @@ confirm:
     frame_anchor="    native_menu_pause_loop();"
     if s.count(frame_anchor)<1:
         raise RuntimeError("Could not locate the native pause frame hook.")
-    s=once(s,frame_anchor,
-           "    if(native_menu_state!=0 || native_title_gameplay_hud_visible())native_menu_pause_loop();",
-           "allow pause entry only during active gameplay")
 
     s=once(s,"    memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);",
            "    if(native_menu_state==13 && native_title_options_backdrop_valid) {\n"
