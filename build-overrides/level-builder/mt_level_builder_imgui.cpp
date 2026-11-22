@@ -61,6 +61,7 @@ static LiveSpritePart g_live_sprites[80] = {};
 static int g_live_sprite_count = 0;
 static int g_selected_sprite = -1;
 static int g_selected_palette = 0;
+static int g_tile_shelf_offset = 0;
 static int g_selected_asset_slot = 0;
 static bool g_left_was_down = false;
 static int g_undo_count = 0;
@@ -646,36 +647,68 @@ static void draw_asset_shelf()
 {
     ImGui::BeginChild("##asset_shelf",ImVec2(0,34),true);
     const char *heading=g_mode==MODE_TILES?"GAME TILES":
-        g_mode==MODE_ENTITY?"GAME OBJECTS":g_mode==MODE_BOSS?"BOSS PARTS":
+        g_mode==MODE_ENTITY?"LIVE SPRITES":g_mode==MODE_BOSS?"SPRITE PARTS":
         g_mode==MODE_ASSETS?"DRAW":"EVENTS";
     ImGui::TextColored(ImVec4(.46f,.83f,.88f,1),"%s",heading);
+
     if(g_mode==MODE_TILES){
-        for(int i=0;i<g_live_tile_count&&i<7;i++){
-            ImGui::SameLine(0,3);
+        ImGui::SameLine();
+        if(ImGui::SmallButton("<"))g_tile_shelf_offset=std::max(0,g_tile_shelf_offset-4);
+        for(int i=g_tile_shelf_offset;i<g_live_tile_count&&i<g_tile_shelf_offset+4;i++){
+            ImGui::SameLine(0,2);
             const int tile=g_live_tile_ids[i];
             ImGui::PushID(tile);
             ImVec2 p=ImGui::GetCursorScreenPos();
-            ImGui::InvisibleButton("##tile_pick",ImVec2(24,24));
+            ImGui::InvisibleButton("##tile_pick",ImVec2(20,22));
             ImDrawList *d=ImGui::GetWindowDrawList();
-            bool selected=(g_brush_tile&0x7ff)==tile;
-            d->AddRectFilled(p,ImVec2(p.x+24,p.y+24),selected?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
-            draw_vdp_tile(d,ImVec2(p.x+2,p.y+2),20.0f,tile|(g_selected_palette<<13));
-            d->AddRect(p,ImVec2(p.x+24,p.y+24),selected?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,selected?2.0f:1.0f);
+            const bool selected=(g_brush_tile&0x7ff)==tile;
+            d->AddRectFilled(p,ImVec2(p.x+20,p.y+22),selected?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
+            draw_vdp_tile(d,ImVec2(p.x+2,p.y+3),16.0f,tile|(g_selected_palette<<13));
+            d->AddRect(p,ImVec2(p.x+20,p.y+22),selected?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,selected?2.0f:1.0f);
             if(ImGui::IsItemClicked()){g_brush_tile=tile|(g_selected_palette<<13);g_tool=TOOL_TILE_BRUSH;}
             ImGui::PopID();
         }
-        if(g_live_tile_count==0){ImGui::SameLine();ImGui::TextDisabled("PLAY A STAGE TO CAPTURE TILE ART");}
-        ImGui::SameLine();ImGui::TextDisabled("PAL");
+        ImGui::SameLine(0,2);
+        if(ImGui::SmallButton(">"))g_tile_shelf_offset=std::min(std::max(0,g_live_tile_count-4),g_tile_shelf_offset+4);
+        if(g_live_tile_count==0){ImGui::SameLine();ImGui::TextDisabled("ENTER A STAGE TO CAPTURE TILES");}
+        ImGui::SameLine();
+        ImGui::TextDisabled("PAL");
         for(int pal=0;pal<4;pal++){
-            ImGui::SameLine(0,2);char label[4];std::snprintf(label,sizeof(label),"%d",pal);
+            ImGui::SameLine(0,1);
+            char label[4];std::snprintf(label,sizeof(label),"%d",pal);
             if(g_selected_palette==pal)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.50f,.27f,.10f,1));
             if(ImGui::SmallButton(label))g_selected_palette=pal;
             if(g_selected_palette==pal)ImGui::PopStyleColor();
         }
-    }else if(g_mode==MODE_ENTITY){
-        ImGui::SameLine();ImGui::TextDisabled("ENEMY / PROP LIST USES ORIGINAL GAME OBJECT DATA");
-    }else if(g_mode==MODE_BOSS){
-        ImGui::SameLine();ImGui::TextDisabled("BOSS COMPONENTS USE ORIGINAL BOSS ASSETS");
+    }else if(g_mode==MODE_ENTITY||g_mode==MODE_BOSS){
+        ImGui::SameLine();
+        if(g_live_sprite_count==0){
+            ImGui::TextDisabled("ENTER A STAGE TO CAPTURE LIVE SPRITES");
+        }else{
+            const int shown=std::min(5,g_live_sprite_count);
+            for(int i=0;i<shown;i++){
+                ImGui::SameLine(0,3);
+                ImGui::PushID(2000+i);
+                const LiveSpritePart &sprite=g_live_sprites[i];
+                ImVec2 p=ImGui::GetCursorScreenPos();
+                ImGui::InvisibleButton("##sprite_pick",ImVec2(28,24));
+                ImDrawList *d=ImGui::GetWindowDrawList();
+                const bool active=g_selected_sprite==i;
+                d->AddRectFilled(p,ImVec2(p.x+28,p.y+24),active?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
+                const float scale=17.0f/(float)std::max(sprite.width_tiles,sprite.height_tiles);
+                const float sw=scale*sprite.width_tiles,sh=scale*sprite.height_tiles;
+                draw_vdp_sprite(d,ImVec2(p.x+(28.0f-sw)*.5f,p.y+(24.0f-sh)*.5f),
+                                scale,sprite.tile_attr,sprite.width_tiles,sprite.height_tiles);
+                d->AddRect(p,ImVec2(p.x+28,p.y+24),active?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,active?2.0f:1.0f);
+                if(ImGui::IsItemClicked()){
+                    g_selected_sprite=i;
+                    g_status[0]=0;
+                }
+                ImGui::PopID();
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("%d LIVE PARTS",g_live_sprite_count);
+        }
     }else if(g_mode==MODE_ASSETS){
         ImGui::SameLine();if(ImGui::SmallButton("16 x 16"))g_asset_size=16;
         ImGui::SameLine();if(ImGui::SmallButton("32 x 32"))g_asset_size=32;
