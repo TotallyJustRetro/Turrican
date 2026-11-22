@@ -305,7 +305,7 @@ static void draw_stage_canvas()
     g_selected_y=std::max(0,std::min(rows-1,g_selected_y));
     ImGui::BeginChild("##stage_canvas",ImVec2(0,0),true);
     ImVec2 avail=ImGui::GetContentRegionAvail();
-    const float cell=std::max(9.0f,std::min(16.0f,std::min(avail.x/22.0f,avail.y/5.8f)));
+    const float cell=std::max(9.0f,std::min(16.0f,std::min(avail.x/22.0f,avail.y/5.0f)));
     const int viewCols=std::max(1,std::min(cols,(int)(avail.x/cell)));
     const int viewRows=std::max(1,std::min(rows,(int)(avail.y/cell)));
     g_map_origin_x=std::max(0,std::min(cols-viewCols,g_selected_x-viewCols/2));
@@ -625,7 +625,7 @@ static void draw_advanced_asset_canvas()
 }
 static void draw_tool_palette()
 {
-    ImGui::BeginChild("##maker_tool_row",ImVec2(0,22),true);
+    ImGui::BeginChild("##maker_tool_row",ImVec2(0,26),true);
     const struct { const char *glyph; EditorTool tool; const char *hint; } buttons[] = {
         {"S",TOOL_SELECT,"Select"},
         {"B",TOOL_TILE_BRUSH,"Place / paint"},
