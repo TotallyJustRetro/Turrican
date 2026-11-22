@@ -185,8 +185,7 @@ static uint32_t native_title_cram_rgb(int palette,unsigned index) {
     int r=(color>>1)&7, g=(color>>5)&7, b=(color>>9)&7;
     return ((uint32_t)(r*255/7)<<16)|((uint32_t)(g*255/7)<<8)|(uint32_t)(b*255/7);
 }
-static void native_title_draw_text_at(int x,int y,const char *s,int selected,int blink_on) {
-    int palette=(selected && blink_on)?2:1; /* original active red / inactive pale-blue palettes */
+static void native_title_draw_text_at_palette(int x,int y,const char *s,int palette) {
     int W=vdp.width?vdp.width:320, H=vdp.height?vdp.height:224;
     for(int i=0;s[i];i++) {
         uint16_t tile=native_options_font_tile(s[i]);
@@ -205,6 +204,20 @@ static void native_title_draw_text_at(int x,int y,const char *s,int selected,int
             }
         }
     }
+}
+static void native_title_draw_text_at(int x,int y,const char *s,int selected,int blink_on) {
+    native_title_draw_text_at_palette(x,y,s,(selected && blink_on)?2:1);
+}
+static void native_title_draw_text_center_palette(const char *s,int y,int palette) {
+    int center=(vdp.width?vdp.width:320)/2;
+    native_title_draw_text_at_palette(center-native_title_text_width(s)/2,y,s,palette);
+}
+static void native_title_draw_text_center(const char *s,int y,int selected,int blink_on) {
+    int center=(vdp.width?vdp.width:320)/2;
+    native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
+}
+static void native_title_draw_text_column(const char *s,int center,int y,int selected,int blink_on) {
+    native_title_draw_text_at(center-native_title_text_width(s)/2,y,s,selected,blink_on);
 }
 static void native_title_draw_text_center(const char *s,int y,int selected,int blink_on) {
     int center=(vdp.width?vdp.width:320)/2;
@@ -630,28 +643,44 @@ static void proc_native_level_builder(SDL_Event *e) {
     }
 }
 static void render_native_title_game_options(void) {
-    const int pw=274, ph=154;
-    int px,py;
-    native_menu_panel(pw,ph,&px,&py);
-    native_menu_title(px+(pw-str_w("GAME OPTIONS",2))/2,py+8,"GAME OPTIONS",2);
+    int W=vdp.width?vdp.width:320, H=vdp.height?vdp.height:224;
+    if(W<256 || W>320 || H<200 || H>240)return;
 
-    native_menu_item(px+16,py+36,"VANILLA GAME",native_title_game_options_focus==0,1);
-    native_menu_item(px+150,py+36,"MODERN",native_title_game_options_focus==1,1);
+    /* Match the cartridge's original full-screen options page: no panel,
+       no border, no title art underneath, and no SDL overlay text. */
+    for(int y=0;y<H;y++) {
+        uint32_t *row=&vdp.fb[y*320];
+        for(int x=0;x<W;x++)row[x]=0;
+    }
+
+    native_title_draw_text_center_palette("GAME OPTIONS",H*7/100,3);
+    native_title_draw_text_center("VANILLA GAME",H*25/100,
+                                  native_title_game_options_focus==0,1);
+    native_title_draw_text_center("MODERN",H*35/100,
+                                  native_title_game_options_focus==1,1);
 
     if(native_game_level_modern) {
-        native_menu_rect(px+12,py+61,pw-24,1,0x80,0xA8,0xC0,140);
         char lives[24],continues[24],timer[24];
         snprintf(lives,sizeof lives,"LIVES: %s",native_modern_lives?"ON":"OFF");
         snprintf(continues,sizeof continues,"CONTINUES: %s",native_modern_continues?"ON":"OFF");
         snprintf(timer,sizeof timer,"NO TIMER: %s",native_modern_no_timer?"ON":"OFF");
-        native_menu_item(px+15,py+78,lives,native_title_game_options_focus==2,1);
-        native_menu_item(px+96,py+78,continues,native_title_game_options_focus==3,1);
-        native_menu_item(px+197,py+78,timer,native_title_game_options_focus==4,1);
+        const char *items[]={lives,continues,timer};
+        int widths[3],total=8;
+        for(int i=0;i<3;i++) {
+            widths[i]=native_title_text_width(items[i]);
+            total+=widths[i];
+        }
+        int x=(W-total)/2;
+        const int y=H*68/100;
+        for(int i=0;i<3;i++) {
+            native_title_draw_text_at(x,y,items[i],
+                                      native_title_game_options_focus==i+2,1);
+            x+=widths[i]+4;
+        }
     }
 
-    native_menu_rect(px+12,py+106,pw-24,1,0x80,0xA8,0xC0,140);
-    native_menu_item(px+(pw-str_w("EXIT",1))/2,py+119,"EXIT",
-                     native_title_game_options_focus==5,1);
+    native_title_draw_text_center("EXIT",H*90/100,
+                                  native_title_game_options_focus==5,1);
 }
 
 static void native_title_game_options_exit(void) {
@@ -1135,6 +1164,10 @@ confirm:
         '    else if(native_menu_state==7)snprintf(hint,sizeof hint,"LEFT/RIGHT REBIND  ESC BACK");\n'
         '    else if(native_menu_state==13)snprintf(hint,sizeof hint,"ARROWS SELECT  ENTER OK  EXIT");',
         "native Game Options EXIT hint")
+    s=once(s,
+        "    draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
+        "    if(native_menu_state!=13)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
+        "hide generic footer on full-screen title Game Options page")
     path.write_text(s,encoding="utf-8",newline="\n")
 
 def main() -> int:
