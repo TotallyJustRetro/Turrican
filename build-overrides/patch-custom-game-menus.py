@@ -42,6 +42,8 @@ static int native_title_input_block=0;
 static int native_title_compose_enabled=0;
 static unsigned int native_title_blink_ticks=0;
 static int native_title_last_selection=-1, native_title_last_page=-1, native_title_last_focus=-1;
+static uint32_t native_title_options_backdrop[320*240];
+static int native_title_options_backdrop_valid=0;
 
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
@@ -266,6 +268,9 @@ static void native_title_open_selected(void) {
         native_title_compose_enabled=0;
         native_title_input_block=1;
         native_title_game_options_focus=native_game_level_modern?1:0;
+        /* Preserve the real title frame before an attract demo can advance. */
+        memcpy(native_title_options_backdrop,vdp.fb,sizeof native_title_options_backdrop);
+        native_title_options_backdrop_valid=1;
         native_menu_state=13;
     } else if(native_title_menu_selection==3) {
         native_menu_state=11;
@@ -1105,6 +1110,15 @@ confirm:
     frame_anchor="    native_menu_pause_loop();"
     if s.count(frame_anchor)!=1:
         raise RuntimeError("Could not locate the native pause frame hook.")
+
+    s=once(s,"    memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);",
+           "    if(native_menu_state==13 && native_title_options_backdrop_valid) {\n"
+           "        memcpy(native_pause_backdrop,native_title_options_backdrop,sizeof native_pause_backdrop);\n"
+           "        native_title_options_backdrop_valid=0;\n"
+           "    } else {\n"
+           "        memcpy(native_pause_backdrop,vdp.fb,sizeof native_pause_backdrop);\n"
+           "    }",
+           "freeze Game Options over captured title frame")
 
     sync_anchor="    native_menu_resume_guard=0;"
     if sync_anchor in s:
