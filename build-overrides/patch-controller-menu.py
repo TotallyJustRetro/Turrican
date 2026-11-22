@@ -630,6 +630,18 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
             "launcher controller-settings round-trip on game exit"
         )
 
+    # Keep all portable-launcher settings next to the launcher executable,
+    # not in Electron's per-user AppData directory.
+    main = main.replace("app.getPath('userData')", "path.dirname(app.getPath('exe'))")
+    main = main.replace('app.getPath("userData")', "path.dirname(app.getPath('exe'))")
+    config_decl = re.compile(r'(\\b(?:const|let|var)\\s+configPath\\s*=\\s*)[^;]+;')
+    config_matches = list(config_decl.finditer(main))
+    if len(config_matches) != 1:
+        raise RuntimeError(f"Expected one native configPath declaration, found {len(config_matches)}.")
+    match = config_matches[0]
+    main = main[:match.start()] + match.group(1) + "path.join(path.dirname(app.getPath('exe')), 'config.ini');" + main[match.end():]
+    if "path.join(path.dirname(app.getPath('exe')), 'config.ini')" not in main:
+        raise RuntimeError("Native config.ini is not configured beside the portable launcher.")
     path.write_text(main, encoding="utf-8")
 
 def patch_sdl(project: Path) -> None:
