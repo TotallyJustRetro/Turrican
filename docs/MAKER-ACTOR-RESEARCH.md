@@ -102,6 +102,17 @@ It also clears/initializes a wider staging area beginning at `$FF5612`. This is 
 
 `f_A1E8` is another A5-record state handler. It checks state and timer fields, applies the world/scroll offset to +24/+26, tests position bounds, and in one branch calls `f_5300` repeatedly to create two child records. Those children copy position/context from the parent and are assigned handler `0xA3D6`. This confirms the allocator is reused by more than one object family.
 
+### Confirmed per-frame object dispatch path
+
+Build #332 exposes the exact indirect call in `f_543C`:
+
+- It loads the 32-bit field at object-record offset +34 (through A5).
+- It passes that value to `rt_call_addr`, so the object record's +34 slot is conclusively its per-frame state/update callback.
+- `f_5432` starts this dispatcher with the list head at `$FFBC28`, then calls it again with the head at `$FFBC30`. These are two distinct object-list heads handled by the same traversal function; their exact category labels are not yet known.
+- Separately, the stage/profile initializer `f_19FA` dispatches its +38 field at `$FFBC50` through `f_1B52`. This is a different structure and must not be conflated with the +34 object-record dispatcher.
+
+Build #333 adds the full `f_543C` and `f_5432` bodies, plus a wider search for other indirect uses of object-record +30/+38, to map the remaining per-object callback slots.
+
 The generated-code scan currently finds 43 distinct addresses assigned to the +34 object slot. They include `0x3E5C`, `0x406E`, `0x439E`, `0x4466`, `0x46B2`, `0x49C8`, `0x4A5A`, `0x4AC0`, `0x4BD0`, `0x5962`, `0x5B42`, `0x5BE4`, `0x5CD0`, `0x617C`, `0x6212`, `0x623C`, `0x6334`, `0x6410`, `0x959A`, `0xA3D6`, `0xA5D4`, `0xA94E`, `0xAA74`, `0xAF80`, `0xB4AA`, `0xB5BA`, `0xB710`, `0xB852`, `0xBD20`, `0xBE16`, `0xBE1E`, `0xBF50`, `0xC262`, `0xC402`, `0xC46C`, `0xC8A6`, and others.
 
 These addresses are code handlers, not user-facing actor names. Some are later state transitions installed by other handlers, so the list is an implementation index, not a count of distinct enemy types. Verified initial allocator-owner → first +34 handler relationships include `f_4992 → 0x49C8`, `f_4B58/f_4B74 → 0x4BD0`, `f_60EE → 0x617C`, `f_62FA → 0x6334`, `f_A114 → 0xC8A6`, `f_A1E8 → 0xA3D6`, `f_A556 → 0xA5D4`, `f_A708 → 0xAA74`, `f_BCB6 → 0xBD20`, `f_C212 → 0xC262`, and `f_C2E4/f_C310/f_C32E → 0xC402`. A single owner may create several child records or transition an object to a different handler later.
