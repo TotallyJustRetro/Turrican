@@ -280,7 +280,12 @@ int md_save_slot(int slot) {
     return ok;
 }
 
+static int md_preserve_audio_on_load=0;
+void md_preserve_audio_on_next_load(void) { md_preserve_audio_on_load=1; }
+
 int md_load_slot(int slot) {
+    int preserve_audio=md_preserve_audio_on_load;
+    md_preserve_audio_on_load=0;
     if(!CPU || !rom || !romlen) return 0;
     char path[64];
     if(!md_reborn_slot_path(path,sizeof path,slot,0)) return 0;
@@ -311,8 +316,10 @@ int md_load_slot(int slot) {
         zbank=s->zbank; zbusreq=s->zbusreq; zreset=s->zreset; z80_over=s->z80_over;
         fm_acc=s->fm_accumulator; psg_acc=s->psg_accumulator;
         md_infinite_continues_enabled=s->infinite_continues ? 1 : 0;
-        /* Discard stale queued PCM; the restored synth state generates fresh audio. */
-        ar=aw;
+        /* Normally discard stale queued PCM when loading a save. A title-menu
+           SFX pass-through deliberately keeps the freshly generated PCM while
+           restoring the underlying title CPU/video state immediately afterward. */
+        if(!preserve_audio)ar=aw;
     }
     free(s);free(ym_blob);free(psg_blob);
     return ok;
