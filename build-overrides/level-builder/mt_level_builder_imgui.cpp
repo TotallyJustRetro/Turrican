@@ -37,6 +37,10 @@ static bool g_initialized = false;
 static bool g_sdl_backend = false;
 static bool g_renderer_backend = false;
 static SDL_Window *g_window = nullptr;
+static SDL_Surface *g_imgui_surface = nullptr;
+static SDL_Renderer *g_imgui_surface_renderer = nullptr;
+static int g_imgui_width = 320;
+static int g_imgui_height = 224;
 static EditorMode g_mode = MODE_TILES;
 static EditorTool g_tool = TOOL_TILE_BRUSH;
 static const int kEditorMapCols = 64;
@@ -590,55 +594,80 @@ extern "C" int mtlb_map_cursor_x(void) { return g_selected_x; }
 extern "C" int mtlb_map_cursor_y(void) { return g_selected_y; }
 extern "C" int mtlb_map_brush(void) { return g_brush_tile; }
 
-extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
+extern "C" int mtlb_init(SDL_Window *window,int width,int height)
 {
-    if (g_initialized) return 1;
-    if (!window || !renderer) return 0;
+    if(g_initialized)return 1;
+    if(!window||width<=0||height<=0)return 0;
+
+    g_imgui_width=width;
+    g_imgui_height=height;
+    g_imgui_surface=SDL_CreateRGBSurfaceWithFormat(
+        0,g_imgui_width,g_imgui_height,32,SDL_PIXELFORMAT_ARGB8888);
+    if(!g_imgui_surface)return 0;
+    g_imgui_surface_renderer=SDL_CreateSoftwareRenderer(g_imgui_surface);
+    if(!g_imgui_surface_renderer){
+        SDL_FreeSurface(g_imgui_surface);
+        g_imgui_surface=nullptr;
+        return 0;
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr;
+    ImGuiIO &io=ImGui::GetIO();
+    io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename=nullptr;
     apply_theme();
 
-    g_window = window;
-    g_sdl_backend = ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
-    if (!g_sdl_backend) {
+    g_window=window;
+    g_sdl_backend=ImGui_ImplSDL2_InitForSDLRenderer(window,g_imgui_surface_renderer);
+    if(!g_sdl_backend){
         ImGui::DestroyContext();
+        SDL_DestroyRenderer(g_imgui_surface_renderer);
+        SDL_FreeSurface(g_imgui_surface);
+        g_imgui_surface_renderer=nullptr;
+        g_imgui_surface=nullptr;
+        g_window=nullptr;
         return 0;
     }
-    g_renderer_backend = ImGui_ImplSDLRenderer2_Init(renderer);
-    if (!g_renderer_backend) {
+    g_renderer_backend=ImGui_ImplSDLRenderer2_Init(g_imgui_surface_renderer);
+    if(!g_renderer_backend){
         ImGui_ImplSDL2_Shutdown();
-        g_sdl_backend = false;
+        g_sdl_backend=false;
         ImGui::DestroyContext();
+        SDL_DestroyRenderer(g_imgui_surface_renderer);
+        SDL_FreeSurface(g_imgui_surface);
+        g_imgui_surface_renderer=nullptr;
+        g_imgui_surface=nullptr;
+        g_window=nullptr;
         return 0;
     }
 
-    g_selected_x = std::max(0, mtlb_map_cursor_x());
-    g_selected_y = std::max(0, mtlb_map_cursor_y());
-    g_brush_tile = std::max(0, std::min(2047, mtlb_map_brush()));
-    // Each editor visit gets a fresh transition state; the level document itself persists.
-    g_fade_in_frame = 0;
-    g_fade_out_frame = -1;
-    g_exit_requested = false;
-    g_initialized = true;
+    g_selected_x=std::max(0,mtlb_map_cursor_x());
+    g_selected_y=std::max(0,mtlb_map_cursor_y());
+    g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
+    g_fade_in_frame=0;
+    g_fade_out_frame=-1;
+    g_exit_requested=false;
+    g_initialized=true;
     return 1;
 }
 
 extern "C" void mtlb_shutdown(void)
 {
-    if (!g_initialized) return;
-    if (g_renderer_backend) ImGui_ImplSDLRenderer2_Shutdown();
-    if (g_sdl_backend) ImGui_ImplSDL2_Shutdown();
+    if(!g_initialized)return;
+    if(g_renderer_backend)ImGui_ImplSDLRenderer2_Shutdown();
+    if(g_sdl_backend)ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
-    g_renderer_backend = false;
-    g_sdl_backend = false;
-    g_initialized = false;
-    g_window = nullptr;
-    g_last_painted_x = -1;
-    g_last_painted_y = -1;
+    if(g_imgui_surface_renderer)SDL_DestroyRenderer(g_imgui_surface_renderer);
+    if(g_imgui_surface)SDL_FreeSurface(g_imgui_surface);
+    g_imgui_surface_renderer=nullptr;
+    g_imgui_surface=nullptr;
+    g_renderer_backend=false;
+    g_sdl_backend=false;
+    g_initialized=false;
+    g_window=nullptr;
+    g_last_painted_x=-1;
+    g_last_painted_y=-1;
 }
 
 extern "C" void mtlb_process_event(const SDL_Event *event)
@@ -648,22 +677,52 @@ extern "C" void mtlb_process_event(const SDL_Event *event)
 
 
 
-extern "C" int mtlb_render(SDL_Renderer *renderer)
+extern "C" int mtlb_render_to_framebuffer(uint32_t *framebuffer,int width,int height,int pitch_pixels)
 {
-    if(!renderer)return 0;
-    if(!g_initialized){
-        SDL_Window *window=SDL_RenderGetWindow(renderer);
-        if(!mtlb_init(window,renderer))return 0;
+    if(!g_initialized||!g_imgui_surface||!g_imgui_surface_renderer||
+       !framebuffer||width<=0||height<=0||pitch_pixels<width)return 0;
+
+    // Recreate the internal surface if the VDP changes between 256/320-wide modes.
+    if(width!=g_imgui_width||height!=g_imgui_height){
+        ImGui_ImplSDLRenderer2_Shutdown();
+        g_renderer_backend=false;
+        SDL_DestroyRenderer(g_imgui_surface_renderer);
+        SDL_FreeSurface(g_imgui_surface);
+        g_imgui_surface=nullptr;
+        g_imgui_surface_renderer=nullptr;
+        g_imgui_width=width;
+        g_imgui_height=height;
+        g_imgui_surface=SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SDL_PIXELFORMAT_ARGB8888);
+        if(!g_imgui_surface)return 0;
+        g_imgui_surface_renderer=SDL_CreateSoftwareRenderer(g_imgui_surface);
+        if(!g_imgui_surface_renderer)return 0;
+        if(!ImGui_ImplSDLRenderer2_Init(g_imgui_surface_renderer))return 0;
+        g_renderer_backend=true;
     }
+
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui_ImplSDL2_NewFrame();
+    ImGuiIO &io=ImGui::GetIO();
+
+    // Dear ImGui's SDL platform backend reports window pixels. The editor
+    // intentionally runs at the Genesis framebuffer resolution instead.
+    int window_width=width,window_height=height;
+    SDL_GetWindowSize(g_window,&window_width,&window_height);
+    ImVec2 mouse=io.MousePos;
+    if(mouse.x>=0.0f&&mouse.y>=0.0f&&window_width>0&&window_height>0){
+        mouse.x*=((float)width/(float)window_width);
+        mouse.y*=((float)height/(float)window_height);
+        io.MousePos=mouse;
+    }
+    io.DisplaySize=ImVec2((float)width,(float)height);
+    io.DisplayFramebufferScale=ImVec2(1.0f,1.0f);
+
     ImGui::NewFrame();
-    const ImGuiIO &io=ImGui::GetIO();
     if(!g_exit_requested&&!io.WantTextInput&&ImGui::IsKeyPressed(ImGuiKey_Escape,false))
         g_exit_requested=true;
 
     const ImVec2 display=io.DisplaySize;
-    const float height=std::max(560.0f,display.y);
+    const float root_height=(float)height;
     ImGui::SetNextWindowPos(ImVec2(0,0));
     ImGui::SetNextWindowSize(display);
     ImGui::SetNextWindowBgAlpha(1.0f);
@@ -675,10 +734,10 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
         ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     draw_top_bar();
-    const float work_height=std::max(340.0f,height-222.0f);
+    const float work_height=std::max(300.0f,root_height-222.0f);
     const float left_width=g_mode==MODE_EVENTS?252.0f:88.0f;
     const float right_width=224.0f;
-    const float center_width=std::max(360.0f,display.x-left_width-right_width-46.0f);
+    const float center_width=std::max(220.0f,display.x-left_width-right_width-46.0f);
     ImGui::BeginChild("##tools",ImVec2(left_width,work_height),true);
     draw_tool_palette();
     ImGui::EndChild();
@@ -703,29 +762,60 @@ extern "C" int mtlb_render(SDL_Renderer *renderer)
     ImGui::TextDisabled("IMGUI 1.93.0");
     ImGui::End();
     ImGui::PopStyleVar();
-    ImGui::Render();
-    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),renderer);
 
-    // Pixel-mosaic reveal on entry and the same effect in reverse on exit.
-    int outputW=0,outputH=0;
-    SDL_GetRendererOutputSize(renderer,&outputW,&outputH);
+    ImGui::Render();
+
+    // Start from a dark, opaque editor surface. Nothing from the title screen
+    // or game framebuffer can leak through the editor.
+    SDL_SetRenderDrawBlendMode(g_imgui_surface_renderer,SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(g_imgui_surface_renderer,0,0,0,255);
+    SDL_RenderClear(g_imgui_surface_renderer);
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),g_imgui_surface_renderer);
+
+    // Apply a retro pixel-mosaic reveal/close inside the same native-resolution
+    // surface. The game's shade()/composite path runs after this function.
     const int gridW=20,gridH=15,total=gridW*gridH,frames=12;
     const bool closing=g_exit_requested;
     if(closing&&g_fade_out_frame<0)g_fade_out_frame=0;
     const int revealed=std::min(total,g_fade_in_frame*total/frames);
     const int covered=closing?std::min(total,g_fade_out_frame*total/frames):0;
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(renderer,0,0,0,255);
+    SDL_SetRenderDrawBlendMode(g_imgui_surface_renderer,SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(g_imgui_surface_renderer,0,0,0,255);
     for(int i=0;i<total;i++){
         const int rank=(i*73+19)%total;
         const bool black=closing?(rank<covered):(rank>=revealed);
         if(!black)continue;
         const int x=i%gridW,y=i/gridW;
-        SDL_Rect block={x*outputW/gridW,y*outputH/gridH,
-            (x+1)*outputW/gridW-x*outputW/gridW,
-            (y+1)*outputH/gridH-y*outputH/gridH};
-        SDL_RenderFillRect(renderer,&block);
+        SDL_Rect block={x*width/gridW,y*height/gridH,
+            (x+1)*width/gridW-x*width/gridW,
+            (y+1)*height/gridH-y*height/gridH};
+        SDL_RenderFillRect(g_imgui_surface_renderer,&block);
     }
+    SDL_RenderPresent(g_imgui_surface_renderer);
+
+    if(SDL_MUSTLOCK(g_imgui_surface))SDL_LockSurface(g_imgui_surface);
+    for(int y=0;y<height;y++){
+        const uint32_t *source=(const uint32_t*)((const uint8_t*)g_imgui_surface->pixels+
+                                                y*g_imgui_surface->pitch);
+        uint32_t *destination=framebuffer+y*pitch_pixels;
+        for(int x=0;x<width;x++){
+            const uint32_t pixel=source[x];
+            const unsigned a=(pixel>>24)&255u;
+            const unsigned sr=(pixel>>16)&255u,sg=(pixel>>8)&255u,sb=pixel&255u;
+            if(a==255u){
+                destination[x]=(sr<<16)|(sg<<8)|sb;
+            }else if(a){
+                const uint32_t old=destination[x];
+                const unsigned dr=(old>>16)&255u,dg=(old>>8)&255u,db=old&255u;
+                const unsigned inv=255u-a;
+                destination[x]=(((sr*a+dr*inv)/255u)<<16)|
+                               (((sg*a+dg*inv)/255u)<<8)|
+                               ((sb*a+db*inv)/255u);
+            }
+        }
+    }
+    if(SDL_MUSTLOCK(g_imgui_surface))SDL_UnlockSurface(g_imgui_surface);
+
     if(closing){
         if(g_fade_out_frame<frames)g_fade_out_frame++;
         return g_fade_out_frame>=frames;
