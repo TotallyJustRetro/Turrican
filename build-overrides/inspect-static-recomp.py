@@ -379,7 +379,8 @@ if gen.exists():
   "f_5382","f_3C7A","f_34DA","f_3C6E","f_3C72","f_3C76",
   "f_3BD8","f_3D12","f_3C7A","f_5D8A","f_5DB2","f_D0010",
   "f_3E5C","f_406E","f_439E","f_4466","f_46B2",
-  "f_4AC0","f_6212","f_6334","f_34E2","f_53D6","f_543C"
+  "f_4AC0","f_6212","f_6334","f_34E2","f_53D6","f_543C",
+  "f_582","f_99A","f_9B2","f_4FE","f_546","f_6C08","f_D638"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
@@ -1168,6 +1169,83 @@ if gen.exists():
    emit(f"OBJECT_INITIALIZER_BODY {name} lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
    for line in block[:200]:emit("  "+line[:300])
    if len(block)>200:emit(f"  ... clipped {len(block)-200} additional lines ...")
+
+ # Extract full routines which issue the common VDP DMA helper. The source,
+ # destination and transfer length are prepared immediately before f_6DE.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  source="\n".join(gen_lines)
+  emit("[VDP_DMA_CALLER_FUNCTION_BODIES]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  dma_targets={
+   "f_582","f_99A","f_9B2","f_1E00","f_1E38","f_1FBA","f_200C",
+   "f_374E","f_4C70","f_507E","f_50EA","f_518E","f_5450","f_66F4",
+   "f_6802","f_6A7E","f_6C1C","f_70A2","f_71C4","f_763C","f_7AB6",
+   "f_7D04","f_86D8","f_8A3E","f_8A86","f_911A","f_9222","f_932A",
+   "f_9B5C","f_9DD4","f_A490","f_A4A8","f_C8A6","f_C93A","f_D68C",
+   "f_DAF6","f_DD0E","f_DE60","f_DEC8","f_DF46","f_E3C2","f_11ED2",
+   "f_11EE8"
+  }
+  offset=0
+  found=set()
+  for n,line in enumerate(gen_lines):
+   fm=fn_start.match(line)
+   if fm:
+    name=fm.group(1)
+    start_offset=offset
+    # accumulate absolute source offset in the joined C file
+    brace=source.find("{",start_offset)
+    if name in dma_targets and brace>=0:
+     depth=0;end=-1
+     for pos in range(brace,len(source)):
+      if source[pos]=="{": depth+=1
+      elif source[pos]=="}":
+       depth-=1
+       if depth==0:
+        end=pos+1;break
+     if end>brace:
+      block=source[start_offset:end]
+      block_lines=block.splitlines()
+      if any("f_6DE(c)" in x for x in block_lines):
+       found.add(name)
+       emit(f"VDP_DMA_CALLER_BODY {name} source_lines={n+1}-{source.count(chr(10),0,end)+1}")
+       for body_line in block_lines[:260]: emit("  "+body_line[:300])
+       if len(block_lines)>260:emit(f"  ... clipped {len(block_lines)-260} further lines ...")
+   offset+=len(line)+1
+  emit(f"VDP_DMA_CALLER_BODY_COUNT {len(found)}")
+
+  # Record immediate/nearby setup for each f_6DE invocation. This is a
+  # heuristic index only; full bodies above remain the authoritative context.
+  emit("[VDP_DMA_CALL_REGISTER_SETUP]")
+  current="(global)"
+  recent={}
+  calls=0
+  imm=re.compile(r"\buint32_t\s+([A-Za-z_]\w*)\s*=\s*0x([0-9A-Fa-f]{3,8})u")
+  addr=re.compile(r"\bA\(([01])\)\s*=\s*(?:([A-Za-z_]\w*)|0x([0-9A-Fa-f]{3,8})u)")
+  dset=re.compile(r"\bDSET\(([01]),(8|16|32),([^;]+)\)")
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.match(line)
+   if fm:
+    current=fm.group(1)
+    recent={}
+   im=imm.search(line)
+   if im: recent[im.group(1)]=(f"0x{int(im.group(2),16):X}",n)
+   am=addr.search(line)
+   if am:
+    reg,symbol,literal=am.groups()
+    value=f"0x{int(literal,16):X}" if literal else recent.get(symbol,("register:"+str(symbol),n))[0]
+    recent["A"+reg]=(value,n)
+   dm=dset.search(line)
+   if dm:
+    reg,width,value=dm.groups()
+    recent["D"+reg]=(f"{width}-bit {value.strip()}",n)
+   if "f_6DE(c)" in line:
+    calls+=1
+    setup=" ".join(f"{k}={v}@{ln}" for k,(v,ln) in sorted(recent.items()) if k in ("A0","A1","D0","D1"))
+    emit(f"VDP_DMA_SETUP function={current} call_line={n} {setup or 'registers unresolved'}")
+    recent={}
+  emit(f"VDP_DMA_SETUP_CALLS {calls}")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
