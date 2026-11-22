@@ -1385,19 +1385,13 @@ static void proc_native_pause_info_back(SDL_Event *e) {
 }
 
 static int native_title_menu_sfx(int confirm) {
+    /* Do not forward title navigation into the hidden cartridge menu and do
+       not reload a full core checkpoint to simulate a sound. That rewinds the
+       animated Reborn logo and can invalidate the live frame state. Keep the
+       custom title navigation isolated until the game's exact SFX routine is
+       mapped and can be called without advancing the underlying menu. */
     (void)confirm;
-    /* Let the original cartridge process this exact navigation/confirm input
-       for one frame. Its own YM/PSG driver produces the real menu SFX. We then
-       restore the saved Reborn title state on the next frame, so the hidden
-       vanilla menu cannot change screens beneath the custom UI. */
-    if(!native_title_checkpoint_saved || !md_save_slot_exists(5)) {
-        if(!md_save_slot(5))return 0;
-        native_title_checkpoint_saved=1;
-    }
-    native_title_forced_mask=readpad();
-    native_title_input_passthrough=1;
-    native_title_restore_after_input=1;
-    return 1;
+    return 0;
 }
 
 static int native_pause_audio_active=0;
