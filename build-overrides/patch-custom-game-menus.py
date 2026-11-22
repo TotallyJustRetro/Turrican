@@ -32,6 +32,8 @@ static int native_modern_lives=0, native_modern_continues=0, native_modern_no_ti
 static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
 static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
+static int native_options_tool_active=0, native_options_tool_index=0;
+static int native_options_tool_row_written=0;
 
 extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
@@ -97,6 +99,83 @@ static void native_menu_dump_snapshot(const char *scene) {
     else snprintf(message,sizeof message,"Could not finish writing:\n%s\n\nCheck free disk space and folder permissions.",fullpath);
     SDL_ShowSimpleMessageBox(ok?SDL_MESSAGEBOX_INFORMATION:SDL_MESSAGEBOX_ERROR,
                              "Mega Turrican menu trace",message,NULL);
+}
+
+static uint32_t native_options_window_base(void) {
+    return ((uint32_t)vdp.reg[3] & 0x3Eu) << 10;
+}
+static int native_options_window_cols(void) {
+    return (vdp.reg[16] & 0x02) ? 64 : 32;
+}
+static uint16_t native_options_font_tile(char ch) {
+    if(ch>='A' && ch<='Z') return (uint16_t)(0x531 + (ch-'A'));
+    if(ch==' ') return 0x530;
+    if(ch=='-') return 0x55A;
+    if(ch>='0' && ch<='9') return (uint16_t)(0x54B + (ch-'0'));
+    return 0x530;
+}
+static void native_options_put_tile(int row,int col,uint16_t tile,int palette) {
+    int cols=native_options_window_cols();
+    if(row<0 || row>=64 || col<0 || col>=cols) return;
+    uint32_t at=(native_options_window_base()+((uint32_t)row*(uint32_t)cols+(uint32_t)col)*2u)&0xFFFFu;
+    uint16_t entry=(uint16_t)((tile&0x07FFu)|((palette&3)<<13));
+    vdp.vram[at]=(uint8_t)(entry>>8);
+    vdp.vram[(at+1u)&0xFFFFu]=(uint8_t)entry;
+}
+static uint16_t native_options_get_tile(int row,int col) {
+    int cols=native_options_window_cols();
+    if(row<0 || row>=64 || col<0 || col>=cols) return 0;
+    uint32_t at=(native_options_window_base()+((uint32_t)row*(uint32_t)cols+(uint32_t)col)*2u)&0xFFFFu;
+    return (uint16_t)(((uint16_t)vdp.vram[at]<<8)|vdp.vram[(at+1u)&0xFFFFu]);
+}
+static void native_options_write_text(int row,int col,const char *text,int palette) {
+    for(int i=0;text[i] && col+i<native_options_window_cols();i++)
+        native_options_put_tile(row,col+i,native_options_font_tile(text[i]),palette);
+}
+static void native_options_clear_text_if_matches(int row,int col,const char *text) {
+    for(int i=0;text[i] && col+i<native_options_window_cols();i++) {
+        uint16_t current=native_options_get_tile(row,col+i);
+        if((current&0x07FFu)==native_options_font_tile(text[i]))
+            native_options_put_tile(row,col+i,0,0);
+    }
+}
+static int native_options_item_selected(int row,int col) {
+    return ((native_options_get_tile(row,col)>>13)&3u)==2u;
+}
+/* The three additional choices are real Window Plane tilemap entries using
+   the game's A-Z font tiles and its normal/selected palettes. */
+static void native_options_tools_draw(void) {
+    if(reborn_game_options_visible()) {
+        native_options_write_text(4,1,"LEVEL BUILDER",
+            native_options_tool_active && native_options_tool_index==0 ? 2 : 1);
+        native_options_write_text(4,16,"CHEATS",
+            native_options_tool_active && native_options_tool_index==1 ? 2 : 1);
+        native_options_write_text(4,25,"SAVES",
+            native_options_tool_active && native_options_tool_index==2 ? 2 : 1);
+        native_options_tool_row_written=1;
+    } else if(native_options_tool_row_written) {
+        native_options_clear_text_if_matches(4,1,"LEVEL BUILDER");
+        native_options_clear_text_if_matches(4,16,"CHEATS");
+        native_options_clear_text_if_matches(4,25,"SAVES");
+        native_options_tool_row_written=0;
+        native_options_tool_active=0;
+    }
+}
+static void native_options_open_tool(void) {
+    native_extras_parent=0;
+    native_options_tool_active=0;
+    native_menu_sel=0;
+    native_menu_state=native_options_tool_index==0 ? 11 :
+                      native_options_tool_index==1 ? 9 : 10;
+}
+static void native_custom_page_back(int extras_selection) {
+    if(native_extras_parent==0) {
+        native_menu_state=0;
+        native_options_tool_active=0;
+    } else {
+        native_menu_state=8;
+        native_menu_sel=extras_selection;
+    }
 }
 
 static void native_custom_apply(void) {
@@ -237,9 +316,9 @@ static void proc_native_toggle_page(SDL_Event *e,int state) {
             break;
         case SDLK_RETURN:case SDLK_x:
             if(native_menu_sel<3)native_toggle_option(state,native_menu_sel);
-            else {native_menu_state=8;native_menu_sel=state==9?2:1;}
+            else native_custom_page_back(state==9?2:1);
             break;
-        case SDLK_ESCAPE:native_menu_state=8;native_menu_sel=state==9?2:1;break;
+        case SDLK_ESCAPE:native_custom_page_back(state==9?2:1);break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
@@ -249,9 +328,9 @@ static void proc_native_toggle_page(SDL_Event *e,int state) {
             native_toggle_option(state,native_menu_sel);
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
             if(native_menu_sel<3)native_toggle_option(state,native_menu_sel);
-            else {native_menu_state=8;native_menu_sel=state==9?2:1;}
+            else native_custom_page_back(state==9?2:1);
         }
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B){native_menu_state=8;native_menu_sel=state==9?2:1;}
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(state==9?2:1);
     }
 }
 
@@ -276,18 +355,18 @@ static void proc_native_saves(SDL_Event *e) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
         case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
         case SDLK_RETURN:case SDLK_x:goto confirm;
-        case SDLK_ESCAPE:native_menu_state=8;native_menu_sel=3;break;
+        case SDLK_ESCAPE:native_custom_page_back(3);break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A)goto confirm;
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B){native_menu_state=8;native_menu_sel=3;}
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(3);
     }
     return;
 confirm:
-    if(native_menu_sel==6){native_menu_state=8;native_menu_sel=3;return;}
+    if(native_menu_sel==6){native_custom_page_back(3);return;}
     {
         int slot=native_menu_sel/2+1;
         int success=(native_menu_sel%2)==0?md_save_slot(slot):md_load_slot(slot);
@@ -375,7 +454,7 @@ static void proc_native_level_builder(SDL_Event *e) {
 #endif
             native_level_export();break;
         case SDLK_F6:native_level_import();break;
-        case SDLK_ESCAPE:native_menu_state=8;native_menu_sel=4;break;
+        case SDLK_ESCAPE:native_custom_page_back(4);break;
         }
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
@@ -386,7 +465,7 @@ static void proc_native_level_builder(SDL_Event *e) {
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A)native_level_paint();
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_X)native_editor_tile=(native_editor_tile+1)&0x7FF;
         if(e->cbutton.button==SDL_CONTROLLER_BUTTON_Y)native_level_export();
-        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B){native_menu_state=8;native_menu_sel=4;}
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)native_custom_page_back(4);
     }
 }
 '''
@@ -495,6 +574,10 @@ confirm:
         "    case 12: render_native_toggle_page(12); break;",
         "native Extras page render dispatch")
 
+    s=once(s,"md_live_mask = (overlay_state==0) ? readpad() : 0;",
+           "md_live_mask = (overlay_state==0 && !native_options_tool_active) ? readpad() : 0;",
+           "pause gamepad polling while the tools row has focus")
+
     # Route the new page states.
     s=once(s,"    else if(native_menu_state==7)proc_native_controller_options(e);",
         "    else if(native_menu_state==7)proc_native_controller_options(e);\n"
@@ -508,24 +591,48 @@ confirm:
     # Allow an Extras entry from the original GAME OPTIONS menu, while preserving the original screen.
     title_event=r'''
         if(e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F8) {
-            /* The title detector must win: some title-logo pixels overlap the
-               broad colour bands used by the Game Options detector. */
+            /* The title detector wins; Game Options is identified by its exact
+               original Window Plane tile strings, independent of highlight. */
             if(reborn_title_scene_visible()) native_menu_dump_snapshot("title");
             else if(reborn_game_options_visible()) native_menu_dump_snapshot("options");
             else native_menu_dump_snapshot("other");
             continue;
         }
-        /* Do not mistake the title-card artwork/credits for the submenu.
-           Extras is available only after the original Game Options page opens. */
-        if(!reborn_title_scene_visible() && reborn_game_options_visible() &&
-           e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_F6) {
-            native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
-            continue;
-        }
-        if(!reborn_title_scene_visible() && reborn_game_options_visible() &&
-           e.type==SDL_CONTROLLERBUTTONDOWN && e.cbutton.button==SDL_CONTROLLER_BUTTON_X) {
-            native_extras_parent=0; native_menu_state=8; native_menu_sel=0;
-            continue;
+
+        if(!reborn_title_scene_visible() && reborn_game_options_visible()) {
+            if(native_options_tool_active) {
+                if(e.type==SDL_KEYDOWN && !e.key.repeat) {
+                    switch(e.key.keysym.sym) {
+                    case SDLK_LEFT: native_options_tool_index=(native_options_tool_index+2)%3; break;
+                    case SDLK_RIGHT: native_options_tool_index=(native_options_tool_index+1)%3; break;
+                    case SDLK_DOWN: case SDLK_ESCAPE: native_options_tool_active=0; break;
+                    case SDLK_RETURN: case SDLK_x: native_options_open_tool(); break;
+                    }
+                    continue;
+                }
+                if(e.type==SDL_CONTROLLERBUTTONDOWN) {
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT)
+                        native_options_tool_index=(native_options_tool_index+2)%3;
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT)
+                        native_options_tool_index=(native_options_tool_index+1)%3;
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN ||
+                       e.cbutton.button==SDL_CONTROLLER_BUTTON_B)
+                        native_options_tool_active=0;
+                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A)
+                        native_options_open_tool();
+                    continue;
+                }
+            } else if((e.type==SDL_KEYDOWN && !e.key.repeat &&
+                       e.key.keysym.sym==SDLK_UP &&
+                       native_options_item_selected(7,11)) ||
+                      (e.type==SDL_CONTROLLERBUTTONDOWN &&
+                       e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP &&
+                       native_options_item_selected(7,11))) {
+                /* UP from the first original option focuses the added tools row. */
+                native_options_tool_active=1;
+                native_options_tool_index=0;
+                continue;
+            }
         }
 '''
     global_anchor="        /* global hotkeys (always active) */"
@@ -533,7 +640,7 @@ confirm:
 
     # Load/save custom flags and apply gameplay modifiers at the emulated frame boundary.
     frame_anchor="    native_menu_pause_loop();"
-    s=once(s,frame_anchor,"    if(!native_custom_cfg_loaded)native_custom_load_config();\n"+frame_anchor,
+    s=once(s,frame_anchor,"    if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_options_tools_draw();\n"+frame_anchor,
            "load persistent Extras options")
 
     sync_anchor="    native_menu_resume_guard=0;"
