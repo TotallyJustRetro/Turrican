@@ -651,8 +651,8 @@ confirm:
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
-           "md_live_mask = (native_menu_state==0 && !native_menu_resume_guard && !native_options_tool_active) ? readpad() : 0;\n    native_menu_resume_guard=0;",
-           "pause gamepad polling while native menus or the tools row have focus")
+           "if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_title_menu_update();\n    md_live_mask = (native_menu_state==0 && !native_menu_resume_guard && !native_title_input_block) ? readpad() : 0;\n    native_menu_resume_guard=0;",
+           "install title-screen menu and gate original input for custom entries")
 
     # Route the new page states.
     s=once(s,"    else if(native_menu_state==7)proc_native_controller_options(e);",
@@ -849,10 +849,10 @@ confirm:
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
 
-    # Load/save custom flags and apply gameplay modifiers at the emulated frame boundary.
+    # Title-screen updates and first-run settings load run before md_live_mask.
     frame_anchor="    native_menu_pause_loop();"
-    s=once(s,frame_anchor,"    if(!native_custom_cfg_loaded)native_custom_load_config();\n    native_options_tools_draw();\n"+frame_anchor,
-           "load persistent Extras options")
+    if s.count(frame_anchor)!=1:
+        raise RuntimeError("Could not locate the native pause frame hook.")
 
     sync_anchor="    native_menu_resume_guard=0;"
     if sync_anchor in s:
