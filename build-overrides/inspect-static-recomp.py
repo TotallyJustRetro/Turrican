@@ -341,7 +341,7 @@ if gen.exists():
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
  for name in support_names:
-  pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
   hit=pat.search(source)
   if not hit:
    emit(f"TRANSFER_SUPPORT_MISSING {name}")
