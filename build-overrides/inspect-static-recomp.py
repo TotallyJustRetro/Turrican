@@ -56,6 +56,33 @@ for rel in FILES:
   for name,addresses in sorted(fn_summary.items(),key=lambda item:(-len(item[1]),item[0])):
    emit(f"RAM_FUNCTION {name} unique_addresses={len(addresses)} addresses={','.join(sorted(addresses))}")
 
+  # A value loaded from a fixed RAM slot and immediately dispatched through
+  # rt_call_addr is a runtime callback candidate. Record the slot and call PC;
+  # the live Maker snapshot will supply the pointer value for this run.
+  indirect=[]
+  current_fn="(global)"
+  fn_ref2=re.compile(r"^\s*(?:(?:static|inline)\s+)*(?:void|int|bool|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\(")
+  slot_ref=re.compile(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})u")
+  for i,line in enumerate(lines):
+   fm=fn_ref2.search(line)
+   if fm: current_fn=fm.group(1)
+   m=slot_ref.search(line)
+   if not m or "RD32" not in line: continue
+   context=" ".join(lines[i:min(len(lines),i+10)])
+   if "rt_call_addr" not in context: continue
+   slot=m.group(1).upper()
+   call_pc=""
+   for candidate in lines[i:min(len(lines),i+10)]:
+    pc=re.search(r"L_([0-9A-Fa-f]+):",candidate)
+    if pc and "rt_call_addr" in candidate:
+     call_pc=pc.group(1).upper()
+     break
+   item=(current_fn,slot,call_pc,i+1)
+   if item not in indirect: indirect.append(item)
+  emit("INDIRECT_RAM_CALLBACK_CANDIDATES")
+  for fn,slot,pc,line_no in indirect:
+   emit(f"RAM_CALLBACK function={fn} slot=$FF{slot} call_pc=0x{pc or '?'} source_line={line_no}")
+
   # Include bounded source excerpts for the most RAM-connected routines. These
   # reveal relative-pointer accesses and call edges omitted by the address-only
   # index, without exporting the full decrypted game source bundle.
