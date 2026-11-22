@@ -886,6 +886,44 @@ if gen.exists():
     emit(f"  indirect_call line={call_line}: {call_code}")
   emit(f"CALLBACK_FIELD_READ_COUNT {len(rows)}")
 
+  # Capture direct callers of the per-object table initializer and its update
+  # helpers. The call windows include register setup, which is needed to resolve
+  # the ROM table bases and per-family strides.
+  emit("[OBJECT_DESCRIPTOR_INITIALIZER_CALLERS]")
+  interesting={"f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A","f_DBAA","f_DC78"}
+  current="(global)"
+  for i,line in enumerate(gen_lines):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   called=sorted(set(re.findall(r"\\b(f_[0-9A-Fa-f]+)\\s*\\(c\\)",line))&interesting)
+   for target in called:
+    lo=max(0,i-20);hi=min(len(gen_lines),i+16)
+    emit(f"OBJECT_DESCRIPTOR_CALL caller={current} target={target} lines={lo+1}-{hi}")
+    for q in range(lo,hi):
+     emit(f"  {q+1}: {gen_lines[q][:300]}")
+
+  # These top-level graphics/update routines reveal the real bridge between
+  # object records, linked lists and the VDP sprite/plane output buffers.
+  emit("[OBJECT_RENDER_AND_FRAME_UPDATE_ROUTINES]")
+  render_names={"f_5472","f_54A6","f_552A","f_5450","f_5644","f_56CE","f_3BD8","f_3D80","f_5DB2"}
+  source="\\n".join(gen_lines)
+  for name in sorted(render_names):
+   pat=re.compile(r"(?m)^\\s*static\\s+void\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+   hit=pat.search(source)
+   if not hit: continue
+   brace=source.find("{",hit.start());depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{":depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:end=pos+1;break
+   if end<=brace: continue
+   block=source[hit.start():end].splitlines()
+   emit(f"OBJECT_RENDER_BODY {name} lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for line in block[:190]:emit("  "+line[:300])
+   if len(block)>190:emit(f"  ... clipped {len(block)-190} lines ...")
+
+
   # Emit callers of the object list traversal and the routines that populate
   # the two list heads, to establish exactly when the frame walker runs.
   emit("[OBJECT_LIST_WALKER_CALLERS_AND_HEAD_WRITES]")
@@ -905,7 +943,9 @@ if gen.exists():
  if gen.exists():
   gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
   emit("[OBJECT_RESOURCE_CONSUMER_CALLERS]")
-  targets={"f_4A5A","f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A","f_DBAA","f_DC78"}
+  targets={"f_4A5A","f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A","f_DBAA","f_DC78",
+           "f_5472","f_552A","f_5450","f_5644","f_3BD8","f_3D80","f_5DB2",
+           "f_4FF6","f_507E","f_518E","f_6DE"}
   fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
   current="(global)"
   source="\n".join(gen_lines)
