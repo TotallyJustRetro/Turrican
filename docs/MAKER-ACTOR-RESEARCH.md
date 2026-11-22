@@ -276,6 +276,20 @@ The handlers assigned by the ROM-selected families reveal that the `$FFBC30` lis
 
 This proves the two active lists are not unrelated: the second list has its own moving/render-backed families, and at least one of those can spawn a record into the first list. We still must not name these routines as specific enemies or bosses without matching their ROM table entries to actual artwork/behavior.
 
+### Build #345: the actual per-object sprite-frame descriptor chain
+
+The main renderer routine `f_54A6` reveals the structure behind the object's +30 field:
+
+1. It reads the object's +30 pointer as a table of 32-bit frame pointers.
+2. It uses the object's animation/state value at +28, multiplied by four, to select one frame pointer from that table.
+3. It walks that frame's data as repeated entries containing two 16-bit coordinate offsets followed by one 32-bit VDP/tile attribute value.
+4. For each entry, it combines the object's world position with the offsets, clips the result against the current viewport bounds, and writes the visible part into the shared output stream at `$FFBC54/$FFBC58`.
+5. `f_5450` flushes the output stream through the existing VDP transfer path to VRAM address `0x3000`.
+
+The frame list has a termination/state test after each entry; the exact sentinel encoding still needs to be confirmed before we write a standalone parser. The key point is that the renderer is assembling a multi-part sprite from ROM-backed frame records, not just drawing one tile ID.
+
+This is enough to define the beginning of a correct PC asset previewer: resolve the +30 frame-pointer table, select the frame by state, parse its coordinate/attribute records, and render the corresponding 8×8 tile patterns using Genesis palette/flip/tile attributes. To make that work for every family, we still need to trace how the ROM's 4bpp pattern data is loaded into VRAM and how to extract that data without relying on whatever happens to be in the current stage's VRAM.
+
 ## ROM-backed assets: no gameplay capture required
 
 The native harness confirms that the generated game code does not, by itself, contain a semantic sprite catalogue. `md_load_rom(path)` opens the selected ROM file, reads up to `0x400000` bytes into the harness's `rom` buffer, validates the Mega Drive header at offset `0x100`, and keeps the bytes available to the emulated memory bus. The game then reads its graphics and tables from those ROM addresses; VDP DMA reads through that same bus.
