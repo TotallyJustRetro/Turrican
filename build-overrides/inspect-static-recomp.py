@@ -114,6 +114,31 @@ for rel in FILES:
   for slot,targets in sorted(slot_summary.items()):
    emit(f"CALLBACK_SLOT $FF{slot} possible_static_targets={','.join(sorted(targets))}")
 
+  # Preserve the exact functions that install callback handlers. Those routines
+  # are the bridge from a runtime object descriptor into the frame dispatcher.
+  setter_names=set(fn for fn,slot,target,n,code in assignment if target!="DYNAMIC")
+  emit("CALLBACK_HANDLER_INSTALLER_BODIES")
+  emitted=set()
+  definition=re.compile(r"^\s*(?:(?:static|inline)\s+)*(?:void|int|bool|uint32_t)\s+(f_[0-9A-Fa-f]+)\s*\([^;]*\)\s*\{")
+  for n,line in enumerate(lines):
+   match=definition.match(line)
+   if not match: continue
+   name=match.group(1)
+   if name not in setter_names or name in emitted: continue
+   depth=0; end=-1; opened=False
+   for q in range(n,len(lines)):
+    if "{" in lines[q]: opened=True
+    if opened:
+     depth+=lines[q].count("{")-lines[q].count("}")
+     if depth==0:
+      end=q+1; break
+   if end<=n: continue
+   emitted.add(name)
+   emit(f"CALLBACK_INSTALLER_BODY {name} source_lines={n+1}-{end}")
+   for q in range(n,min(end,n+220)):
+    emit(f"  {q+1}: {lines[q][:280]}")
+   if end-n>220: emit(f"  ... clipped {end-n-220} further source lines ...")
+
   # Include bounded source excerpts for the most RAM-connected routines. These
   # reveal relative-pointer accesses and call edges omitted by the address-only
   # index, without exporting the full decrypted game source bundle.
@@ -253,6 +278,33 @@ if gen.exists():
    count+=1
    if count>=80:break
  emit(f"SOUND_ACCESS_CONTEXTS {count}")
+
+
+ # The original game writes tile/sprite data through the Mega Drive VDP ports.
+ # Group those writes by generated ROM routine to locate upload/decompression
+ # paths and distinguish graphics transfer code from ordinary gameplay logic.
+ emit("[GENERATED_VDP_DATA_CONTROL_WRITES]")
+ vdp_port=re.compile(r"0xC000(?:00|02|04|06|08|0A|0C|0E|11|13|15|17)",re.I)
+ fn_name=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+ current_fn="(global)"
+ vdp_summary={}
+ vdp_count=0
+ for i,line in enumerate(lines,1):
+  fm=fn_name.search(line)
+  if fm: current_fn=fm.group(1)
+  ports=sorted(set(m.group(0).upper() for m in vdp_port.finditer(line)))
+  if not ports: continue
+  pc=re.search(r"L_([0-9A-Fa-f]+):",line)
+  writes=bool(re.search(r"\bWR(?:8|16|32)\s*\(",line))
+  vdp_summary.setdefault(current_fn,set()).update(ports)
+  emit(f"VDP_PORT_ACCESS function={current_fn} pc=0x{pc.group(1).upper() if pc else '?'} ports={','.join(ports)} write={int(writes)} code={line[:280]}")
+  vdp_count+=1
+  if vdp_count>=500:
+   emit("VDP_PORT_ACCESS_LIMIT 500")
+   break
+ emit("VDP_FUNCTION_PORT_SUMMARY")
+ for name,ports in sorted(vdp_summary.items(),key=lambda item:(-len(item[1]),item[0])):
+  emit(f"VDP_FUNCTION {name} ports={','.join(sorted(ports))}")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
