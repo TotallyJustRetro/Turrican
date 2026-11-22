@@ -41,6 +41,20 @@ static SDL_Surface *g_imgui_surface = nullptr;
 static SDL_Renderer *g_imgui_surface_renderer = nullptr;
 static int g_imgui_width = 320;
 static int g_imgui_height = 224;
+static uint8_t g_live_vram[65536] = {};
+static uint16_t g_live_cram[64] = {};
+static uint32_t g_live_art_hash = 0;
+static int g_live_tile_ids[256] = {};
+static int g_live_tile_count = 0;
+static int g_selected_palette = 0;
+static int g_selected_asset_slot = 0;
+static bool g_show_grid = true;
+static bool g_collision_enabled = true;
+static bool g_left_was_down = false;
+static int g_undo_count = 0;
+static int g_redo_count = 0;
+static uint16_t g_undo_stack[12][64 * 32] = {};
+static uint16_t g_redo_stack[12][64 * 32] = {};
 static EditorMode g_mode = MODE_TILES;
 static EditorTool g_tool = TOOL_TILE_BRUSH;
 static const int kEditorMapCols = 64;
@@ -214,13 +228,31 @@ static void tool_button(const char *label, int index, int selected)
     }
 }
 
-static ImU32 tile_color(int tile)
+static ImU32 vdp_color(int palette,int index)
 {
-    const int v = tile & 0x7ff;
-    const int r = 25 + ((v * 7) % 24);
-    const int g = 34 + ((v * 11) % 28);
-    const int b = 45 + ((v * 5) % 34);
-    return IM_COL32(r, g, b, 245);
+    if(index==0)return IM_COL32(0,0,0,0);
+    const uint16_t raw=g_live_cram[(palette&3)*16+(index&15)];
+    const int r=(raw>>1)&7,g=(raw>>5)&7,b=(raw>>9)&7;
+    return IM_COL32(r*255/7,g*255/7,b*255/7,255);
+}
+static int vdp_pixel(int tile,int x,int y)
+{
+    if(tile<0||tile>=2048)return 0;
+    const uint8_t packed=g_live_vram[tile*32+y*4+(x>>1)];
+    return (x&1)?(packed&15):(packed>>4);
+}
+static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
+{
+    const int tile=entry&0x7ff;
+    const int hflip=(entry>>11)&1,vflip=(entry>>12)&1,palette=(entry>>13)&3;
+    const float pixel=size/8.0f;
+    for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+        const int sx=hflip?7-x:x,sy=vflip?7-y:y;
+        const int color=vdp_pixel(tile,sx,sy);
+        if(!color)continue;
+        ImVec2 a(pos.x+x*pixel,pos.y+y*pixel);
+        draw->AddRectFilled(a,ImVec2(a.x+pixel+.15f,a.y+pixel+.15f),vdp_color(palette,color));
+    }
 }
 
 static void draw_stage_canvas()
@@ -533,6 +565,29 @@ static void draw_top_bar()
 }
 } // namespace
 
+extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cram)
+{
+    if(!vram||!cram)return;
+    // Hash first so the small art catalog is rebuilt only when the game's
+    // VRAM/CRAM changes, not on every editor frame.
+    uint32_t hash=2166136261u;
+    for(size_t i=0;i<65536;i++)hash=(hash^vram[i])*16777619u;
+    for(size_t i=0;i<64;i++){
+        hash=(hash^(uint8_t)(cram[i]&255u))*16777619u;
+        hash=(hash^(uint8_t)(cram[i]>>8))*16777619u;
+    }
+    if(hash==g_live_art_hash)return;
+    g_live_art_hash=hash;
+    std::memcpy(g_live_vram,vram,sizeof(g_live_vram));
+    std::memcpy(g_live_cram,cram,sizeof(g_live_cram));
+    g_live_tile_count=0;
+    for(int tile=1;tile<2048&&g_live_tile_count<256;tile++){
+        const uint8_t *pattern=&g_live_vram[tile*32];
+        bool visible=false;
+        for(int i=0;i<32;i++)if(pattern[i]){visible=true;break;}
+        if(visible)g_live_tile_ids[g_live_tile_count++]=tile;
+    }
+}
 extern "C" int mtlb_map_cols(void) { return kEditorMapCols; }
 extern "C" int mtlb_map_rows(void) { return kEditorMapRows; }
 extern "C" int mtlb_map_get(int x,int y)
