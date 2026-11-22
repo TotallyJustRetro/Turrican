@@ -1617,12 +1617,7 @@ confirm:
                     break;
                 case SDLK_RETURN:case SDLK_x:
                     if(native_title_menu_selection>=2) {
-                        if(native_title_menu_sfx(1)) {
-                            native_title_pending_selection=native_title_menu_selection;
-                            native_title_pending_open=1;
-                        } else {
-                            native_title_open_selected();
-                        }
+                        native_title_open_selected();
                         continue;
                     }
                     break; /* vanilla START/OPTIONS confirmation remains with the cartridge */
@@ -1662,12 +1657,7 @@ confirm:
                 if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
                    e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
                     if(native_title_menu_selection>=2) {
-                        if(native_title_menu_sfx(1)) {
-                            native_title_pending_selection=native_title_menu_selection;
-                            native_title_pending_open=1;
-                        } else {
-                            native_title_open_selected();
-                        }
+                        native_title_open_selected();
                         continue;
                     }
                     break;
