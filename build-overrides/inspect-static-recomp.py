@@ -313,10 +313,10 @@ if gen.exists():
              if "0XC00000" in ports and "0XC00004" in ports]
  candidates=sorted(candidates)
  for name in candidates[:24]:
-  pat=re.compile(r"(?m)^\\s*(?:(?:static|inline)\\s+)*(?:void|int|bool|uint8_t|uint16_t|uint32_t)\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
-  hit=pat.search("\\n".join(lines))
+  pat=re.compile(r"(?m)^\s*(?:(?:static|inline)\s+)*(?:void|int|bool|uint8_t|uint16_t|uint32_t)\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
+  source="\n".join(lines)
+  hit=pat.search(source)
   if not hit: continue
-  source="\\n".join(lines)
   brace=source.find("{",hit.start()); depth=0; end=-1
   for pos in range(brace,len(source)):
    if source[pos]=="{": depth+=1
