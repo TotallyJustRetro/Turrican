@@ -265,11 +265,14 @@ static ImU32 vdp_color(int palette,int index)
 static int vdp_pixel(int tile,int x,int y)
 {
     if(tile<0||tile>=2048)return 0;
-    uint8_t packed=0;
-    if(g_rom_art_valid && tile>=0xB0 && tile<0x100)
-        packed=g_rom_art_block[(tile-0xB0)*32+y*4+(x>>1)];
-    else
-        packed=g_live_vram[tile*32+y*4+(x>>1)];
+    const uint8_t packed=g_live_vram[tile*32+y*4+(x>>1)];
+    return (x&1)?(packed&15):(packed>>4);
+}
+
+static int rom_vdp_pixel(int tile,int x,int y)
+{
+    if(!g_rom_art_valid||tile<0||tile>=80)return 0;
+    const uint8_t packed=g_rom_art_block[tile*32+y*4+(x>>1)];
     return (x&1)?(packed&15):(packed>>4);
 }
 
@@ -277,7 +280,7 @@ static void append_rom_art_tiles()
 {
     if(!g_rom_art_valid || g_rom_tile_count)return;
     g_rom_tile_start_index=g_live_tile_count;
-    for(int tile=0xB0;tile<0x100 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+    for(int tile=0;tile<80 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
         g_live_tile_ids[g_live_tile_count++]=tile;
     g_rom_tile_count=g_live_tile_count-g_rom_tile_start_index;
 }
@@ -288,7 +291,7 @@ static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
     const float pixel=size/8.0f;
     for(int y=0;y<8;y++)for(int x=0;x<8;x++){
         const int sx=hflip?7-x:x,sy=vflip?7-y:y;
-        const int color=vdp_pixel(tile,sx,sy);
+        const int color=(entry&0x8000u)?rom_vdp_pixel(tile,sx,sy):vdp_pixel(tile,sx,sy);
         if(!color)continue;
         ImVec2 a(pos.x+x*pixel,pos.y+y*pixel);
         draw->AddRectFilled(a,ImVec2(a.x+pixel+.15f,a.y+pixel+.15f),vdp_color(palette,color));
@@ -684,16 +687,18 @@ static void draw_asset_shelf()
         if(g_rom_tile_count>0){ImGui::SameLine(0,2);if(ImGui::SmallButton("ROM ART"))g_tile_shelf_offset=g_rom_tile_start_index;}
         for(int i=g_tile_shelf_offset;i<g_live_tile_count&&i<g_tile_shelf_offset+8;i++){
             ImGui::SameLine(0,2);
-            const int tile=g_live_tile_ids[i];
-            ImGui::PushID(tile);
+            const bool romTile=(g_rom_tile_start_index>=0 && i>=g_rom_tile_start_index && i<g_rom_tile_start_index+g_rom_tile_count);
+            const int tile=romTile?(i-g_rom_tile_start_index):g_live_tile_ids[i];
+            const int tileEntry=tile|(g_selected_palette<<13)|(romTile?0x8000:0);
+            ImGui::PushID(i);
             ImVec2 p=ImGui::GetCursorScreenPos();
             ImGui::InvisibleButton("##tile_pick",ImVec2(ui(31),ui(36)));
             ImDrawList *d=ImGui::GetWindowDrawList();
-            const bool selected=(g_brush_tile&0x7ff)==tile;
+            const bool selected=(g_brush_tile==tileEntry);
             d->AddRectFilled(p,ImVec2(p.x+ui(31),p.y+ui(36)),selected?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
-            draw_vdp_tile(d,ImVec2(p.x+ui(4),p.y+ui(5)),ui(26),tile|(g_selected_palette<<13));
+            draw_vdp_tile(d,ImVec2(p.x+ui(4),p.y+ui(5)),ui(26),tileEntry);
             d->AddRect(p,ImVec2(p.x+ui(31),p.y+ui(36)),selected?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,selected?2.0f:1.0f);
-            if(ImGui::IsItemClicked()){g_brush_tile=tile|(g_selected_palette<<13);g_tool=TOOL_TILE_BRUSH;}
+            if(ImGui::IsItemClicked()){g_brush_tile=tileEntry;g_tool=TOOL_TILE_BRUSH;}
             ImGui::PopID();
         }
         ImGui::SameLine(0,2);
