@@ -977,6 +977,64 @@ if gen.exists():
      emit("RESOURCE_POINTER_USE_LIMIT 500")
      break
 
+ # Index object-family initializer writes to the fields used by the active-object
+ # render pipeline. Track the generated C temporaries (d/v) across adjacent
+ # instructions rather than requiring the destination and value on one line.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  import collections
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[OBJECT_RENDER_DESCRIPTOR_FIELD_INITIALIZERS]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  dest_re=re.compile(r"\buint32_t\s+d\s*=\s*A\(([0-7])\)\s*\+\s*\(int32_t\)(30|34|38|42|46)\s*;")
+  value_re=re.compile(r"\buint32_t\s+v\s*=\s*([^;]+);")
+  write_re=re.compile(r"\bWR32\s*\(\s*d\s*,\s*v\s*\)")
+  current="(global)"
+  pending_d=None
+  latest_v=None
+  results=[]
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+    pending_d=None
+    latest_v=None
+   dm=dest_re.search(line)
+   if dm:
+    pending_d=(int(dm.group(1)),int(dm.group(2)),n,line.strip())
+   vm=value_re.search(line)
+   if vm:
+    latest_v=(vm.group(1).strip(),n,line.strip())
+   if write_re.search(line):
+    if pending_d and latest_v and n-pending_d[2]<=8 and n-latest_v[1]<=8:
+     base,offset,dline,dcode=pending_d
+     expr,vline,vcode=latest_v
+     if re.search(r"0x[0-9A-Fa-f]+u",expr):
+      kind="constant"
+     elif re.search(r"A\([0-7]\)",expr):
+      kind="register_value"
+     elif "RD" in expr:
+      kind="memory_value"
+     else:
+      kind="computed_or_other"
+     results.append((current,base,offset,expr,kind,dline,n,dcode,vline,vcode))
+    pending_d=None
+  grouped=collections.defaultdict(list)
+  for row in results: grouped[(row[0],row[1],row[2])].append(row)
+  for (fn,base,offset),rows in sorted(grouped.items(),key=lambda item:(item[0][0],item[0][2],item[0][1])):
+   emit(f"OBJECT_RENDER_FIELD_WRITES function={fn} base=A{base} offset=+{offset} assignments={len(rows)}")
+   for row in rows[:12]:
+    fn,base,offset,expr,kind,dline,wline,dcode,vline,vcode=row
+    emit(f"  value={expr} kind={kind} dest_line={dline} value_line={vline} write_line={wline}")
+    emit(f"    dest: {dcode}")
+    emit(f"    value: {vcode}")
+    emit(f"    write: {gen_lines[wline-1].strip()[:300]}")
+  emit(f"OBJECT_RENDER_FIELD_ASSIGNMENT_COUNT {len(results)}")
+  emit("[OBJECT_RENDER_FIELD_INITIALIZER_FUNCTION_SUMMARY]")
+  for fn,entries in sorted(((fn,[row for row in results if row[0]==fn]) for fn in set(row[0] for row in results)),key=lambda item:(-len(item[1]),item[0])):
+   summary=",".join(f"+{offset}:{sum(1 for row in entries if row[2]==offset)}" for offset in sorted(set(row[2] for row in entries)))
+   emit(f"OBJECT_RENDER_INITIALIZER function={fn} writes={len(entries)} fields={summary}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
