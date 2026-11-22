@@ -279,6 +279,9 @@ static void native_title_compose_frame(void) {
     native_title_draw_text_column("SAVES",right_center,162,native_title_menu_selection==5,blink_on);
 }
 static void native_title_open_selected(void) {
+    /* Keep the SDL audio device running while the branded-title modal opens,
+       so the newly queued navigation/confirm cue is not suspended at entry. */
+    native_pause_keep_title_audio=1;
     native_extras_parent=0;
     native_menu_sel=0;
     if(native_title_menu_selection==2) {
