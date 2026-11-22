@@ -16,6 +16,19 @@ def add_include(s: str, header: str) -> str:
     if not m: raise RuntimeError(f"Cannot find include section for {header}")
     return s[:m.end()]+f'#include "{header}"\n'+s[m.end():]
 
+def replace_function(s: str, signature: str, replacement: str, label: str) -> str:
+    a=s.find(signature)
+    if a<0: raise RuntimeError(f"{label}: function not found")
+    b=s.find("{",a)
+    depth=0; end=-1
+    for i in range(b,len(s)):
+        if s[i]=="{": depth+=1
+        elif s[i]=="}":
+            depth-=1
+            if depth==0: end=i+1; break
+    if end<0: raise RuntimeError(f"{label}: unterminated function")
+    return s[:a]+replacement+s[end:]
+
 def add_system_include(s: str, header: str) -> str:
     if f"#include <{header}>" in s: return s
     m=re.search(r'(?m)^#include [^\n]+\n',s)
@@ -49,6 +62,14 @@ static unsigned int md_modern_stage_stable_frames = 0;
 static int md_modern_stage_save_pending = 0;
 
 int md_save_slot(int slot);
+
+/* Called by the native pause menu. The frame hook is reached from RT_POLL
+ * inside generated game functions, so a normal return or save-state rewind
+ * would leave stale C activation records on the host stack. Unwind all the
+ * way to md_boot's setjmp boundary before reinitializing the emulated machine. */
+void md_restart_to_title(void) {
+    if(md_title_reset_env_ready) longjmp(md_title_reset_env,1);
+}
 
 void md_set_custom_gameplay_options(int energy,int lives,int timer,
                                     int modern_continues,int hide_timer_hud,
@@ -456,6 +477,41 @@ int {prefix}_state_load(const void *src,size_t bytes) {{
 def patch_harness(project: Path) -> None:
     path=project/"runtime"/"harness.c"
     s=path.read_text(encoding="utf-8-sig")
+    s=add_system_include(s,"setjmp.h")
+    if "static jmp_buf md_title_reset_env;" not in s:
+        includes=list(re.finditer(r"(?m)^#include [^\n]+\n",s))
+        if not includes: raise RuntimeError("Cannot find harness include section for title reset trampoline.")
+        at=includes[-1].end()
+        s=s[:at]+"\nstatic jmp_buf md_title_reset_env;\nstatic int md_title_reset_env_ready=0;\nvoid md_restart_to_title(void);\n"+s[at:]
+    boot=r"""void md_boot(void) {
+    static M68K cpu;
+    int restarted=setjmp(md_title_reset_env);
+    if(restarted) {
+        memset(&cpu,0,sizeof cpu);
+        memset(ram,0,sizeof ram);
+        memset(zram,0,sizeof zram);
+        memset(&zcpu,0,sizeof zcpu);
+        memset(rt_shadow,0,sizeof rt_shadow);
+        rt_sp=0;
+        rt_ti=0;
+        rt_budget=40;
+        rt_irq_pending=0;
+        rt_irq_count=0;
+        zbank=0; zbusreq=0; zreset=1; z80_over=0;
+        fm_acc=0.0; psg_acc=0.0;
+        ar=0; aw=0;
+        frame=0;
+    }
+    CPU=&cpu;
+    vdp_init();
+    sound_init();
+    cpu.a[7]=(rom[0]<<24)|(rom[1]<<16)|(rom[2]<<8)|rom[3];
+    cpu.sr_sys=0x2700;
+    md_title_reset_env_ready=1;
+    rt_call_addr(&cpu,recomp_reset_pc);
+}"""
+    if "md_title_reset_env_ready=1;" not in s:
+        s=replace_function(s,"void md_boot(void)",boot,"md_boot title reset trampoline")
     if "int md_infinite_continues_enabled = 0;" not in s:
         s=add_system_include(s,"errno.h")
         s=add_system_include(s,"sys/stat.h")
