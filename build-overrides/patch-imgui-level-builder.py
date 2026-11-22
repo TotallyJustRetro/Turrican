@@ -60,7 +60,7 @@ def main() -> None:
         "static void native_menu_present_frame(void) {\n"
         "    int w=vdp.width?vdp.width:320, h=vdp.height?vdp.height:224;\n"
         "    if(native_menu_state==11) {\n"
-        "        mtlb_update_vdp_resources(vdp.vram,vdp.cram);\n"
+        "        mtlb_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg);\n"
         "        if(mtlb_render_to_framebuffer(vdp.fb,w,h,320)) {\n"
         "            mtlb_shutdown();\n"
         "            native_custom_enter_parent();\n"
