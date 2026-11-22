@@ -59,9 +59,21 @@ for rel in FILES:
    if re.search(r"typedef|struct|static|const|\b(?:ym|psg)\b",t,re.I):
     emit(f"STATE_DECL line={n} {t[:220]}")
   m=func.match(line)
-  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render",m.group(1),re.I):
+  if m and re.search(r"read|write|memory|ram|save|load|frame|reset|state|execute|run|boot|snapshot|draw|sprite|plane|shade|audio|sound|sample|ym|mix|timer|hud|present|render|input|restart|quit",m.group(1),re.I):
    params=re.sub(r"\s+"," ",m.group(2).strip())
    emit(f"FUNCTION line={n} name={m.group(1)} params={params[:120] or '-'}")
+   if (rel=="runtime/harness.c" and m.group(1) in ("md_boot","md_load_rom","md_audio_read","md_frame_hook","sound_tick")) or (rel=="runtime/ym2612.c" and re.search(r"ym_(?:write|sample|init)",m.group(1))) or (rel=="runtime/vdp.c" and re.search(r"sprite|plane|shade|render",m.group(1),re.I)) or (rel=="runtime/sdl_main.c" and re.search(r"shade|draw_str|present|frame|input|event",m.group(1),re.I)):
+    depth=0; brace=-1; end=-1
+    for q in range(n-1,min(len(lines),n+300)):
+     if "{" in lines[q] and brace<0: brace=q
+     if brace>=0:
+      depth+=lines[q].count("{")-lines[q].count("}")
+      if depth==0:
+       end=q+1;break
+    if brace>=0 and end>brace:
+     emit(f"FUNCTION_BODY {m.group(1)} lines={n}-{end}")
+     for q in range(n-1,min(end,n+90)):
+      emit(f"  {q+1}: {lines[q][:260]}")
   if rel in ("runtime/sdl_main.c","runtime/vdp.c","runtime/vdp.h","runtime/ym2612.c"):
    if re.search(r"md_frame_hook|shade\s*\(|draw_(?:plane|sprite)|sprite.*(?:draw|render)|(?:draw|render).*sprite|ym_(?:init|write|sample)|YM2612|SDL_.*Audio|timer|window plane|window.*plane|hscroll|vscroll|sprite_table|sat_base|SAT",t,re.I):
     emit(f"RENDER_AUDIO_HOOK line={n} {t[:260]}")
