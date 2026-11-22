@@ -284,7 +284,7 @@ static void draw_vdp_sprite(ImDrawList *draw,ImVec2 pos,float tileSize,
         for(int col=0;col<widthTiles;col++){
             const int tileRow=vflip?(heightTiles-1-row):row;
             const int tileCol=hflip?(widthTiles-1-col):col;
-            const int tile=(base+tileRow*widthTiles+tileCol)&0x07FF;
+            const int tile=(base+tileCol*heightTiles+tileRow)&0x07FF;
             draw_vdp_tile(draw,
                 ImVec2(pos.x+col*tileSize,pos.y+row*tileSize),
                 tileSize,attributes|tile);
@@ -794,26 +794,32 @@ extern "C" void mtlb_update_vdp_resources(const uint8_t *vram,const uint16_t *cr
 
     // Genesis VDP register 5 points to a linked Sprite Attribute Table.
     g_live_sprite_count=0;
-    const uint32_t satBase=(uint32_t)(g_live_regs[5]&0x7Fu)<<9;
+    const int h40=(g_imgui_width==320);
+    const uint32_t satBase=(uint32_t)(g_live_regs[5]&(h40?0x7Eu:0x7Fu))<<9;
+    const int maxSprites=h40?80:64;
     bool visited[128]={};
     unsigned link=0;
-    for(int n=0;n<80&&link<128&&!visited[link];n++){
+    for(int n=0;n<maxSprites&&link<128&&!visited[link];n++){
         visited[link]=true;
         const uint32_t at=(satBase+link*8u)&0xFFFFu;
         const uint8_t size=g_live_vram[(at+2u)&0xFFFFu];
         const unsigned next=g_live_vram[(at+3u)&0xFFFFu]&0x7Fu;
         const uint16_t attr=(uint16_t)(((uint16_t)g_live_vram[(at+4u)&0xFFFFu]<<8)|
                                         g_live_vram[(at+5u)&0xFFFFu]);
-        const int width=(size&3u)+1;
-        const int height=((size>>2)&3u)+1;
-        if((attr&0x07FFu)!=0&&g_live_sprite_count<80){
+        const int height=(size&3u)+1;
+        const int width=((size>>2)&3u)+1;
+        const uint16_t yword=(uint16_t)(((uint16_t)g_live_vram[at]<<8)|g_live_vram[(at+1u)&0xFFFFu]);
+        const uint16_t xword=(uint16_t)(((uint16_t)g_live_vram[(at+6u)&0xFFFFu]<<8)|g_live_vram[(at+7u)&0xFFFFu]);
+        const unsigned xraw=xword&0x01FFu;
+        // X=0 is the Genesis SAT sprite-mask entry; later linked sprites do
+        // not reach the renderer once this marker is encountered.
+        if(xraw==0u && g_live_sprite_count>0)break;
+        if(xraw!=0u && (attr&0x07FFu)!=0 && g_live_sprite_count<80){
             LiveSpritePart &sprite=g_live_sprites[g_live_sprite_count++];
             sprite.tile_attr=attr;
             sprite.width_tiles=(uint8_t)width;
             sprite.height_tiles=(uint8_t)height;
-            const uint16_t yword=(uint16_t)(((uint16_t)g_live_vram[at]<<8)|g_live_vram[(at+1u)&0xFFFFu]);
-            const uint16_t xword=(uint16_t)(((uint16_t)g_live_vram[(at+6u)&0xFFFFu]<<8)|g_live_vram[(at+7u)&0xFFFFu]);
-            sprite.x=(int16_t)((xword&0x01FFu)-128);
+            sprite.x=(int16_t)(xraw-128);
             sprite.y=(int16_t)((yword&0x03FFu)-128);
         }
         if(next==0)break;
