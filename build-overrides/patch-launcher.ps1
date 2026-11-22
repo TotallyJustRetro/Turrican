@@ -82,8 +82,8 @@ $newSpawn = @'
     const child = spawn(exe, [romPath, configPath], {
       detached: true,
       stdio: 'ignore',
-      cwd: path.dirname(app.getPath('exe')),
-      env: { ...process.env, MEGATURRICAN_CONFIG_DIR: path.dirname(app.getPath('exe')) },
+      cwd: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')),
+      env: { ...process.env, MEGATURRICAN_CONFIG_DIR: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')) },
       windowsHide: false
     });
     child.once('error', error => finish({ ok: false, error: 'Could not start Mega Turrican: ' + error.message }));
