@@ -1130,6 +1130,29 @@ static void proc_native_pause_confirm(SDL_Event *e) {
 }
 
 
+
+static int native_pause_audio_active=0;
+static void native_pause_audio_pump(void) {
+    int wanted=(native_menu_state==16 && native_pause_sound_track>=0 && adev!=0);
+    if(wanted) {
+        if(!native_pause_audio_active) {
+            SDL_ClearQueuedAudio(adev);
+            SDL_PauseAudioDevice(adev,0);
+            native_pause_audio_active=1;
+        }
+        if(SDL_GetQueuedAudioSize(adev)<4096u) {
+            int16_t samples[512];
+            md_pause_fm_test_render(samples,256,2);
+            SDL_QueueAudio(adev,samples,(Uint32)sizeof samples);
+        }
+    } else if(native_pause_audio_active) {
+        md_pause_fm_test_stop();
+        SDL_ClearQueuedAudio(adev);
+        SDL_PauseAudioDevice(adev,1);
+        native_pause_audio_active=0;
+    }
+}
+
 '''
 
 
