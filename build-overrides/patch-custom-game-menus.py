@@ -52,7 +52,7 @@ static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
 static void native_menu_pause_loop(void);
 
-extern void md_set_custom_gameplay_options(int,int,int,int,int,int);
+extern void md_set_custom_gameplay_options(int,int,int,int,int,int,int,int);
 extern void md_apply_custom_gameplay_options(void);
 extern void md_copy_main_ram(uint8_t *dst);
 extern uint32_t md_cpu_state_size(void);
@@ -994,7 +994,7 @@ confirm:
         "    case 10: render_native_saves(); break;\n"
         "    case 11: render_native_level_builder(); break;\n"
         "    case 12: render_native_toggle_page(12); break;\n"
-        "    case 13: render_native_title_game_options(); break;\\n"
+        "    case 13: render_native_title_game_options(); break;\n"
         "    case 14: render_native_area_map(); break;",
         "native Extras page render dispatch")
 
@@ -1010,7 +1010,7 @@ confirm:
         "    else if(native_menu_state==10)proc_native_saves(e);\n"
         "    else if(native_menu_state==11)proc_native_level_builder(e);\n"
         "    else if(native_menu_state==12)proc_native_toggle_page(e,12);\n"
-        "    else if(native_menu_state==13)proc_native_title_game_options(e);\\n"
+        "    else if(native_menu_state==13)proc_native_title_game_options(e);\n"
         "    else if(native_menu_state==14)proc_native_area_map(e);",
         "native Extras event routing")
 
@@ -1023,6 +1023,7 @@ confirm:
             continue;
         }
 
+        /* The map is available only in Modern Mode and only when the gameplay HUD is present. */
         if(native_menu_state==0 && native_game_level_modern && native_modern_map &&
            e.type==SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym==SDLK_m &&
            native_title_gameplay_hud_visible()) {
@@ -1032,174 +1033,81 @@ confirm:
         }
 
         if(native_menu_state==0 && native_title_menu_scene_visible()) {
-            if(native_title_page_mode) {
-                if(e.type==SDL_KEYDOWN && !e.key.repeat) {
-                    switch(e.key.keysym.sym) {
-                    case SDLK_UP:
-                        if(native_title_game_options_focus>=2)native_title_game_options_focus=1;
-                        else native_title_game_options_focus=0;
-                        break;
-                    case SDLK_DOWN:
-                        if(native_title_game_options_focus==0)native_title_game_options_focus=1;
-                        else if(native_title_game_options_focus==1 && native_game_level_modern)
-                            native_title_game_options_focus=2;
-                        break;
-                    case SDLK_LEFT:
-                        if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
-                        else native_title_game_options_focus=1-native_title_game_options_focus;
-                        break;
-                    case SDLK_RIGHT:
-                        if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus-1+3)%3;
-                        else native_title_game_options_focus=1-native_title_game_options_focus;
-                        break;
-                    case SDLK_RETURN: case SDLK_x:
-                        if(native_title_game_options_focus==0) {
-                            native_game_level_modern=0;
-                            native_custom_save_config();
-                            native_title_game_options_focus=0;
-                        } else if(native_title_game_options_focus==1) {
-                            native_game_level_modern=1;
-                            native_custom_save_config();
-                            native_title_game_options_focus=2;
-                        } else {
-                            native_toggle_option(12,native_title_game_options_focus-2);
-                        }
-                        break;
-                    case SDLK_ESCAPE:
-                        native_title_page_mode=0;
-                        native_title_game_options_focus=native_game_level_modern?1:0;
-                        break;
+            if(e.type==SDL_KEYDOWN && !e.key.repeat) {
+                switch(e.key.keysym.sym) {
+                case SDLK_UP:
+                    if(native_title_menu_selection==1) {
+                        native_title_menu_selection=0;
+                    } else if(native_title_menu_selection>=2) {
+                        native_title_menu_selection--;
+                        if(native_title_menu_selection==1)native_title_transition_guard=1;
+                        continue;
+                    } else continue;
+                    break;
+                case SDLK_DOWN:
+                    if(native_title_menu_selection==0) {
+                        native_title_menu_selection=1;
+                    } else if(native_title_menu_selection==1) {
+                        native_title_menu_selection=2;
+                        native_title_transition_guard=1;
+                        continue;
+                    } else if(native_title_menu_selection<5) {
+                        native_title_menu_selection++;
+                        continue;
+                    } else continue;
+                    break;
+                case SDLK_RETURN:case SDLK_x:
+                    if(native_title_menu_selection>=2) {
+                        native_title_open_selected();
+                        continue;
                     }
-                    continue;
-                }
-                if(e.type==SDL_CONTROLLERBUTTONDOWN) {
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP) {
-                        if(native_title_game_options_focus>=2)native_title_game_options_focus=1;
-                        else native_title_game_options_focus=0;
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-                        if(native_title_game_options_focus==0)native_title_game_options_focus=1;
-                        else if(native_title_game_options_focus==1 && native_game_level_modern)
-                            native_title_game_options_focus=2;
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-                        if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus-2+2)%3;
-                        else native_title_game_options_focus=1-native_title_game_options_focus;
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-                        if(native_title_game_options_focus>=2)
-                            native_title_game_options_focus=2+(native_title_game_options_focus-1+3)%3;
-                        else native_title_game_options_focus=1-native_title_game_options_focus;
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A) {
-                        if(native_title_game_options_focus==0) {
-                            native_game_level_modern=0;
-                            native_custom_save_config();
-                            native_title_game_options_focus=0;
-                        } else if(native_title_game_options_focus==1) {
-                            native_game_level_modern=1;
-                            native_custom_save_config();
-                            native_title_game_options_focus=2;
-                        } else {
-                            native_toggle_option(12,native_title_game_options_focus-2);
-                        }
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B) {
-                        native_title_page_mode=0;
-                        native_title_game_options_focus=native_game_level_modern?1:0;
-                    }
-                    continue;
-                }
-            } else {
-                if(e.type==SDL_KEYDOWN && !e.key.repeat) {
-                    switch(e.key.keysym.sym) {
-                    case SDLK_UP:
-                        if(native_title_menu_selection==1) {
-                            native_title_menu_selection=0; /* original OPTIONS -> START */
-                        } else if(native_title_menu_selection>=2) {
-                            native_title_menu_selection--;
-                            if(native_title_menu_selection==1)native_title_transition_guard=1;
-                            continue;
-                        } else {
-                            continue;
-                        }
-                        break;
-                    case SDLK_DOWN:
-                        if(native_title_menu_selection==0) {
-                            native_title_menu_selection=1; /* original START -> OPTIONS */
-                        } else if(native_title_menu_selection==1) {
-                            native_title_menu_selection=2;
-                            native_title_transition_guard=1;
-                            continue;
-                        } else if(native_title_menu_selection<5) {
-                            native_title_menu_selection++;
-                            continue;
-                        } else {
-                            continue;
-                        }
-                        break;
-                    case SDLK_RETURN: case SDLK_x:
-                        if(native_title_menu_selection>=2) {
-                            native_title_open_selected();
-                            continue;
-                        }
-                        break; /* vanilla START/OPTIONS confirm stays with the cartridge */
-                    case SDLK_ESCAPE:
-                        if(native_title_menu_selection>=2) {
-                            native_title_menu_selection=1;
-                            native_title_transition_guard=1;
-                            continue;
-                        }
-                        break;
-                    }
-                }
-                if(e.type==SDL_CONTROLLERBUTTONDOWN) {
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP) {
-                        if(native_title_menu_selection==1) {
-                            native_title_menu_selection=0;
-                        } else if(native_title_menu_selection>=2) {
-                            native_title_menu_selection--;
-                            if(native_title_menu_selection==1)native_title_transition_guard=1;
-                            continue;
-                        } else {
-                            continue;
-                        }
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-                        if(native_title_menu_selection==0) {
-                            native_title_menu_selection=1;
-                        } else if(native_title_menu_selection==1) {
-                            native_title_menu_selection=2;
-                            native_title_transition_guard=1;
-                            continue;
-                        } else if(native_title_menu_selection<5) {
-                            native_title_menu_selection++;
-                            continue;
-                        } else {
-                            continue;
-                        }
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
-                       e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
-                        if(native_title_menu_selection>=2) {
-                            native_title_open_selected();
-                            continue;
-                        }
-                        break;
-                    }
-                    if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B &&
-                       native_title_menu_selection>=2) {
+                    break; /* vanilla START/OPTIONS confirmation remains with the cartridge */
+                case SDLK_ESCAPE:
+                    if(native_title_menu_selection>=2) {
                         native_title_menu_selection=1;
                         native_title_transition_guard=1;
                         continue;
                     }
+                    break;
+                }
+            }
+            if(e.type==SDL_CONTROLLERBUTTONDOWN) {
+                if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                    if(native_title_menu_selection==1)native_title_menu_selection=0;
+                    else if(native_title_menu_selection>=2) {
+                        native_title_menu_selection--;
+                        if(native_title_menu_selection==1)native_title_transition_guard=1;
+                        continue;
+                    } else continue;
+                }
+                if(e.cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                    if(native_title_menu_selection==0)native_title_menu_selection=1;
+                    else if(native_title_menu_selection==1) {
+                        native_title_menu_selection=2;
+                        native_title_transition_guard=1;
+                        continue;
+                    } else if(native_title_menu_selection<5) {
+                        native_title_menu_selection++;
+                        continue;
+                    } else continue;
+                }
+                if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
+                   e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
+                    if(native_title_menu_selection>=2) {
+                        native_title_open_selected();
+                        continue;
+                    }
+                    break;
+                }
+                if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B &&
+                   native_title_menu_selection>=2) {
+                    native_title_menu_selection=1;
+                    native_title_transition_guard=1;
+                    continue;
                 }
             }
         }
-'''
+''
 
     global_anchor="        /* global hotkeys (always active) */"
     s=once(s,global_anchor,title_event+"\n"+global_anchor,"title-screen Extras entry")
@@ -1258,7 +1166,7 @@ confirm:
         "native Game Options EXIT hint")
     s=once(s,
         "    draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
-        "    if(native_menu_state!=13)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
+        "    if(native_menu_state!=13 && native_menu_state!=14)draw_str(x,y,hint,hint_scale,0x99,0xB4,0xC8);",
         "hide generic footer on full-screen title Game Options page")
     path.write_text(s,encoding="utf-8",newline="\n")
 
