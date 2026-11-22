@@ -1247,6 +1247,62 @@ if gen.exists():
     recent={}
   emit(f"VDP_DMA_SETUP_CALLS {calls}")
 
+ # Find the consumer of the native VDP command queue written by f_71C.
+ # The queue lives at $FFD2DA, with count/index/status at $FFBCA4/$FFBCA6.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  source="\n".join(gen_lines)
+  emit("[VDP_DMA_QUEUE_REFERENCES]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  queue_pat=re.compile(r"0xFFFF(?:D2DA|BCA4|BCA6)",re.I)
+  current="(global)"
+  queue_funcs={}
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   matches=sorted(set(m.group(0).upper() for m in queue_pat.finditer(line)))
+   if matches:
+    queue_funcs.setdefault(current,[]).append((n,matches,line.strip()[:300]))
+  for fn,rows in sorted(queue_funcs.items(),key=lambda item:(-len(item[1]),item[0])):
+   emit(f"VDP_QUEUE_FUNCTION {fn} refs={len(rows)} fields="+",".join(sorted(set(x for _,xs,_ in rows for x in xs))))
+   for n,fields,code in rows[:35]:
+    emit(f"  line={n} fields={','.join(fields)} code={code}")
+  emit("[VDP_QUEUE_CONSUMER_BODIES]")
+  # Prioritize routines that read the command queue/status, not just f_71C's writes.
+  for fn,rows in sorted(queue_funcs.items(),key=lambda item:(-len(item[1]),item[0])):
+   if fn=="f_71C": continue
+   reads=[row for row in rows if "RD" in row[2] or "A(" in row[2]]
+   if not reads: continue
+   pat=re.compile(r"(?m)^\s*static\s+void\s+"+re.escape(fn)+r"\s*\([^;{}]*\)\s*\{")
+   hit=pat.search(source)
+   if not hit: continue
+   brace=source.find("{",hit.start());depth=0;end=-1
+   for pos in range(brace,len(source)):
+    if source[pos]=="{":depth+=1
+    elif source[pos]=="}":
+     depth-=1
+     if depth==0:end=pos+1;break
+   if end<=brace:continue
+   block=source[hit.start():end].splitlines()
+   emit(f"VDP_QUEUE_CONSUMER_BODY {fn} lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
+   for body_line in block[:220]:emit("  "+body_line[:300])
+   if len(block)>220:emit(f"  ... clipped {len(block)-220} additional lines ...")
+
+  # Correlate all routines that perform direct writes to VDP control/data
+  # ports with their source address, transfer length and queue state handling.
+  emit("[VDP_PORT_WRITERS_WITH_QUEUE_STATE]")
+  current="(global)"
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   if not re.search(r"0xC000(?:00|04)u",line,re.I):continue
+   lo=max(0,n-6);hi=min(len(gen_lines),n+6)
+   neighbors="\n".join(gen_lines[lo:hi])
+   if not re.search(r"0xFFFF(?:D2DA|BCA4|BCA6)",neighbors,re.I):continue
+   emit(f"VDP_QUEUE_PORT_WRITE function={current} line={n} code={line.strip()[:300]}")
+   for q in range(lo,hi):emit(f"  {q+1}: {gen_lines[q][:250]}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
