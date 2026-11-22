@@ -101,7 +101,7 @@ if sdl_path.exists():
  source=sdl_path.read_text(encoding="utf-8",errors="replace")
  lines=source.splitlines()
  emit("[SDL_NATIVE_MENU_SOURCE]")
- m=re.search(r"static\\s+struct\\s*\\{[^}]*\\}\\s*cfg\\s*=\\s*\\{[^}]*\\};",source,re.S)
+ m=re.search(r"static\s+struct\s*\{[^}]*\}\s*cfg\b[^;]*;",source,re.S)
  if m:
   emit("CONFIG_STRUCT_SOURCE")
   emit(m.group(0))
@@ -114,7 +114,7 @@ if sdl_path.exists():
   "native_title_menu_sfx","native_title_menu_update","native_title_game_options_move",
   "native_title_game_options_confirm","proc_native_title_game_options",
  ):
-  pat=re.compile(r"(?m)^\\s*(?:(?:static|inline|extern)\\s+)*(?:void|int|bool|char|short|long|size_t|u?int(?:8|16|32|64)_t|[A-Z]\\w*)\\s+"+re.escape(name)+r"\\s*\\([^;{}]*\\)\\s*\\{")
+  pat=re.compile(r"(?m)^\s*(?:(?:static|inline|extern)\s+)*(?:void|int|bool|char|short|long|size_t|u?int(?:8|16|32|64)_t|[A-Z]\w*)\s+"+re.escape(name)+r"\s*\([^;{}]*\)\s*\{")
   hit=pat.search(source)
   if not hit:
    emit(f"MENU_FUNCTION_MISSING {name}")
