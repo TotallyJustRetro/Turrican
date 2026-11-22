@@ -382,14 +382,16 @@ def patch_recompiled_continues(project: Path) -> None:
         if n!=2: raise RuntimeError(f"Expected two generated L_192C blocks, found {n}")
     # Game Genie BAMT-AA60 decodes to ROM word 0x001796:0x6008:
     # BRA.s $17A0, bypassing the weapon downgrade-on-death instruction.
-    weapon_pattern=re.compile(r'(L_1796:\\s*\\{\\s*RT_POLL\\(0x1796\\);)')
-    if "md_modern_persistent_weapon_enabled" not in s:
+    weapon_pattern=re.compile(r'(L_1796:\s*\{\s*RT_POLL\(0x1796\);)')
+    if "if(md_modern_persistent_weapon_enabled)goto L_17A0;" not in s:
+        if "L_17A0:" not in s:
+            raise RuntimeError("Persistent weapon branch target L_17A0 is missing from generated recomp.")
         s,n=weapon_pattern.subn(
-            r'\\g<1>if(md_modern_persistent_weapon_enabled)goto L_17A0; ',
+            r'\g<1>if(md_modern_persistent_weapon_enabled)goto L_17A0; ',
             s
         )
         if n<1: raise RuntimeError("Could not find generated L_1796 instruction for persistent weapon-level patch.")
-    path.write_text(s,encoding="utf-8",newline="\\n")
+    path.write_text(s,encoding="utf-8",newline="\n")
 
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
