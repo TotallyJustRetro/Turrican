@@ -633,7 +633,7 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
     # electron-builder's portable wrapper exposes the true outer EXE folder.
     # It differs from app.getPath('exe') when the app is unpacked to a temp folder.
     portable_anchor = "const romSettingsFile = path.join(app.getPath('userData'), 'rom-settings.json');"
-    portable_definition = "const portableConfigDirectory = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));\\n"
+    portable_definition = "const portableConfigDirectory = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));\n"
     if "const portableConfigDirectory =" not in main:
         if portable_anchor in main:
             main = main.replace(portable_anchor, portable_definition + portable_anchor, 1)
