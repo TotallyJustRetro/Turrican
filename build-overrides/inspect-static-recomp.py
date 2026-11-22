@@ -365,7 +365,9 @@ if gen.exists():
   "f_A18A","f_A932","f_A490","f_A3C","f_A2A",
   "f_5432","f_543C","f_5444","f_5448","f_544A",
   "f_552A","f_5578","f_558C","f_5232","f_5D8A",
-  "f_5300","f_5400","f_5232","f_1BDE","f_19FA"
+  "f_5300","f_5400","f_5232","f_1BDE","f_19FA",
+  "f_4A5A","f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A",
+  "f_DBAA","f_DC78","f_4BD0","f_5B42","f_617C","f_6212","f_623C"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
