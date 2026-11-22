@@ -528,14 +528,15 @@ static int md_modern_timer_hud_this_frame=0;
         s=once(s,frame_anchor,frame_new,"VDP timer visibility cache")
         layers="    draw_plane(y, pb, 1, W); draw_plane(y, pa, 0, W); draw_window(y, pa, W); draw_sprites(y, sp, W); draw_reborn_title_sprite(y, sp, W);"
         layers_new=layers+"""
-    /* Remove only the central timer's foreground pixels. Do not blank the
-       whole center of the HUD: that exposes a broad strip of Plane B scenery.
-       The score and energy labels stay untouched and keep HUD detection stable. */
-    if(md_modern_timer_hud_this_frame && y>=vdp.height*5/100 && y<vdp.height*25/100) {
-        int x0=W*41/100, x1=W*62/100;
+    /* Replace only the timer's narrow foreground rectangle with the exact
+       Plane B pixels already rendered for this scanline. This removes the TIME
+       text and digits while preserving the scene behind them; score and energy
+       remain untouched. Detection is latched from those side HUD labels at y=0. */
+    if(md_modern_timer_hud_this_frame && y>=vdp.height*4/100 && y<vdp.height*24/100) {
+        int x0=W*39/100, x1=W*62/100;
         if(x1>W)x1=W;
         for(int x=x0;x<x1;x++) {
-            pa[x]=0;
+            pa[x]=pb[x];
             sp[x]=0;
         }
     }"""
