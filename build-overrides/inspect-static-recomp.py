@@ -369,7 +369,13 @@ if gen.exists():
   "f_4A5A","f_4E52","f_4EE2","f_50EA","f_54A6","f_56CE","f_915A",
   "f_DBAA","f_DC78","f_4BD0","f_5B42","f_617C","f_6212","f_623C",
   "f_6E6","f_6E8","f_6F0","f_4FF6","f_507E","f_518E",
-  "f_574A","f_55A4","f_4626","f_3D12","f_57A6","f_5450"
+  "f_574A","f_55A4","f_4626","f_3D12","f_57A6","f_5450",
+  "f_71C","f_3DB4","f_3FA4","f_419A","f_3F06","f_3F7C","f_3F8A",
+  "f_44EE","f_59EE","f_5A9E","f_5BB4","f_5CA4","f_5FCA",
+  "f_951C","f_A1B6","f_A3A0","f_A556","f_A67C","f_A708","f_AC58",
+  "f_B05C","f_B460","f_B4AA","f_B4C4","f_B6A2","f_BACA",
+  "f_C2E4","f_C310","f_C32E","f_C34E","f_911A","f_DC78",
+  "f_60EE","f_62FA","f_10000","f_C212","f_A114","f_BCB6"
  ]
  support_def=re.compile(r"(?m)^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
  support_emitted=set()
