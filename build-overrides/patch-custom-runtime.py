@@ -540,7 +540,7 @@ static int md_modern_timer_hud_this_frame=0;
         }
     }"""
         s=once(s,layers,layers_new,"replace timer widget with true rendered background")
-    path.write_text(s,encoding="utf-8",newline="\\n")
+    path.write_text(s,encoding="utf-8",newline="\n")
 
 def patch(project: Path) -> None:
     patch_audio_state(project/"runtime"/"ym2612.c","md_ym","ym")
