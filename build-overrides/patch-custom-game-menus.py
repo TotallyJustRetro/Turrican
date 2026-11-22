@@ -80,6 +80,7 @@ extern void md_set_ram_byte(uint32_t address,uint8_t value);
 extern void md_pause_fm_test_start(int track);
 extern void md_pause_fm_test_stop(void);
 extern void md_pause_fm_test_render(int16_t *dst,int frames,int channels);
+extern void md_play_reborn_sfx(unsigned int cue);
 
 static int reborn_game_options_visible(void);
 static int reborn_title_scene_visible(void);
@@ -786,12 +787,10 @@ static void native_title_game_options_confirm(void) {
     }
 }
 static void native_title_game_options_pass_input(int confirm,int reopen) {
-    native_menu_state=0;
-    if(native_title_menu_sfx(confirm)) {
-        if(reopen)native_title_reopen_options_next_frame=1;
-    } else if(reopen) {
-        native_menu_state=13;
-    }
+    /* Stay in the modal Options page. The native ROM sound request is queued
+       immediately and does not require advancing the hidden game one frame. */
+    native_title_menu_sfx(confirm);
+    if(reopen)native_menu_state=13;
 }
 static void native_title_game_options_change_side(int direction) {
     if(native_title_game_options_focus==0) {
@@ -1376,12 +1375,9 @@ static void proc_native_pause_info_back(SDL_Event *e) {
 }
 
 static int native_title_menu_sfx(int confirm) {
-    /* Navigation passes through the original cartridge handler for one normal
-       frame so its own movement cue can play. Confirm is withheld because it
-       could activate the hidden vanilla Start/Options selection underneath us. */
-    if(confirm)return 0;
-    native_title_forced_mask=readpad();
-    native_title_input_passthrough=1;
+    /* These are the original ROM sound-table indices called by its title
+       state handler: 3 for movement and 2 for selection/confirmation. */
+    md_play_reborn_sfx(confirm?2u:3u);
     return 1;
 }
 
@@ -1577,9 +1573,7 @@ confirm:
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
            "if(!native_custom_cfg_loaded)native_custom_load_config();\n"
            "    native_title_menu_update();\n"
-           "    md_live_mask = (native_menu_state==0 && (native_title_input_passthrough || !native_menu_resume_guard) && (native_title_input_passthrough || !native_title_input_block)) ? (readpad() | native_title_forced_mask) : 0;\n"
-           "    native_title_input_passthrough=0;\n"
-           "    native_title_forced_mask=0;\n"
+           "    md_live_mask = (native_menu_state==0 && !native_menu_resume_guard && !native_title_input_block) ? readpad() : 0;\n"
            "    native_menu_resume_guard=0;",
            "install original title input pass-through for authentic SFX")
 
@@ -1650,6 +1644,7 @@ confirm:
                     break;
                 case SDLK_RETURN:case SDLK_x:
                     if(native_title_menu_selection>=2) {
+                        native_title_menu_sfx(1);
                         native_title_open_selected();
                         continue;
                     }
@@ -1690,6 +1685,7 @@ confirm:
                 if(e.cbutton.button==SDL_CONTROLLER_BUTTON_A ||
                    e.cbutton.button==SDL_CONTROLLER_BUTTON_START) {
                     if(native_title_menu_selection>=2) {
+                        native_title_menu_sfx(1);
                         native_title_open_selected();
                         continue;
                     }
@@ -1697,6 +1693,7 @@ confirm:
                 }
                 if(e.cbutton.button==SDL_CONTROLLER_BUTTON_B &&
                    native_title_menu_selection>=2) {
+                    native_title_menu_sfx(0);
                     native_title_menu_selection=1;
                     native_title_transition_guard=1;
                     continue;
