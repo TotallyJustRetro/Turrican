@@ -35,7 +35,6 @@ static int native_modern_persistent_weapon=0, native_modern_checkpoints=0, nativ
 static int native_modern_scroll_offset=0;
 static int native_custom_cfg_loaded=0;
 static int native_save_selection=0;
-static int native_editor_x=12, native_editor_y=10, native_editor_tile=1;
 static void native_menu_pause_loop(void);
 static int native_title_gameplay_hud_visible(void);
 static int native_title_menu_selection=0;
@@ -630,46 +629,9 @@ static int native_level_rows(void) {
 static uint32_t native_level_plane_a(void) {
     return (uint32_t)(vdp.reg[2]&0x38)<<10;
 }
-static void native_level_paint(void) {
-    int cols=native_level_cols(),rows=native_level_rows();
-    if(native_editor_x<0||native_editor_x>=cols||native_editor_y<0||native_editor_y>=rows)return;
-    uint32_t at=native_level_plane_a()+(uint32_t)(native_editor_y*cols+native_editor_x)*2;
-    at&=0xFFFF;
-    uint16_t old=(uint16_t)((vdp.vram[at]<<8)|vdp.vram[(at+1)&0xFFFF]);
-    uint16_t value=(old&0xF800)|(native_editor_tile&0x7FF);
-    vdp.vram[at]=(uint8_t)(value>>8);vdp.vram[(at+1)&0xFFFF]=(uint8_t)value;
-}
-static int native_level_export(void) {
-    int cols=native_level_cols(),rows=native_level_rows();
-    uint32_t base=native_level_plane_a();
-    FILE *f=fopen("levels/slot1.mtl.tmp","wb"); if(!f)return 0;
-    const char magic[8]={'M','T','L','M','A','P','1',0};
-    uint32_t dims[3]={(uint32_t)cols,(uint32_t)rows,(uint32_t)(cols*rows*2)};
-    int ok=fwrite(magic,8,1,f)==1 && fwrite(dims,sizeof dims,1,f)==1;
-    for(int i=0;ok&&i<cols*rows;i++) {
-        uint32_t at=(base+(uint32_t)i*2)&0xFFFF;
-        uint8_t word[2]={vdp.vram[at],vdp.vram[(at+1)&0xFFFF]};
-        ok=fwrite(word,2,1,f)==1;
-    }
-    if(fclose(f)!=0)ok=0;
-    if(ok){remove("levels/slot1.mtl");if(rename("levels/slot1.mtl.tmp","levels/slot1.mtl")!=0)ok=0;}
-    if(!ok)remove("levels/slot1.mtl.tmp");
-    return ok;
-}
-static int native_level_import(void) {
-    int cols=native_level_cols(),rows=native_level_rows();
-    FILE *f=fopen("levels/slot1.mtl","rb"); if(!f)return 0;
-    char magic[8];uint32_t dims[3];
-    int ok=fread(magic,8,1,f)==1 && fread(dims,sizeof dims,1,f)==1 &&
-           memcmp(magic,"MTLMAP1",7)==0 && dims[0]==(uint32_t)cols &&
-           dims[1]==(uint32_t)rows && dims[2]==(uint32_t)(cols*rows*2);
-    uint32_t base=native_level_plane_a();
-    for(int i=0;ok&&i<cols*rows;i++) {
-        uint8_t word[2];ok=fread(word,2,1,f)==1;
-        if(ok){uint32_t at=(base+(uint32_t)i*2)&0xFFFF;vdp.vram[at]=word[0];vdp.vram[(at+1)&0xFFFF]=word[1];}
-    }
-    fclose(f);return ok;
-}
+
+
+
 static const char *native_modern_option_labels[6]={
     "MAP (M KEY)","HIDE TIMER HUD","ONE-TIER WEAPON LOSS","CHECKPOINT AUTO-SAVE",
     "HIT I-FRAMES","UNLIMITED CONTINUES"
