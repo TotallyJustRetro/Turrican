@@ -64,9 +64,9 @@ for rel in FILES:
   # Dump complete bodies for routines on the sound service call chain.
   # These are the concrete call sites used by ordinary game/menu code.
   emit("GENERATED_SOUND_RELEVANT_FUNCTION_BODIES")
-  target_names={"f_200","f_468","f_1D10","f_6C3E","f_D0000","f_D0008",
-                 "f_D000C","f_D0018","f_D0102","f_D012A","f_D0218",
-                 "f_D070E","f_D09E6","f_D0F02","f_D0FA8"}
+  target_names={"f_200","f_468","f_1D10","f_6C3E","f_76C","f_894","f_652","f_554",
+                 "f_D0000","f_D0008","f_D000C","f_D0018","f_D0102","f_D012A",
+                 "f_D0218","f_D070E","f_D09E6","f_D0F02","f_D0FA8"}
   for fi,(start,name) in enumerate(fn_starts):
    if name not in target_names:continue
    end=fn_starts[fi+1][0] if fi+1<len(fn_starts) else len(lines)
@@ -99,6 +99,37 @@ for rel in FILES:
   # Walk backwards from known YM/PSG port writers. This reveals whether a
   # call is initialization, per-frame music service, or a higher-level cue
   # request, and captures the RAM arguments at each call site.
+  # Reverse-walk from functions that actually access controller hardware.
+  # This gives the real input polling callers after fn_re has filtered out
+  # forward declarations and restricted the graph to function definitions.
+  emit("GENERATED_CONTROLLER_CALLER_CHAINS")
+  controller_targets=set()
+  controller_re=re.compile(r"0xA1000[0-7]",re.I)
+  for name,(start,end,body) in fn_data.items():
+   if any(controller_re.search(line) for line in body):
+    controller_targets.add(name)
+    emit(f"CONTROLLER_READER name={name} declaration_line={start+1}")
+    for k,line in enumerate(body):
+     if controller_re.search(line):
+      emit(f"  {start+k+1}: {line[:360]}")
+      for q in range(max(start,start+k-2),min(end,start+k+3)):
+       if q!=start+k:emit(f"    {q+1}: {lines[q][:300]}")
+  for seed in sorted(controller_targets):
+   emit(f"CONTROLLER_CALLER_CHAIN seed={seed}")
+   frontier=[(seed,0,[seed])]
+   seen={seed}
+   while frontier:
+    target,depth,path=frontier.pop(0)
+    if depth>=7:continue
+    for parent,idx,line in callers_by_name.get(target,[]):
+     if parent in path:continue
+     emit(f"  DEPTH={depth+1} caller={parent} line={idx+1} calls={target}")
+     emit(f"    {line[:420]}")
+     if parent not in seen and depth<6:
+      seen.add(parent)
+      frontier.append((parent,depth+1,path+[parent]))
+   emit(f"  UNIQUE_CALLERS={len(seen)-1}")
+
   emit("GENERATED_SOUND_CALLER_CHAINS")
   seeds=sorted(sound_targets)
   for seed in seeds:
