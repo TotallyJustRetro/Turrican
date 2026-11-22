@@ -59,6 +59,18 @@ Build #316 further established:
 
 The next static step is to map the data layout at ROM bases `0x20000` and `0x24000` (state/animation data) and index other ROM lookup tables used by enemy/actor constructors. In parallel, we need a distinct object-spawn/instance list. Until those links are proven, these routines are evidence of the engine's state machinery, not a ready-to-use enemy catalogue.
 
+## Build #319 full work-RAM map: new candidate areas
+
+The full 64 KiB work-RAM frequency map shows several clusters outside the already understood global context:
+
+- `$FFBC00`: 1,296 generated absolute references, primarily from `f_224C`, `f_2E94`, `f_156A`, `f_1994`, `f_19FA`, and `f_3BD8`. This is the shared game-state/context block already being traced.
+- `$FFBD00`: 358 references, again dominated by `f_224C` and the main update path. Likely related to player/gameplay state and HUD fields, but individual meanings still need verification.
+- `$FFBF00`: 217 references, with `f_156A`, `f_1994`, `f_1E64`, `f_19FA`, and `f_1BDE` prominent. This contains the known stage/health/lives/timer state.
+- `$FF0800`: 274 references, dominated by `f_76EA`, `f_79B6`, `f_6E7E`, `f_6FCE`, and `f_7360`. This is the graphics-transfer queue/staging area and should not be confused with actor slots.
+- `$FFDF00` (164 references), `$FF5700` (68), `$FF5600` (54), and `$FF3D00` (63) are new high-priority candidate regions. Functions such as `f_9DD4`, `f_932A`, `f_9CA4`, `f_9222`, `f_9198`, `f_9B6C`, `f_9DA2`, `f_DDAE`, and `f_DF46` touch these regions repeatedly.
+
+These are address-cluster leads, not confirmed enemy-object arrays. Build #320 is extracting those function bodies and their call edges to see whether the clusters represent actor instances, stage structures, collision/animation state, or unrelated systems.
+
 The next static step is to map all callers and callers-of-callers for `f_19FA`, `f_156A`, `f_7360`, and `f_76EA`, then inspect the callback installers and object/level tables they consume. Keep graphics transfer routines separate from semantic actor definitions.
 
 The current Maker uses `mtlb_update_vdp_resources(vdp.vram, vdp.cram, vdp.reg)` while it is open. This exposes actual patterns and SAT sprite parts from the currently loaded scene, but it does not create semantic actor definitions or a reusable whole-game asset catalogue.
