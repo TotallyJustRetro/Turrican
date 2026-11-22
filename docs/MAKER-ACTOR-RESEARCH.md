@@ -49,7 +49,15 @@ The deeper helper bodies show why it is important not to call every VDP transfer
 - `f_7D04` consumes a staging descriptor at `$FF0852-$FF086F`, issues VDP control/data writes, advances its source and destination pointers by 4,480 bytes, and calls a follow-up helper. It is a transfer worker, not a content definition.
 - `f_6C3E` is reached via the shared callback context, calls `f_7D04`, then invokes the callback at `$FFBC18`. This keeps it interesting for per-context graphics updates, but it is not enough to conclude that the context is a game actor.
 
-A significant structural finding remains `f_19FA`: it receives a pointer in A0, stores it at `$FFBC50`, checks a flag at offset +48, and installs numerous callbacks from offsets +4, +18, +22, +26, +30, +34, and +42 into the shared runtime dispatch table. It also follows nested pointers at +8, +10, and +38. This is a strong candidate for a structured runtime context. Its constructor/callers and the meaning of those callbacks are the next priority.
+A significant structural finding remains `f_19FA`: it receives a pointer in A0, stores it at `$FFBC50`, checks a flag at offset +48, and installs numerous callbacks from offsets +4, +18, +22, +26, +30, +34, and +42 into the shared runtime dispatch table. It also follows nested pointers at +8, +10, and +38. Since `f_156A` selects that pointer through the stage word at `$FFBF1E`, the current best interpretation is a structured stage/profile context, not a per-enemy object definition.
+
+Build #316 further established:
+
+- `f_1BDE` is a secondary context initializer. It starts from the pointer in `$FFBC28`, uses offsets +16 and +8 to copy/setup linked data, installs additional callbacks, and uses the same stage word `$FFBF1E`. That reinforces the interpretation that these are linked stage/runtime contexts.
+- `f_224C` is a large state machine operating on fields including `$FFBCDA/$FFBCDC` (coordinate-like word values), `$FFBCC0/$FFBCC4/$FFBCC8` (state/callback/timer-like values), and flags around `$FFBCF3-$FFBCFE`.
+- `f_2A18` is one of its transitions: based on flags at `$FFBC84` and `$FFBCD8`, it selects callback address `0x20000` or `0x24000` into `$FFBCC4`, sets a small state value (0x15 or 0x1B) at `$FFBCC0`, and updates a state flag. This shows genuine state-driven gameplay code, but the code targets have not yet been identified and the state machine is not proven to be the player or a particular enemy class.
+
+The next static step is to find the actual code behind the `0x20000/0x24000` callback addresses and index other ROM lookup tables used by enemy/actor constructors. Until then, these routines are useful evidence of the engine's state machinery, not a ready-to-use enemy catalogue.
 
 The next static step is to map all callers and callers-of-callers for `f_19FA`, `f_156A`, `f_7360`, and `f_76EA`, then inspect the callback installers and object/level tables they consume. Keep graphics transfer routines separate from semantic actor definitions.
 
