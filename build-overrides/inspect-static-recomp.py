@@ -558,6 +558,73 @@ if gen.exists():
   for addr,count in addr_counts.most_common(180):
    emit(f"RAM_HOT $FF{addr:04X} refs={count}")
 
+ # Index A5-relative data structures across all generated routines. The
+ # current lead f_10078 uses A5+24/+26 as coordinates and +52 as a linked
+ # pointer; identical offset families in other functions can reveal its
+ # constructor, manager and sibling actor handlers.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  import collections
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[A5_RELATIVE_FIELD_LAYOUTS]")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  a5_offset=re.compile(r"\bA\(5\)\s*\+\s*\(int32_t\)(\d+)")
+  a5_direct=re.compile(r"\bA\(5\)\s*\+\s*(\d+)\b")
+  a5_load=re.compile(r"\bA\(5\)\s*=\s*(?:v|e|s|A\([0-7]\))")
+  layouts={}
+  current="(global)"
+  current_samples={}
+  a5_assignments=collections.defaultdict(list)
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm:
+    current=fm.group(1)
+   if "A(5)=" in line or "A(5) =" in line:
+    a5_assignments[current].append((n,line.strip()[:250]))
+   offsets=set(int(m.group(1)) for m in a5_offset.finditer(line))
+   offsets.update(int(m.group(1)) for m in a5_direct.finditer(line))
+   if offsets:
+    entry=layouts.setdefault(current,{"offsets":collections.Counter(),"read":collections.Counter(),"write":collections.Counter(),"samples":[]})
+    for offset in offsets:
+     entry["offsets"][offset]+=1
+     if re.search(r"\bWR(?:8|16|32)\s*\(",line): entry["write"][offset]+=1
+     if re.search(r"\bRD(?:8|16|32)\s*\(",line): entry["read"][offset]+=1
+    if len(entry["samples"])<20: entry["samples"].append((n,line.strip()[:270]))
+  for fn,entry in sorted(layouts.items(),key=lambda item:(-len(item[1]["offsets"]),item[0]))[:140]:
+   offs=",".join(f"+{off}:{count}" for off,count in sorted(entry["offsets"].items()))
+   emit(f"A5_LAYOUT function={fn} fields={len(entry['offsets'])} offsets={offs}")
+   for n,line in entry["samples"][:7]:
+    emit(f"  {n}: {line}")
+  emit("[A5_POINTER_SETUP_SITES]")
+  for fn,records in sorted(a5_assignments.items(),key=lambda item:(-len(item[1]),item[0])):
+   if not records: continue
+   emit(f"A5_SETUP function={fn} sites={len(records)}")
+   for n,line in records[:12]: emit(f"  {n}: {line}")
+  emit("[A5_LAYOUT_SIMILARITY_TO_f_10078]")
+  target=layouts.get("f_10078",{}).get("offsets",{})
+  if target:
+   target_set=set(target)
+   ranked=[]
+   for fn,entry in layouts.items():
+    if fn=="f_10078": continue
+    fields=set(entry["offsets"])
+    overlap=len(target_set&fields)
+    if overlap>=3:
+     ranked.append((overlap,fn,fields))
+   for overlap,fn,fields in sorted(ranked,key=lambda x:(-x[0],x[1]))[:100]:
+    shared=",".join("+"+str(x) for x in sorted(target_set&fields))
+    extra=",".join("+"+str(x) for x in sorted(fields-target_set))
+    emit(f"A5_SIMILAR function={fn} shared_fields={overlap} shared={shared} other_fields={extra}")
+  emit("[A5_FUNCTION_ADDRESS_REFERENCES]")
+  targets=("0x10078","L_10078")
+  hits=0
+  for n,line in enumerate(gen_lines,1):
+   if any(t in line for t in targets):
+    emit(f"A5_TARGET_REF line={n} code={line.strip()[:300]}")
+    hits+=1
+    if hits>=120: break
+  emit(f"A5_TARGET_REFERENCE_COUNT_LIMITED {hits}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
