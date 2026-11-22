@@ -509,6 +509,38 @@ if gen.exists():
     emit(f"  {n}: {line}")
   emit(f"ROM_INDEXED_READ_FUNCTION_BASE_PAIRS {len(grouped)}")
 
+ # Map absolute 68000 work-RAM references across the full 64 KiB address
+ # range. This can reveal actor pools/object arrays outside the previously
+ # examined $FFBCxx runtime context.
+ gen=ROOT/"recomp_gen.c"
+ if gen.exists():
+  import collections
+  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
+  emit("[FULL_WORK_RAM_PAGE_MAP]")
+  ram_abs=re.compile(r"0xFFFF([0-9A-Fa-f]{4})u")
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\(")
+  page_counts=collections.Counter()
+  addr_counts=collections.Counter()
+  page_functions={}
+  page_writes=collections.Counter()
+  current="(global)"
+  for n,line in enumerate(gen_lines,1):
+   fm=fn_start.search(line)
+   if fm: current=fm.group(1)
+   addrs=sorted(set(int(m.group(1),16) for m in ram_abs.finditer(line)))
+   for addr in addrs:
+    page=addr&0xFF00
+    page_counts[page]+=1
+    addr_counts[addr]+=1
+    page_functions.setdefault(page,collections.Counter())[current]+=1
+    if re.search(r"\bWR(?:8|16|32)\s*\(",line): page_writes[page]+=1
+  for page,count in page_counts.most_common(96):
+   tops=",".join(f"{fn}:{n}" for fn,n in page_functions[page].most_common(6))
+   emit(f"RAM_PAGE $FF{page:04X} refs={count} writes={page_writes[page]} top_functions={tops}")
+  emit("RAM_HOT_ABSOLUTE_ADDRESSES")
+  for addr,count in addr_counts.most_common(180):
+   emit(f"RAM_HOT $FF{addr:04X} refs={count}")
+
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
 print(report)
