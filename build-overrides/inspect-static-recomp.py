@@ -65,7 +65,7 @@ for rel in FILES:
   # These are the concrete call sites used by ordinary game/menu code.
   emit("GENERATED_SOUND_RELEVANT_FUNCTION_BODIES")
   target_names={"f_200","f_468","f_1D10","f_6C3E","f_76C","f_894","f_652","f_554",
-                 "f_D0000","f_D0008","f_D000C","f_D0018","f_D0102","f_D012A",
+                 "f_D0000","f_D0004","f_D0008","f_D000C","f_D0010","f_D0014","f_D0018","f_D0102","f_D012A",
                  "f_D0218","f_D070E","f_D09E6","f_D0F02","f_D0FA8"}
   for fi,(start,name) in enumerate(fn_starts):
    if name not in target_names:continue
@@ -386,6 +386,28 @@ if gen.exists():
     for j in range(max(0,i-8),min(len(src),i+10)):
      emit(f"  {j+1}: {src[j][:260]}")
     seen.add((i,0))
+
+# Expose exact runtime call-boundary semantics needed to invoke the original
+# ROM SFX API safely from a native UI event without modifying the emulated PC.
+for rel,needles in {
+ "runtime/m68k_rt.h":("RT_POLL","#define D(","#define A(","rt_budget","rt_irq_service"),
+ "runtime/harness.c":("static M68K *CPU","void rt_call_addr","void md_boot","void md_frame_hook","RT_POLL")
+}.items():
+ p=ROOT/rel
+ emit(f"[CRITICAL_RUNTIME_SNIPPETS {rel}]")
+ if not p.exists():
+  emit("MISSING")
+  continue
+ src=p.read_text(encoding="utf-8",errors="replace").splitlines()
+ spans=[]
+ for i,line in enumerate(src):
+  if any(n in line for n in needles):
+   a=max(0,i-5);b=min(len(src),i+16)
+   if any(a<y<b for y in spans):continue
+   spans.append((a,b))
+ for a,b in spans:
+  emit(f"RUNTIME_LINES {a+1}-{b}")
+  for q in range(a,b):emit(f"  {q+1}: {src[q][:360]}")
 
 report="\n".join(OUT)+"\n"
 Path("runtime-state-report.txt").write_text(report,encoding="utf-8")
