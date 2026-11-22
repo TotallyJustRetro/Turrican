@@ -53,7 +53,12 @@ static void native_menu_dump_snapshot(const char *scene) {
     char filename[96];
     snprintf(filename,sizeof filename,"menu-trace-%s-%02u.bin",scene,++native_menu_trace_index);
     FILE *f=fopen(filename,"wb");
-    if(!f)return;
+    if(!f) {
+        char message[256];
+        snprintf(message,sizeof message,"Could not create %s. Check that the game folder is writable.",filename);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican menu trace",message,NULL);
+        return;
+    }
     static const uint8_t magic[8]={'M','T','M','E','N','U','2',0};
     uint32_t dims[2]={(uint32_t)vdp.width,(uint32_t)vdp.height};
     uint32_t cpu_bytes=md_cpu_state_size();
@@ -72,6 +77,11 @@ static void native_menu_dump_snapshot(const char *scene) {
     if(ok)ok=fwrite(vdp.fb,sizeof vdp.fb,1,f)==1;
     if(fclose(f)!=0)ok=0;
     if(!ok)remove(filename);
+    char message[320];
+    if(ok)snprintf(message,sizeof message,"Saved %s\n\nThe file is beside MegaTurrican.exe. Zip the menu-trace-*.bin files and attach them here.",filename);
+    else snprintf(message,sizeof message,"Could not finish writing %s. Check free disk space and folder permissions.",filename);
+    SDL_ShowSimpleMessageBox(ok?SDL_MESSAGEBOX_INFORMATION:SDL_MESSAGEBOX_ERROR,
+                             "Mega Turrican menu trace",message,NULL);
 }
 
 static void native_custom_apply(void) {
@@ -520,7 +530,7 @@ def main() -> int:
     root=Path(sys.argv[1]).resolve()
     patch_harness(root)
     patch_sdl(root)
-    print("Installed Extras pages and F8 original-menu CPU/RAM/VRAM snapshots; removed fixed-position gold title/options labels.")
+    print("Installed Extras pages and F8 original-menu CPU/RAM/VRAM snapshots with visible save confirmation; removed fixed-position gold title/options labels.")
     return 0
 
 if __name__=="__main__":
