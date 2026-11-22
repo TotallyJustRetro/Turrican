@@ -1547,7 +1547,12 @@ confirm:
         "    case 14: render_native_area_map(); break;\n"
         "    case 15: render_native_suit_status(); break;\n"
         "    case 16: render_native_pause_options(); break;\n"
-        "    case 17: render_native_pause_confirm(); break;",
+        "    case 17: render_native_pause_confirm(); break;\n"
+        "    case 18: render_native_pause_video_settings(); break;\n"
+        "    case 19: render_native_pause_audio_settings(); break;\n"
+        "    case 20: render_native_pause_controller_setup(); break;\n"
+        "    case 21: render_native_pause_controls(); break;\n"
+        "    case 22: render_native_pause_achievements(); break;",
         "native Extras page render dispatch")
 
     s=once(s,"md_live_mask = (native_menu_state==0 && !native_menu_resume_guard) ? readpad() : 0;\n    native_menu_resume_guard=0;",
