@@ -55,7 +55,7 @@ static uint8_t native_pause_font_cache[43][32];
 static int native_pause_font_cache_valid=0;
 static void native_pause_font_capture(void);
 static int native_pause_confirm_action=0,native_pause_confirm_choice=1;
-static int native_pause_request_title=0,native_pause_skip_backdrop_restore=0;
+static int native_pause_request_title=0,native_pause_request_quit=0,native_pause_skip_backdrop_restore=0;
 static int native_pause_no_checkpoint=0;
 static int native_pause_control_config=0,native_pause_rapid_fire=0;
 static int native_pause_sound_track=-1;
@@ -1143,7 +1143,11 @@ static void proc_native_pause_confirm(SDL_Event *e) {
                 else native_pause_no_checkpoint=1;
             } else if(native_pause_confirm_action==1) {
                 native_pause_request_title=1;native_menu_state=0;
-            } else exit(0);
+            } else if(native_pause_confirm_action==2) {
+                native_pause_request_quit=1;native_menu_state=0;
+            } else {
+                native_pause_no_checkpoint=1;
+            }
         } else if(e->key.keysym.sym==SDLK_ESCAPE) {native_menu_state=1;native_menu_sel=1;}
     }
     if(e->type==SDL_CONTROLLERBUTTONDOWN) {
@@ -1159,7 +1163,11 @@ static void proc_native_pause_confirm(SDL_Event *e) {
                 else native_pause_no_checkpoint=1;
             } else if(native_pause_confirm_action==1) {
                 native_pause_request_title=1;native_menu_state=0;
-            } else exit(0);
+            } else if(native_pause_confirm_action==2) {
+                native_pause_request_quit=1;native_menu_state=0;
+            } else {
+                native_pause_no_checkpoint=1;
+            }
         } else if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B)
             {native_menu_state=1;native_menu_sel=1;}
     }
@@ -1190,17 +1198,21 @@ static void native_pause_page_back(int root_selection) {
     native_menu_sel=root_selection;
 }
 static void render_native_pause_video_settings(void) {
-    static const char *labels[]={"ASPECT","SHADER","SCANLINE STR","INTEGER SCALE","FULLSCREEN","SCANLINES","BACK"};
-    static const char *aspects[]={"4 3 BARS","NATIVE 10 7","STRETCH","WIDESCREEN"};
-    static const char *shaders[]={"BILINEAR","SCANLINES","COMPOSITE","BOTH"};
+    /* Follow the real native Video Options order. Scanlines are a shader mode,
+       not an independent toggle; Bilinear and Fullscreen are distinct rows. */
+    static const char *labels[]={"ASPECT","SHADER","SCANLINE STR","INTEGER SCALE","BILINEAR","FULLSCREEN","BACK"};
+    static const char *aspects[]={"4:3 BARS","NATIVE 10:7","STRETCH","WIDESCREEN"};
+    static const char *shaders[]={"OFF","SCANLINES","COMPOSITE","BOTH"};
     char value[32];
     native_pause_panel("VIDEO SETTINGS");
     for(int i=0;i<7;i++) {
-        if(i==6)snprintf(value,sizeof value,"");
-        else if(i==0)snprintf(value,sizeof value,"%s",aspects[native_pause_cfg_value(0)%4]);
-        else if(i==1)snprintf(value,sizeof value,"%s",shaders[native_pause_cfg_value(4)%4]);
-        else if(i==2)snprintf(value,sizeof value,"%d PCT",native_pause_cfg_value(0x24));
-        else snprintf(value,sizeof value,"%s",native_pause_cfg_value(i==3?0x08:i==4?0x0C:0x10)?"ON":"OFF");
+        if(i==0)snprintf(value,sizeof value,"%s",aspects[cfg.aspect&3]);
+        else if(i==1)snprintf(value,sizeof value,"%s",shaders[cfg.shader&3]);
+        else if(i==2)snprintf(value,sizeof value,"%d",cfg.scan_pct);
+        else if(i==3)snprintf(value,sizeof value,"%s",cfg.integer_scale?"ON":"OFF");
+        else if(i==4)snprintf(value,sizeof value,"%s",cfg.linear?"ON":"OFF");
+        else if(i==5)snprintf(value,sizeof value,"%s",cfg.fullscreen?"ON":"OFF");
+        else value[0]=0;
         native_pause_option_row(36+i*22,labels[i],value,i==native_menu_sel);
     }
     native_pause_draw_text(22,202,"LEFT RIGHT CHANGE  ENTER SELECT  ESC BACK",0xAAB8C7);
@@ -1237,8 +1249,8 @@ static void render_native_pause_audio_settings(void) {
     char value[32];
     native_pause_panel("AUDIO SETTINGS");
     for(int i=0;i<3;i++) {
-        if(i==0)snprintf(value,sizeof value,"%s",native_pause_cfg_value(0x18)?"ON":"OFF");
-        else if(i==1)snprintf(value,sizeof value,"%d PCT",native_pause_cfg_value(0x1C));
+        if(i==0)snprintf(value,sizeof value,"%s",cfg.audio?"ON":"OFF");
+        else if(i==1)snprintf(value,sizeof value,"%d",cfg.volume);
         else value[0]=0;
         native_pause_option_row(42+i*30,i==0?"AUDIO":i==1?"VOLUME":"BACK",value,i==native_menu_sel);
     }
@@ -1760,6 +1772,9 @@ confirm:
            "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,0);\n"
            "    native_menu_resume_guard=1;",
            "    native_pause_audio_pump();\n"
+           "    if(native_pause_request_quit) {\n"
+           "        native_pause_request_quit=0; exit(0);\n"
+           "    }\n"
            "    if(native_pause_request_title) {\n"
            "        native_pause_request_title=0;\n"
            "        if(md_save_slot_exists(5) && md_load_slot(5)) {\n"
