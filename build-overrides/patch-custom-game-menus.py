@@ -189,7 +189,7 @@ static void native_title_compose_frame(void) {
         for(int x=0;x<W;x++)row[x]=0;
     }
 
-    int blink_on=(native_title_blink_ticks%60u)<30u;
+    int blink_on=(native_title_blink_ticks%120u)<60u;
     if(!native_title_page_mode) {
         static const char *items[]={"START","OPTIONS","GAME OPTIONS","LEVEL BUILDER","CHEATS","SAVES"};
         for(int i=0;i<6;i++)
@@ -701,7 +701,7 @@ confirm:
             continue;
         }
 
-        if(native_menu_state==0 && reborn_title_scene_visible()) {
+        if(native_menu_state==0 && native_title_menu_scene_visible()) {
             if(native_title_page_mode) {
                 if(e.type==SDL_KEYDOWN && !e.key.repeat) {
                     switch(e.key.keysym.sym) {
@@ -816,7 +816,6 @@ confirm:
                             native_title_open_selected();
                             continue;
                         }
-                        break;
                         break; /* vanilla START/OPTIONS confirm stays with the cartridge */
                     case SDLK_ESCAPE:
                         if(native_title_menu_selection>=2) {
@@ -893,11 +892,11 @@ confirm:
         raise RuntimeError("Could not isolate md_frame_hook.")
     hook=s[hook_start:hook_end]
     if "native_title_compose_frame();" not in hook:
-        shade=re.search(r"(?m)^(\\s*)shade\\(\\s*w\\s*,\\s*h\\s*\\);",hook)
+        shade=re.search(r"(?m)^(\s*)shade\(\s*w\s*,\s*h\s*\);",hook)
         if not shade:
             raise RuntimeError("Could not locate the completed-frame shade call in md_frame_hook.")
         at=shade.start()
-        hook=hook[:at]+shade.group(1)+"native_title_compose_frame();\\n"+hook[at:]
+        hook=hook[:at]+shade.group(1)+"native_title_compose_frame();\n"+hook[at:]
         s=s[:hook_start]+hook+s[hook_end:]
 
     # Title-screen updates and first-run settings load run before md_live_mask.
