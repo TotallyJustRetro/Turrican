@@ -48,6 +48,7 @@ static int native_title_last_selection=-1, native_title_last_page=-1, native_tit
 static uint32_t native_title_options_backdrop[320*240];
 static int native_title_options_backdrop_valid=0;
 static unsigned int native_pause_anim_ticks=0;
+static int native_title_checkpoint_saved=0;
 static uint8_t native_pause_font_cache[43][32];
 static int native_pause_font_cache_valid=0;
 static void native_pause_font_capture(void);
@@ -60,6 +61,16 @@ static void native_pause_draw_text(int x,int y,const char *s,uint32_t color);
 static void native_pause_enter_confirm(int action);
 static void native_pause_audio_pump(void);
 static void native_pause_apply_control_config(void);
+static void native_title_menu_sfx(int confirm);
+static void render_native_pause_video_settings(void);
+static void render_native_pause_audio_settings(void);
+static void render_native_pause_controller_setup(void);
+static void render_native_pause_controls(void);
+static void render_native_pause_achievements(void);
+static void proc_native_pause_video_settings(SDL_Event *e);
+static void proc_native_pause_audio_settings(SDL_Event *e);
+static void proc_native_pause_controller_setup(SDL_Event *e);
+static void proc_native_pause_info_back(SDL_Event *e);
 static void native_custom_save_config(void);
 extern void md_set_ram_byte(uint32_t address,uint8_t value);
 extern void md_pause_fm_test_start(int track);
@@ -315,6 +326,10 @@ static void native_title_menu_update(void) {
         return;
     }
     native_pause_font_capture();
+    /* Keep a private, full-core checkpoint of the branded title screen. Returning
+       from gameplay can then restore the actual Mega Turrican Reborn title state
+       without running the reset vector and showing the SEGA boot logo again. */
+    if(!native_title_checkpoint_saved && md_save_slot(5))native_title_checkpoint_saved=1;
     if(!native_title_scene_active) {
         native_title_scene_active=1;
         native_title_menu_selection=0;
@@ -1147,6 +1162,183 @@ static void proc_native_pause_confirm(SDL_Event *e) {
 
 
 
+
+static int native_pause_cfg_value(int offset) {
+    int value=0;
+    memcpy(&value,((const uint8_t *)&cfg)+offset,sizeof value);
+    return value;
+}
+static void native_pause_option_row(int y,const char *label,const char *value,int selected) {
+    int W=vdp.width?vdp.width:320;
+    if(selected) {
+        native_menu_rect(18,y-2,W-36,17,0x72,0x12,0x68,190);
+        native_menu_rect(18,y-2,2,17,0xF0,0x26,0xD8,255);
+    }
+    native_pause_draw_text(26,y,label,selected?0xFFF0D0:0xC9D4E0);
+    int len=(int)strlen(value);
+    int vx=W-26-len*8;
+    if(vx<166)vx=166;
+    native_pause_draw_text(vx,y,value,selected?0xF4C6ED:0xAAB8C7);
+}
+static void native_pause_page_back(int root_selection) {
+    native_menu_state=1;
+    native_menu_sel=root_selection;
+}
+static void render_native_pause_video_settings(void) {
+    static const char *labels[]={"ASPECT","SHADER","SCANLINE STR","INTEGER SCALE","FULLSCREEN","SCANLINES","BACK"};
+    static const char *aspects[]={"4 3 BARS","NATIVE 10 7","STRETCH","WIDESCREEN"};
+    static const char *shaders[]={"BILINEAR","SCANLINES","COMPOSITE","BOTH"};
+    char value[32];
+    native_pause_panel("VIDEO SETTINGS");
+    for(int i=0;i<7;i++) {
+        if(i==6)snprintf(value,sizeof value,"");
+        else if(i==0)snprintf(value,sizeof value,"%s",aspects[native_pause_cfg_value(0)%4]);
+        else if(i==1)snprintf(value,sizeof value,"%s",shaders[native_pause_cfg_value(4)%4]);
+        else if(i==2)snprintf(value,sizeof value,"%d PCT",native_pause_cfg_value(0x24));
+        else snprintf(value,sizeof value,"%s",native_pause_cfg_value(i==3?0x08:i==4?0x0C:0x10)?"ON":"OFF");
+        native_pause_option_row(36+i*22,labels[i],value,i==native_menu_sel);
+    }
+    native_pause_draw_text(22,202,"LEFT RIGHT CHANGE  ENTER SELECT  ESC BACK",0xAAB8C7);
+}
+static void proc_native_pause_video_settings(SDL_Event *e) {
+    const int n=7;
+    if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
+        switch(e->key.keysym.sym) {
+        case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
+        case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
+        case SDLK_LEFT:if(native_menu_sel<6)adjust_video(native_menu_sel,-1);break;
+        case SDLK_RIGHT:if(native_menu_sel<6)adjust_video(native_menu_sel,1);break;
+        case SDLK_RETURN:case SDLK_x:
+            if(native_menu_sel==6)native_pause_page_back(1);
+            else adjust_video(native_menu_sel,1);
+            break;
+        case SDLK_ESCAPE:native_pause_page_back(1);break;
+        }
+    }
+    if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<6)adjust_video(native_menu_sel,-1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<6)adjust_video(native_menu_sel,1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
+            if(native_menu_sel==6)native_pause_page_back(1);
+            else adjust_video(native_menu_sel,1);
+        }
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)
+            native_pause_page_back(1);
+    }
+}
+static void render_native_pause_audio_settings(void) {
+    char value[32];
+    native_pause_panel("AUDIO SETTINGS");
+    for(int i=0;i<3;i++) {
+        if(i==0)snprintf(value,sizeof value,"%s",native_pause_cfg_value(0x18)?"ON":"OFF");
+        else if(i==1)snprintf(value,sizeof value,"%d PCT",native_pause_cfg_value(0x1C));
+        else value[0]=0;
+        native_pause_option_row(42+i*30,i==0?"AUDIO":i==1?"VOLUME":"BACK",value,i==native_menu_sel);
+    }
+    native_pause_draw_text(22,202,"LEFT RIGHT CHANGE  ENTER SELECT  ESC BACK",0xAAB8C7);
+}
+static void proc_native_pause_audio_settings(SDL_Event *e) {
+    const int n=3;
+    if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
+        switch(e->key.keysym.sym) {
+        case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
+        case SDLK_DOWN:native_menu_sel=(native_menu_sel+1)%n;break;
+        case SDLK_LEFT:if(native_menu_sel<2)adjust_audio(native_menu_sel,-1);break;
+        case SDLK_RIGHT:if(native_menu_sel<2)adjust_audio(native_menu_sel,1);break;
+        case SDLK_RETURN:case SDLK_x:
+            if(native_menu_sel==2)native_pause_page_back(2);
+            else adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+            break;
+        case SDLK_ESCAPE:native_pause_page_back(2);break;
+        }
+    }
+    if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_UP)native_menu_sel=(native_menu_sel+n-1)%n;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_DOWN)native_menu_sel=(native_menu_sel+1)%n;
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_LEFT&&native_menu_sel<2)adjust_audio(native_menu_sel,native_menu_sel==1?-5:-1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_DPAD_RIGHT&&native_menu_sel<2)adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_A) {
+            if(native_menu_sel==2)native_pause_page_back(2);
+            else adjust_audio(native_menu_sel,native_menu_sel==1?5:1);
+        }
+        if(e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_START)
+            native_pause_page_back(2);
+    }
+}
+static void render_native_pause_controller_setup(void) {
+    static const char *actions[]={"UP","DOWN","LEFT","RIGHT","FIRE A","JUMP B","ROPE C","START PAUSE"};
+    native_pause_panel("CONTROLLER SETUP");
+    for(int i=0;i<11;i++) {
+        char row[56];
+        if(i<8)snprintf(row,sizeof row,"%s  %s",actions[i],native_binding_name(pad_map[i]));
+        else if(i==8)snprintf(row,sizeof row,"DUALSENSE PROFILE WIP");
+        else if(i==9)snprintf(row,sizeof row,"RESTORE DEFAULTS");
+        else snprintf(row,sizeof row,"BACK");
+        int y=34+i*14;
+        if(i==native_menu_sel) {
+            native_menu_rect(18,y-2,(vdp.width?vdp.width:320)-36,13,0x72,0x12,0x68,190);
+            native_menu_rect(18,y-2,2,13,0xF0,0x26,0xD8,255);
+        }
+        native_pause_draw_text(26,y,row,i==native_menu_sel?0xFFF0D0:0xC9D4E0);
+    }
+    native_pause_draw_text(22,202,"LEFT RIGHT REBIND  A RESTORE  B BACK",0xAAB8C7);
+}
+static void proc_native_pause_controller_setup(SDL_Event *e) {
+    native_menu_state=7;
+    proc_native_controller_options(e);
+    if(native_menu_state==6)native_pause_page_back(3);
+    else if(native_menu_state==7)native_menu_state=20;
+}
+static void render_native_pause_controls(void) {
+    static const char *lines[]={"KEYBOARD","ARROWS MOVE","X FIRE","Z JUMP","C ROPE",
+        "ENTER START","ESC PAUSE","GAMEPAD","DPAD MOVE","CROSS JUMP",
+        "SQUARE FIRE","CIRCLE ROPE","OPTIONS PAUSE"};
+    native_pause_panel("CONTROLS");
+    for(int i=0;i<13;i++)
+        native_pause_draw_text(28,34+i*12,lines[i],i==0||i==7?0xEDB5E8:0xD5DFEA);
+    native_pause_draw_text(22,202,"ENTER OR B TO RETURN",0xAAB8C7);
+}
+static void render_native_pause_achievements(void) {
+    int count=(int)(sizeof achievements/sizeof achievements[0]);
+    int show=count>9?9:count,unlocked=0;
+    char header[40],row[64];
+    for(int i=0;i<count;i++)if(achievements[i].unlocked)unlocked++;
+    native_pause_panel("ACHIEVEMENTS");
+    snprintf(header,sizeof header,"%d OF %d UNLOCKED",unlocked,count);
+    native_pause_draw_text(24,34,header,0xE8C0E8);
+    for(int i=0;i<show;i++) {
+        snprintf(row,sizeof row,"%s %s",achievements[i].unlocked?"UNLOCKED":"LOCKED",achievements[i].name);
+        int y=51+i*15;
+        if(i==native_menu_sel) {
+            native_menu_rect(18,y-2,(vdp.width?vdp.width:320)-36,14,0x72,0x12,0x68,190);
+            native_menu_rect(18,y-2,2,14,0xF0,0x26,0xD8,255);
+        }
+        native_pause_draw_text(26,y,row,i==native_menu_sel?0xFFF0D0:0xC9D4E0);
+    }
+    native_pause_draw_text(22,202,"UP DOWN SELECT  B BACK",0xAAB8C7);
+}
+static void proc_native_pause_info_back(SDL_Event *e) {
+    if(e->type==SDL_KEYDOWN&&!e->key.repeat &&
+       (e->key.keysym.sym==SDLK_ESCAPE||e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_x))
+        native_pause_page_back(native_menu_state==21?4:5);
+    if(e->type==SDL_CONTROLLERBUTTONDOWN &&
+       (e->cbutton.button==SDL_CONTROLLER_BUTTON_B||e->cbutton.button==SDL_CONTROLLER_BUTTON_A||
+        e->cbutton.button==SDL_CONTROLLER_BUTTON_START))
+        native_pause_page_back(native_menu_state==21?4:5);
+}
+
+static void native_title_menu_sfx(int confirm) {
+    if(!adev)return;
+    int16_t samples[2400*2];
+    md_pause_fm_test_start(confirm?2:0);
+    md_pause_fm_test_render(samples,2400,2);
+    md_pause_fm_test_stop();
+    SDL_QueueAudio(adev,samples,(Uint32)sizeof samples);
+    SDL_PauseAudioDevice(adev,0);
+}
+
 static int native_pause_audio_active=0;
 static void native_pause_audio_pump(void) {
     int wanted=(native_menu_state==16 && native_pause_sound_track>=0 && adev!=0);
@@ -1245,18 +1437,17 @@ def patch_sdl(project: Path) -> None:
         int on=((native_pause_anim_ticks/12u+i*3u)&1u)!=0;
         native_menu_rect(x+w-32+i*6,y+9,4,4,on?0xF4:0x65,on?0x28:0x18,on?0xDA:0x47,255);
     }
-    /* Preserve the original pause-menu destinations: Options, Controls, and
-       Achievements. The Options root contains separate Video, Audio, and
-       Controller Setup pages. Reborn's new suit and sound-test pages follow. */
-    static const char *items[]={"RESUME MISSION","VIDEO AUDIO OPTIONS","CONTROLS",
-        "ACHIEVEMENTS","SUIT STATUS ARSENAL","OPTIONS SOUND TEST",
-        "ABORT RESTART STAGE","QUIT TO TITLE SCREEN","QUIT GAME"};
-    for(int i=0;i<9;i++) {
-        int iy=y+38+i*16;
+    /* Every destination opens inside this redesigned pause UI. The older
+       Options overlay is not used as a nested menu. */
+    static const char *items[]={"RESUME MISSION","VIDEO SETTINGS","AUDIO SETTINGS",
+        "CONTROLLER SETUP","CONTROLS","ACHIEVEMENTS","SUIT STATUS ARSENAL",
+        "OPTIONS SOUND TEST","ABORT RESTART STAGE","QUIT TO TITLE","QUIT GAME"};
+    for(int i=0;i<11;i++) {
+        int iy=y+36+i*14;
         if(i==native_menu_sel) {
-            native_menu_rect(x+10,iy-2,174,13,0x9C,0x0A,0x7B,190);
-            native_menu_rect(x+12,iy-1,170,11,0x24,0x0F,0x2C,245);
-            native_menu_rect(x+10,iy-2,2,13,0xF0,0x26,0xD8,255);
+            native_menu_rect(x+10,iy-2,174,12,0x9C,0x0A,0x7B,190);
+            native_menu_rect(x+12,iy-1,170,10,0x24,0x0F,0x2C,245);
+            native_menu_rect(x+10,iy-2,2,12,0xF0,0x26,0xD8,255);
         }
         native_pause_draw_text(x+20,iy,items[i],i==native_menu_sel?0xFFF0D0:0xC4CFDA);
     }
@@ -1280,7 +1471,7 @@ def patch_sdl(project: Path) -> None:
     s=replace_function(s,"static void render_native_pause_main(void)",pause_render,"pause menu Extras row")
 
     pause_proc=r'''static void proc_pause_main(SDL_Event *e) {
-    const int n=9;
+    const int n=11;
     if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
@@ -1299,14 +1490,16 @@ def patch_sdl(project: Path) -> None:
 confirm:
     switch(native_menu_sel) {
     case 0:native_menu_state=0;break;
-    case 1:native_menu_state=6;native_menu_sel=0;break; /* Video, Audio, Controller Setup */
-    case 2:native_menu_state=4;native_menu_sel=0;break; /* Original Controls page */
-    case 3:native_menu_state=5;native_menu_sel=0;break; /* Original Achievements page */
-    case 4:native_menu_state=15;native_menu_sel=0;break;
-    case 5:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
-    case 6:native_pause_enter_confirm(0);break;
-    case 7:native_pause_enter_confirm(1);break;
-    case 8:native_pause_enter_confirm(2);break;
+    case 1:native_menu_state=18;native_menu_sel=0;break; /* Video Settings */
+    case 2:native_menu_state=19;native_menu_sel=0;break; /* Audio Settings */
+    case 3:native_menu_state=20;native_menu_sel=0;break; /* Controller Setup */
+    case 4:native_menu_state=21;native_menu_sel=0;break; /* Controls */
+    case 5:native_menu_state=22;native_menu_sel=0;break; /* Achievements */
+    case 6:native_menu_state=15;native_menu_sel=0;break;
+    case 7:native_menu_state=16;native_menu_sel=0;native_pause_apply_control_config();break;
+    case 8:native_pause_enter_confirm(0);break;
+    case 9:native_pause_enter_confirm(1);break;
+    case 10:native_pause_enter_confirm(2);break;
     }
 }'''
     s=replace_function(s,"static void proc_pause_main(SDL_Event *e)",pause_proc,"pause menu Extras action")
