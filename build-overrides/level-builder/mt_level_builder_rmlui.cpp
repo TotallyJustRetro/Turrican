@@ -1006,6 +1006,54 @@ extern "C" int mtlbr_is_active(void)
     return g_context != nullptr;
 }
 
+static void draw_asset_shelf_previews(SDL_Renderer *renderer)
+{
+    if (!renderer || !g_document) return;
+    static std::vector<SDL_Vertex> vertices;
+    static std::vector<int> indices;
+    vertices.clear();
+    indices.clear();
+
+    const int total=mtlb_editor_tile_count();
+    const int visible=std::min(20,std::max(0,total-g_asset_shelf_offset));
+    for(int n=0;n<visible;n++){
+        const int index=g_asset_shelf_offset+n;
+        char id[40];
+        std::snprintf(id,sizeof(id),"asset-tile-%d",index);
+        Rml::Element *button=g_document->GetElementById(id);
+        if(!button || button->GetNumChildren()==0) continue;
+        Rml::Element *thumb=button->GetChild(0);
+        if(!thumb) continue;
+        const Rml::Vector2f origin=thumb->GetAbsoluteOffset();
+        const float width=thumb->GetClientWidth();
+        const float height=thumb->GetClientHeight();
+        if(width<4.0f || height<4.0f) continue;
+
+        const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
+        const float pixel_w=width/8.0f;
+        const float pixel_h=height/8.0f;
+        for(int py=0;py<8;py++) for(int px=0;px<8;px++){
+            uint8_t rgba[4];
+            mtlb_editor_tile_rgba(entry,px,py,rgba);
+            if(rgba[3]==0) continue;
+            const int base=(int)vertices.size();
+            const SDL_Color color={rgba[0],rgba[1],rgba[2],rgba[3]};
+            SDL_Vertex v{};
+            v.color=color;
+            v.tex_coord=SDL_FPoint{0.0f,0.0f};
+            v.position=SDL_FPoint{origin.x+px*pixel_w,origin.y+py*pixel_h};vertices.push_back(v);
+            v.position=SDL_FPoint{origin.x+(px+1)*pixel_w,origin.y+py*pixel_h};vertices.push_back(v);
+            v.position=SDL_FPoint{origin.x+(px+1)*pixel_w,origin.y+(py+1)*pixel_h};vertices.push_back(v);
+            v.position=SDL_FPoint{origin.x+px*pixel_w,origin.y+(py+1)*pixel_h};vertices.push_back(v);
+            indices.insert(indices.end(),{base,base+1,base+2,base,base+2,base+3});
+        }
+    }
+    if(indices.empty()) return;
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+}
+
 extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height)
 {
     if (!g_context || !g_document || !renderer || renderer != g_renderer || view_width <= 0 || view_height <= 0)
@@ -1039,6 +1087,7 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     g_context->Render();
     const Uint64 render_end = SDL_GetPerformanceCounter();
     draw_stage_grid(renderer);
+    draw_asset_shelf_previews(renderer);
     const Uint64 grid_end = SDL_GetPerformanceCounter();
 
     const double ticks_to_ms = 1000.0 / (double)SDL_GetPerformanceFrequency();
