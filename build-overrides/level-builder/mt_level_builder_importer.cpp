@@ -31,7 +31,7 @@ struct ImportedModel {
     uint32_t triangles = 0;
     uint32_t bones = 0;
     float bounds[3] = {0,0,0};
-    int classification = 1;
+    int classification = 0;
     int preview_vertices = 0;
     std::array<float, kPreviewTriangles * 9> preview_xyz = {};
 };
