@@ -177,12 +177,12 @@ static std::string make_stage_cells()
     std::string markup;
     markup.reserve((size_t)g_map_cols * (size_t)g_map_rows * 128u);
     for (int y = 0; y < g_map_rows; ++y) {
-        markup += "<div class=\\"stage-row\\">";
+        markup += "<div class='stage-row'>";
         for (int x = 0; x < g_map_cols; ++x) {
             const int tile = mtlb_map_get(x, y);
             char cell[160];
             std::snprintf(cell, sizeof(cell),
-                "<div id=\\"cell-%d-%d\\" class=\\"cell%s\\" data-action=\\"paint\\" data-cell=\\"%d\\"></div>",
+                "<div id='cell-%d-%d' class='cell%s' data-action='paint' data-cell='%d'></div>",
                 x, y, tile != 0 ? " filled" : "", y * g_map_cols + x);
             markup += cell;
         }
