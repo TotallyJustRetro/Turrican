@@ -263,7 +263,7 @@ static bool maker_save_sprite_categories()
     bool ok=true;
     for(int i=0;i<g_rom_sprite_asset_count;i++){
         if(g_rom_sprite_categories[i]==0)continue;
-        if(std::fprintf(file,"%08X=%u\\n",g_rom_sprite_assets[i].descriptor_pc,
+        if(std::fprintf(file,"%08X=%u\n",g_rom_sprite_assets[i].descriptor_pc,
             (unsigned)g_rom_sprite_categories[i])<0){ok=false;break;}
     }
     if(std::fclose(file)!=0)ok=false;
