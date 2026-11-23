@@ -66,12 +66,12 @@ static const char *kDocument = R"RML(
     .panel-heading { height: 30px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #2b3d50; color: #e4edf5; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
     .panel-kicker { flex-grow: 1; color: #748ba1; font-size: 9px; font-weight: normal; text-align: right; }
     .stage-panel { flex-grow: 1; padding: 8px; }
-    .stage-screen { width: 100%; height: 100%; min-height: 282px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
+    .stage-screen { width: 100%; height: 100%; min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
     .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 9px; }
     .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
-    .stage-grid { width: 448px; height: 224px; overflow: hidden; display: flex; flex-direction: column; background-color: #142638; }
-    .stage-row { width: 448px; height: 7px; min-height: 7px; display: flex; flex-direction: row; }
-    .cell { display: block; flex: 0 0 7px; width: 7px; height: 7px; min-width: 7px; margin: 0; padding: 0; background-color: #182d41; border-right: 1px solid #2c465f; border-bottom: 1px solid #2c465f; }
+    .stage-grid { width: 768px; height: 384px; overflow: hidden; display: flex; flex-direction: column; background-color: #142638; }
+    .stage-row { width: 768px; height: 12px; min-height: 12px; display: flex; flex-direction: row; }
+    .cell { display: block; flex: 0 0 12px; width: 12px; height: 12px; min-width: 12px; margin: 0; padding: 0; background-color: #182d41; border-right: 1px solid #2c465f; border-bottom: 1px solid #2c465f; }
     .cell:hover { background-color: #e5ad57; }
     .cell.filled { background-color: #628b77; }
     .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 9px; }
