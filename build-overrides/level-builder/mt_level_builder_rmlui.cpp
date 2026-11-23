@@ -25,10 +25,9 @@
 #endif
 
 namespace {
-class MakerSystemInterface;
 static SDL_Window *g_window = nullptr;
 static SDL_Renderer *g_renderer = nullptr;
-static MakerSystemInterface *g_system = nullptr;
+static SystemInterface_SDL *g_system = nullptr;
 static RenderInterface_SDL *g_render = nullptr;
 static Rml::Context *g_context = nullptr;
 static Rml::ElementDocument *g_document = nullptr;
@@ -139,8 +138,43 @@ static const std::string &maker_portable_root()
     return g_portable_root;
 }
 
+
+static std::FILE *g_log_file = nullptr;
+
+static void maker_prepare_log()
+{
+    if (g_log_file) return;
+    const std::string &root = maker_portable_root();
+    g_log_path = root + "/maker-rmlui.log";
+    g_log_file = std::fopen(g_log_path.c_str(), "ab");
+    if (g_log_file) std::setvbuf(g_log_file, nullptr, _IOLBF, 0);
+}
+
+static void maker_log(const char *format, ...)
+{
+    if (!g_log_file) maker_prepare_log();
+    if (!g_log_file || !format) return;
+    va_list args;
+    va_start(args, format);
+    std::vfprintf(g_log_file, format, args);
+    va_end(args);
+    std::fputc('\n', g_log_file);
+    std::fflush(g_log_file);
+}
+
+static int maker_fail(const char *message)
+{
+    const char *detail = message ? message : "Unknown Maker initialization error.";
+    std::snprintf(g_last_error, sizeof(g_last_error), "%s", detail);
+    maker_log("ERROR: %s", detail);
+    return 0;
+}
+
 static void set_status(const char *message);
 static void maker_refresh_asset_shelf();
+static void maker_log(const char *format, ...);
+static void maker_prepare_log();
+static int maker_fail(const char *message);
 
 static std::string maker_choose_file(bool texture)
 {
@@ -250,7 +284,6 @@ static void maker_open_texture_importer()
     const std::string path=maker_choose_file(true);
     if(!path.empty())maker_import_texture_file(path.c_str());
 }
-static void maker_log(const char *format, ...);
 static void maker_refresh_sprite_lists()
 {
     if(!g_document)return;
@@ -296,324 +329,6 @@ static void maker_refresh_imported_asset_lists()
     static const char *ids[]={"asset-list-3d-tiles","asset-list-stage","asset-list-items","asset-list-3d-enemies","asset-list-3d-bosses"};
     for(int i=0;i<5;i++){
         if(Rml::Element *list=g_document->GetElementById(ids[i]))list->SetInnerRML(lists[i]);
-    }
-}
-
-static void maker_refresh_asset_shelf()
-{
-    if(!g_document)return;
-    const int count=mtlb_editor_tile_count();
-    const uint32_t page_key=(uint32_t)(g_asset_shelf_offset+1);
-    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=page_key){
-        g_asset_shelf_count=count;
-        g_asset_shelf_hash=page_key;
-        std::string markup;
-        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
-        for(int i=0;i<visible;i++){
-            const int index=g_asset_shelf_offset+i;
-            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
-            char card[420];
-            std::snprintf(card,sizeof(card),
-                "<div id='asset-tile-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb'></div><div>$%03X</div><div class='asset-tag'>2D</div></div>",
-                index,entry==g_brush_tile?"selected":"",index,entry&0x07FF);
-            markup+=card;
-        }
-        if(count==0)markup="<div class='folder-subheading'>Waiting for cartridge VDP tiles and ROM tile banks.</div>";
-        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items"))shelf->SetInnerRML(markup);
-    }
-    maker_refresh_sprite_lists();
-    maker_refresh_imported_asset_lists();
-}
-
-static void set_status(const char *message);
-
-static void append_stage_quad(float x0, float y0, float x1, float y1, SDL_Color color)
-{
-    const int base = (int)g_stage_vertices.size();
-    SDL_Vertex v{};
-    v.color = color;
-    v.tex_coord = SDL_FPoint{0.0f, 0.0f};
-    v.position = SDL_FPoint{x0, y0}; g_stage_vertices.push_back(v);
-    v.position = SDL_FPoint{x1, y0}; g_stage_vertices.push_back(v);
-    v.position = SDL_FPoint{x1, y1}; g_stage_vertices.push_back(v);
-    v.position = SDL_FPoint{x0, y1}; g_stage_vertices.push_back(v);
-    g_stage_indices.insert(g_stage_indices.end(), {base, base+1, base+2, base, base+2, base+3});
-}
-
-static void draw_stage_grid(SDL_Renderer *renderer)
-{
-    if (!renderer || !g_stage_grid || g_map_cols <= 0 || g_map_rows <= 0) return;
-    const Rml::Vector2f origin = g_stage_grid->GetAbsoluteOffset();
-    const float width = g_stage_grid->GetClientWidth();
-    const float height = g_stage_grid->GetClientHeight();
-    if (width < 2.0f || height < 2.0f) return;
-
-    const bool viewport_changed = origin.x != g_stage_batch_x || origin.y != g_stage_batch_y ||
-        width != g_stage_batch_w || height != g_stage_batch_h;
-    if (viewport_changed) g_stage_batch_dirty = true;
-
-    if (g_stage_batch_dirty) {
-        g_stage_vertices.clear();
-        g_stage_indices.clear();
-        const size_t quads=(size_t)g_map_cols*(size_t)g_map_rows+(size_t)g_map_cols+(size_t)g_map_rows+2u;
-        if(g_stage_vertices.capacity()<quads*4u)g_stage_vertices.reserve(quads*4u);
-        if(g_stage_indices.capacity()<quads*6u)g_stage_indices.reserve(quads*6u);
-
-        static const SDL_Color palette[8]={
-            {104,145,125,255},{112,151,185,255},{196,132,77,255},{135,119,184,255},
-            {167,166,119,255},{77,151,157,255},{181,103,111,255},{103,124,155,255}
-        };
-        const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
-        for(int y=0;y<g_map_rows;y++)for(int x=0;x<g_map_cols;x++){
-            const int tile=mtlb_map_get(x,y);
-            if(tile==0)continue;
-            const int ci=(tile>=176&&tile<=183)?tile-176:(tile&7);
-            append_stage_quad(origin.x+x*cell_w+1.0f,origin.y+y*cell_h+1.0f,
-                origin.x+(x+1)*cell_w-1.0f,origin.y+(y+1)*cell_h-1.0f,palette[ci]);
-        }
-        if(g_maker_show_grid){
-            const SDL_Color grid={43,65,83,255};
-            for(int x=0;x<=g_map_cols;x++){
-                const float px=origin.x+x*cell_w;
-                append_stage_quad(px,origin.y,px+1.0f,origin.y+height,grid);
-            }
-            for(int y=0;y<=g_map_rows;y++){
-                const float py=origin.y+y*cell_h;
-                append_stage_quad(origin.x,py,origin.x+width,py+1.0f,grid);
-            }
-        }
-        g_stage_batch_x=origin.x;g_stage_batch_y=origin.y;
-        g_stage_batch_w=width;g_stage_batch_h=height;
-        g_stage_batch_dirty=false;
-    }
-    if(g_stage_indices.empty())return;
-    SDL_Rect clip{(int)std::floor(origin.x),(int)std::floor(origin.y),
-        (int)std::ceil(width),(int)std::ceil(height)};
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    SDL_RenderSetClipRect(renderer,&clip);
-    SDL_RenderGeometry(renderer,nullptr,g_stage_vertices.data(),(int)g_stage_vertices.size(),
-        g_stage_indices.data(),(int)g_stage_indices.size());
-    SDL_RenderSetClipRect(renderer,nullptr);
-}
-
-static void paint_stage_at(int mouse_x, int mouse_y, int tile)
-{
-    if (!g_stage_grid || g_map_cols <= 0 || g_map_rows <= 0) return;
-    const Rml::Vector2f origin = g_stage_grid->GetAbsoluteOffset();
-    const float width = g_stage_grid->GetClientWidth();
-    const float height = g_stage_grid->GetClientHeight();
-    if (mouse_x < origin.x || mouse_y < origin.y || mouse_x >= origin.x + width ||
-        mouse_y >= origin.y + height || width <= 0.0f || height <= 0.0f) {
-        g_last_painted_x = g_last_painted_y = -1;
-        return;
-    }
-    const int x = std::min(g_map_cols-1, (int)((mouse_x-origin.x)*g_map_cols/width));
-    const int y = std::min(g_map_rows-1, (int)((mouse_y-origin.y)*g_map_rows/height));
-    g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);
-    if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}
-    if (x == g_last_painted_x && y == g_last_painted_y && tile == g_drag_tile) return;
-    g_last_painted_x = x; g_last_painted_y = y; g_drag_tile = tile;
-    if(!g_undo_pushed_for_stroke){mtlb_editor_push_undo();g_undo_pushed_for_stroke=true;}
-    mtlb_map_set(x, y, tile);
-    g_stage_batch_dirty = true;
-    char message[96];
-    std::snprintf(message, sizeof(message), "%s cell %d, %d with tile $%04X.",
-        tile == 0 ? "Erased" : "Painted", x, y, tile);
-    set_status(message);
-}
-
-
-static void maker_save_settings()
-{
-    const std::string root = maker_portable_root();
-    const std::string path = (root == "." || root.back() == '/' || root.back() == '\\')
-        ? root + "maker-settings.ini" : root + "/maker-settings.ini";
-    FILE *file = std::fopen(path.c_str(), "wb");
-    if (!file) {
-        maker_log("Could not save editor settings to %s.", path.c_str());
-        return;
-    }
-    std::fprintf(file,
-        "mode=%d\ntool=%d\nlayer=%d\npalette=%d\ncanvas=%d\nmodern=%d\ngrid=%d\nsnap=%d\ncollision=%d\nlight_type=%d\nlight_color=%08X\nlight_radius=%.2f\nlight_intensity=%.3f\nfx_bloom=%d\nfx_rim=%d\nfx_cel=%d\nfx_fog=%d\nfx_crt=%d\n",
-        g_maker_mode,g_maker_tool,g_maker_layer,g_maker_palette,g_maker_canvas_size,
-        g_maker_modern?1:0,g_maker_show_grid?1:0,g_maker_snap?1:0,g_maker_collision?1:0,
-        g_light_type,g_light_color,g_light_radius,g_light_intensity,g_fx_bloom?1:0,g_fx_rim?1:0,
-        g_fx_cel?1:0,g_fx_fog?1:0,g_fx_crt?1:0);
-    for (int i=0;i<5;i++) std::fprintf(file,"layer%d=%d\n",i,g_maker_layers[i]?1:0);
-    std::fclose(file);
-    maker_log("Saved portable Maker settings to %s.",path.c_str());
-}
-
-static void maker_load_settings()
-{
-    const std::string root = maker_portable_root();
-    const std::string path = (root == "." || root.back() == '/' || root.back() == '\\')
-        ? root + "maker-settings.ini" : root + "/maker-settings.ini";
-    FILE *file=std::fopen(path.c_str(),"rb");
-    if(!file) return;
-    char line[128];
-    while(std::fgets(line,sizeof(line),file)){
-        int value=0;
-        if(std::sscanf(line,"mode=%d",&value)==1) g_maker_mode=std::max(0,std::min(MAKER_MODE_COUNT-1,value));
-        else if(std::sscanf(line,"tool=%d",&value)==1) g_maker_tool=std::max(0,std::min(8,value));
-        else if(std::sscanf(line,"layer=%d",&value)==1) g_maker_layer=std::max(0,std::min(4,value));
-        else if(std::sscanf(line,"palette=%d",&value)==1) g_maker_palette=std::max(0,std::min(3,value));
-        else if(std::sscanf(line,"canvas=%d",&value)==1) g_maker_canvas_size=(value==32)?32:16;
-        else if(std::sscanf(line,"modern=%d",&value)==1) g_maker_modern=value!=0;
-        else if(std::sscanf(line,"grid=%d",&value)==1) g_maker_show_grid=value!=0;
-        else if(std::sscanf(line,"snap=%d",&value)==1) g_maker_snap=value!=0;
-        else if(std::sscanf(line,"collision=%d",&value)==1) g_maker_collision=value!=0;
-        else if(std::sscanf(line,"light_type=%d",&value)==1)g_light_type=std::max(0,std::min(2,value));
-        else if(std::sscanf(line,"light_color=%x",&value)==1)g_light_color=(uint32_t)value;
-        else if(std::sscanf(line,"light_radius=%f",&g_light_radius)==1){}
-        else if(std::sscanf(line,"light_intensity=%f",&g_light_intensity)==1){}
-        else if(std::sscanf(line,"fx_bloom=%d",&value)==1)g_fx_bloom=value!=0;
-        else if(std::sscanf(line,"fx_rim=%d",&value)==1)g_fx_rim=value!=0;
-        else if(std::sscanf(line,"fx_cel=%d",&value)==1)g_fx_cel=value!=0;
-        else if(std::sscanf(line,"fx_fog=%d",&value)==1)g_fx_fog=value!=0;
-        else if(std::sscanf(line,"fx_crt=%d",&value)==1)g_fx_crt=value!=0;
-        else for(int i=0;i<5;i++){
-            char key[16];std::snprintf(key,sizeof(key),"layer%d=%%d",i);
-            if(std::sscanf(line,key,&value)==1) g_maker_layers[i]=value!=0;
-        }
-    }
-    std::fclose(file);
-    maker_log("Loaded portable Maker settings from %s.",path.c_str());
-}
-
-static const char *maker_mode_name(int mode)
-{
-    static const char *names[MAKER_MODE_COUNT]={"TILES","OBJECTS","EVENT SCRIPT","ASSET STUDIO","BOSS FORGE","BACKGROUNDS"};
-    return names[std::max(0,std::min(MAKER_MODE_COUNT-1,mode))];
-}
-
-static const char *maker_tool_list(int mode)
-{
-    switch(mode){
-    case MAKER_OBJECTS:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT OBJECT</div>"
-               "<div class='tool-button' data-action='tool' data-tool='1'>PLACE ENEMY</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>PLACE PICKUP</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>PLAYER START</div>"
-               "<div class='tool-button' data-action='tool' data-tool='4'>PATROL PATH</div>"
-               "<div class='tool-button' data-action='tool' data-tool='7'>DELETE OBJECT</div>";
-    case MAKER_EVENTS:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT NODE</div>"
-               "<div class='tool-button' data-action='tool' data-tool='1'>WHEN / TRIGGER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>IF / CONDITION</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>ACTION BLOCK</div>"
-               "<div class='tool-button' data-action='tool' data-tool='4'>DIALOGUE</div>"
-               "<div class='tool-button' data-action='tool' data-tool='5'>CONNECT WIRE</div>";
-    case MAKER_ASSETS:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>PENCIL</div>"
-               "<div class='tool-button' data-action='tool' data-tool='7'>ERASER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>FILL</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>EYEDROPPER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='8'>SELECTION</div>";
-    case MAKER_BOSS:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>ADD BODY PART</div>"
-               "<div class='tool-button' data-action='tool' data-tool='1'>MOVE PIVOT</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>WEAKPOINT</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>ATTACK PATTERN</div>"
-               "<div class='tool-button' data-action='tool' data-tool='4'>PHASE TRANSITION</div>"
-               "<div class='tool-button' data-action='tool' data-tool='5'>ANIMATION TRACK</div>";
-    case MAKER_BACKGROUNDS:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT LAYER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='1'>ADD PARALLAX LAYER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>RASTER WAVE</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>ANIMATED TILES</div>";
-    default:
-        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT</div>"
-               "<div class='tool-button' data-action='tool' data-tool='1'>TILE BRUSH</div>"
-               "<div class='tool-button' data-action='tool' data-tool='7'>ERASER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='2'>COLLISION PAINTER</div>"
-               "<div class='tool-button' data-action='tool' data-tool='3'>GRAPPLE ANCHOR</div>"
-               "<div class='tool-button' data-action='tool' data-tool='4'>TRIGGER BOX</div>";
-    }
-}
-
-static void maker_update_mode_ui()
-{
-    if(!g_document)return;
-    for(int i=0;i<5;i++){
-        char id[32];std::snprintf(id,sizeof(id),"mode-%d",i);
-        if(Rml::Element *tab=g_document->GetElementById(id))tab->SetClass("active",i==g_maker_mode);
-    }
-    static const char *tool_names[]={"select","brush","fill","slope","rope","trigger","light","erase"};
-    const int tool_index=std::max(0,std::min(7,g_maker_tool));
-    g_selected_tool=tool_names[tool_index];
-    for(int i=0;i<8;i++){
-        char id[32];std::snprintf(id,sizeof(id),"tool-%d",i);
-        if(Rml::Element *tool=g_document->GetElementById(id))tool->SetClass("active",i==tool_index);
-    }
-
-    static const char *tab_names[]={"tiles","entity","script","assets","boss","assets"};
-    g_active_tab=tab_names[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))];
-    g_global_mode=g_maker_modern?"MODERN REBORN":"VANILLA 1994";
-    if(Rml::Element *label=g_document->GetElementById("global-mode-label"))
-        label->SetInnerRML(g_global_mode);
-    if(Rml::Element *button=g_document->GetElementById("global-mode-button"))
-        button->SetClass("active",g_maker_modern);
-    if(Rml::Element *resolution=g_document->GetElementById("stage-resolution"))
-        resolution->SetInnerRML(g_maker_modern?"MODERN 16:9 / 2.5D":"VANILLA 320 × 224 / 16-BIT");
-    if(Rml::Element *stage=g_document->GetElementById("stage-viewport")){
-        if(g_maker_modern){
-            stage->SetProperty("width","100%");
-            stage->SetProperty("height","100%");
-            stage->SetProperty("flex-grow","1");
-            stage->SetProperty("align-self","stretch");
-        }else{
-            stage->SetProperty("width","320px");
-            stage->SetProperty("height","224px");
-            stage->SetProperty("flex-grow","0");
-            stage->SetProperty("align-self","center");
-        }
-    }
-    if(Rml::Element *locked=g_document->GetElementById("vanilla-lock-note"))
-        locked->SetClass("hidden",g_maker_modern);
-
-    static const char *hints[MAKER_MODE_COUNT]={
-        "ROM TILES / Drag a tile card onto the stage, or use BRUSH to paint. Right-click erases.",
-        "ENTITY PLACEMENT / Drag a 2D sprite or 3D model onto the stage. Snap and collision are in Properties.",
-        "EVENT SCRIPT / Add trigger, condition, action and dialogue nodes to the bottom flow strip.",
-        "ASSET STUDIO / Import GLB, GLTF, OBJ, FBX models and PNG/TGA textures into the portable project.",
-        "BOSS FORGE / Drag a multipart sprite or articulated 3D model, then configure phases and weakpoints.",
-        "BACKGROUND / Select a depth layer and configure parallax, raster and background props."
-    };
-    if(Rml::Element *hint=g_document->GetElementById("stage-hint"))
-        hint->SetInnerRML(hints[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))]);
-
-    if(g_model_handle){
-        g_model_handle.DirtyVariable("global_mode");
-        g_model_handle.DirtyVariable("selected_tool");
-        g_model_handle.DirtyVariable("active_tab");
-        g_model_handle.DirtyVariable("selected_entity");
-    }
-    g_stage_batch_dirty=true;
-}
-
-static void maker_refresh_asset_shelf()
-{
-    if(!g_document) return;
-    const int count=mtlb_editor_tile_count();
-    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=(uint32_t)(g_asset_shelf_offset+1)){
-        g_asset_shelf_count=count;
-        g_asset_shelf_hash=(uint32_t)(g_asset_shelf_offset+1);
-        std::string markup;
-        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
-        for(int i=0;i<visible;i++){
-            const int index=g_asset_shelf_offset+i;
-            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
-            char button[220];
-            std::snprintf(button,sizeof(button),"<div id='asset-tile-%d' class='asset-tile %s' data-action='asset-brush' data-index='%d'><div class='asset-thumb'></div>$%03X</div>",index,entry==g_brush_tile?"active":"",index,entry&0x07FF);
-            markup+=button;
-        }
-        if(count==0) markup="<div class='inspector-copy'>Waiting for cartridge VRAM and ROM assets. Start the game and open Maker after the title screen.</div>";
-        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items")) shelf->SetInnerRML(markup);
-        if(Rml::Element *label=g_document->GetElementById("asset-count")){
-            char summary[96];std::snprintf(summary,sizeof(summary),"%d TILES / %d VISIBLE / PAGE %d",count,visible,g_asset_shelf_offset/20+1);
-            label->SetInnerRML(summary);
-        }
     }
 }
 
@@ -744,7 +459,7 @@ public:
                 mtlb_imported_model_classify(g_pending_model_asset,classification);
                 g_selected_model_asset=g_pending_model_asset;
                 g_pending_model_asset=-1;
-                maker_update_imported_asset_lists();
+                maker_refresh_imported_asset_lists();
                 maker_update_imported_model_panel(g_selected_model_asset);
                 maker_set_modal("model-import-modal",false);
                 set_status("3D model inspected, classified and registered in the portable Assets/Imported folder.");
@@ -991,7 +706,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     if (g_map_cols <= 0 || g_map_rows <= 0)
         return maker_fail("The shared Maker map model returned invalid dimensions.");
 
-    g_system = new MakerSystemInterface(window);
+    g_system = new SystemInterface_SDL(window);
     g_render = new RenderInterface_SDL(renderer);
     Rml::SetSystemInterface(g_system);
     Rml::SetRenderInterface(g_render);
@@ -1118,6 +833,8 @@ extern "C" void mtlbr_shutdown(void)
     g_window = nullptr;
     g_renderer = nullptr;
     g_exit_requested = false;
+    maker_log("RmlUi Maker shutdown complete.");
+    if (g_log_file) { std::fclose(g_log_file); g_log_file = nullptr; }
 }
 
 static Rml::Element *maker_find_asset_card(Rml::Element *element)
@@ -1412,8 +1129,8 @@ static void draw_stage_entities(SDL_Renderer *renderer)
     for(int i=0;i<mtlb_editor_entity_count();i++){
         float x=0,y=0;int type=0,hp=0,w=0,h=0;uint16_t attr=0;
         if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&attr,&w,&h))continue;
-        const float sprite_w=std::max(1,w*8.0f*cell_w/8.0f);
-        const float sprite_h=std::max(1,h*8.0f*cell_h/8.0f);
+        const float sprite_w=std::max(1.0f,w*cell_w);
+        const float sprite_h=std::max(1.0f,h*cell_h);
         append_rom_sprite_part(vertices,indices,origin.x+x*width-sprite_w*0.5f,
             origin.y+y*height-sprite_h*0.5f,sprite_w,sprite_h,w,h,attr);
     }
