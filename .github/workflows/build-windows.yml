@@ -323,71 +323,14 @@ jobs:
         run: |
           $zipPath = Join-Path $PWD 'MegaTurrican-Windows-x64.zip'
           if (-not (Test-Path $zipPath)) { throw 'Windows package ZIP was not created.' }
-          $entries = tar -tf $zipPath
+          $entries = @(tar -tf $zipPath)
           if ($LASTEXITCODE -ne 0) { throw 'Could not verify Windows package ZIP.' }
-          if (-not ($entries | Where-Object { $_ -match 'MegaTurricanLauncher.*\.exe$' })) { throw 'Portable launcher EXE is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -match 'MegaTurrican\.exe
-          $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
-
-      - name: Upload ready-to-run Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: MegaTurrican-Windows-x64
-          path: MegaTurrican-Windows-x64.zip
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish downloadable GitHub release
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $tag = "windows-build-$env:GITHUB_RUN_NUMBER"
-          gh release create $tag (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') --title "Mega Turrican Windows x64 - build $env:GITHUB_RUN_NUMBER" --notes "Portable Windows x64 build. Extract the ZIP, run MegaTurricanLauncher, and select your own Mega Drive ROM. No ROM is included." --prerelease })) { throw 'Native game EXE is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -match 'SDL2\.dll
-          $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
-
-      - name: Upload ready-to-run Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: MegaTurrican-Windows-x64
-          path: MegaTurrican-Windows-x64.zip
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish downloadable GitHub release
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $tag = "windows-build-$env:GITHUB_RUN_NUMBER"
-          gh release create $tag (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') --title "Mega Turrican Windows x64 - build $env:GITHUB_RUN_NUMBER" --notes "Portable Windows x64 build. Extract the ZIP, run MegaTurricanLauncher, and select your own Mega Drive ROM. No ROM is included." --prerelease })) { throw 'SDL2 compatibility runtime is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -match 'SDL3\.dll
-          $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
-
-      - name: Upload ready-to-run Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: MegaTurrican-Windows-x64
-          path: MegaTurrican-Windows-x64.zip
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish downloadable GitHub release
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $tag = "windows-build-$env:GITHUB_RUN_NUMBER"
-          gh release create $tag (Join-Path $PWD 'MegaTurrican-Windows-x64.zip') --title "Mega Turrican Windows x64 - build $env:GITHUB_RUN_NUMBER" --notes "Portable Windows x64 build. Extract the ZIP, run MegaTurricanLauncher, and select your own Mega Drive ROM. No ROM is included." --prerelease })) { throw 'SDL3 runtime required by SDL2-compat is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*MegaTurricanLauncher*.exe' })) { throw 'Portable launcher EXE is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*MegaTurrican.exe' })) { throw 'Native game EXE is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*SDL2.dll' })) { throw 'SDL2 compatibility runtime is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*SDL3.dll' })) { throw 'SDL3 runtime required by SDL2-compat is missing from the package.' }
           Write-Host 'Verified EXEs and SDL runtimes in Windows package:'
-          $entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { Write-Host "  $_" }
+          $entries | Where-Object { $_ -like '*.exe' -or $_ -like '*.dll' } | ForEach-Object { Write-Host "  $_" }
 
       - name: Upload ready-to-run Windows build
         uses: actions/upload-artifact@v4
