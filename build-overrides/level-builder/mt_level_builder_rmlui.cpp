@@ -205,15 +205,13 @@ static void maker_update_imported_model_panel(int index)
     }
 }
 
-static void maker_open_model_importer()
+static int maker_import_model_file(const char *path)
 {
-    const std::string path=maker_choose_file(false);
-    if(path.empty())return;
-    const int index=mtlb_import_model(path.c_str());
+    const int index=mtlb_import_model(path);
     if(index<0){
         set_status(mtlb_importer_last_error());
         maker_log("Model import failed: %s",mtlb_importer_last_error());
-        return;
+        return -1;
     }
     g_pending_model_asset=index;
     g_selected_model_asset=index;
@@ -221,24 +219,36 @@ static void maker_open_model_importer()
     maker_set_modal("model-import-modal",true);
     maker_refresh_asset_shelf();
     set_status("Model inspected. Choose its role to register the asset.");
-    maker_log("Imported model asset %d: %s",index,path.c_str());
+    maker_log("Imported model asset %d: %s",index,path);
+    return index;
+}
+
+static int maker_import_texture_file(const char *path)
+{
+    const int index=mtlb_import_texture(path);
+    if(index<0){
+        set_status(mtlb_importer_last_error());
+        maker_log("Texture import failed: %s",mtlb_importer_last_error());
+        return -1;
+    }
+    g_selected_texture_asset=index;
+    char name[128]={},stored[1024]={};int width=0,height=0;
+    mtlb_imported_texture_info(index,name,sizeof(name),stored,sizeof(stored),&width,&height);
+    char message[256];std::snprintf(message,sizeof(message),"Imported texture %s (%d x %d).",name,width,height);
+    set_status(message);
+    return index;
+}
+
+static void maker_open_model_importer()
+{
+    const std::string path=maker_choose_file(false);
+    if(!path.empty())maker_import_model_file(path.c_str());
 }
 
 static void maker_open_texture_importer()
 {
     const std::string path=maker_choose_file(true);
-    if(path.empty())return;
-    const int index=mtlb_import_texture(path.c_str());
-    if(index<0){
-        set_status(mtlb_importer_last_error());
-        maker_log("Texture import failed: %s",mtlb_importer_last_error());
-        return;
-    }
-    g_selected_texture_asset=index;
-    char name[128]={}, stored[1024]={}; int width=0, height=0;
-    mtlb_imported_texture_info(index,name,sizeof(name),stored,sizeof(stored),&width,&height);
-    char message[256]; std::snprintf(message,sizeof(message),"Imported texture %s (%d x %d).",name,width,height);
-    set_status(message);
+    if(!path.empty())maker_import_texture_file(path.c_str());
 }
 static void maker_log(const char *format, ...);
 static void maker_refresh_sprite_lists()
@@ -424,9 +434,11 @@ static void maker_save_settings()
         return;
     }
     std::fprintf(file,
-        "mode=%d\ntool=%d\nlayer=%d\npalette=%d\ncanvas=%d\nmodern=%d\ngrid=%d\nsnap=%d\ncollision=%d\n",
+        "mode=%d\ntool=%d\nlayer=%d\npalette=%d\ncanvas=%d\nmodern=%d\ngrid=%d\nsnap=%d\ncollision=%d\nlight_type=%d\nlight_color=%08X\nlight_radius=%.2f\nlight_intensity=%.3f\nfx_bloom=%d\nfx_rim=%d\nfx_cel=%d\nfx_fog=%d\nfx_crt=%d\n",
         g_maker_mode,g_maker_tool,g_maker_layer,g_maker_palette,g_maker_canvas_size,
-        g_maker_modern?1:0,g_maker_show_grid?1:0,g_maker_snap?1:0,g_maker_collision?1:0);
+        g_maker_modern?1:0,g_maker_show_grid?1:0,g_maker_snap?1:0,g_maker_collision?1:0,
+        g_light_type,g_light_color,g_light_radius,g_light_intensity,g_fx_bloom?1:0,g_fx_rim?1:0,
+        g_fx_cel?1:0,g_fx_fog?1:0,g_fx_crt?1:0);
     for (int i=0;i<5;i++) std::fprintf(file,"layer%d=%d\n",i,g_maker_layers[i]?1:0);
     std::fclose(file);
     maker_log("Saved portable Maker settings to %s.",path.c_str());
@@ -451,6 +463,15 @@ static void maker_load_settings()
         else if(std::sscanf(line,"grid=%d",&value)==1) g_maker_show_grid=value!=0;
         else if(std::sscanf(line,"snap=%d",&value)==1) g_maker_snap=value!=0;
         else if(std::sscanf(line,"collision=%d",&value)==1) g_maker_collision=value!=0;
+        else if(std::sscanf(line,"light_type=%d",&value)==1)g_light_type=std::max(0,std::min(2,value));
+        else if(std::sscanf(line,"light_color=%x",&value)==1)g_light_color=(uint32_t)value;
+        else if(std::sscanf(line,"light_radius=%f",&g_light_radius)==1){}
+        else if(std::sscanf(line,"light_intensity=%f",&g_light_intensity)==1){}
+        else if(std::sscanf(line,"fx_bloom=%d",&value)==1)g_fx_bloom=value!=0;
+        else if(std::sscanf(line,"fx_rim=%d",&value)==1)g_fx_rim=value!=0;
+        else if(std::sscanf(line,"fx_cel=%d",&value)==1)g_fx_cel=value!=0;
+        else if(std::sscanf(line,"fx_fog=%d",&value)==1)g_fx_fog=value!=0;
+        else if(std::sscanf(line,"fx_crt=%d",&value)==1)g_fx_crt=value!=0;
         else for(int i=0;i<5;i++){
             char key[16];std::snprintf(key,sizeof(key),"layer%d=%%d",i);
             if(std::sscanf(line,key,&value)==1) g_maker_layers[i]=value!=0;
@@ -714,9 +735,12 @@ public:
         }
         if (action == "classify" || action == "import-confirm") {
             if(g_pending_model_asset>=0){
-                const int classification=element->HasAttribute("data-class")?
-                    element->GetAttribute<int>("data-class",1):
-                    element->GetAttribute<int>("value",1);
+                int classification=element->HasAttribute("data-class")?
+                    element->GetAttribute<int>("data-class",1):1;
+                if(!element->HasAttribute("data-class")){
+                    if(Rml::Element *select=g_document->GetElementById("model-classification"))
+                        classification=event.GetParameter<int>("value",select->GetAttribute<int>("value",1));
+                }
                 mtlb_imported_model_classify(g_pending_model_asset,classification);
                 g_selected_model_asset=g_pending_model_asset;
                 g_pending_model_asset=-1;
@@ -889,6 +913,18 @@ public:
         }
         if (action == "exit") {
             g_exit_requested = true;
+            return;
+        }
+        if (action == "undo") {
+            mtlb_editor_undo();
+            g_stage_batch_dirty=true;
+            set_status("Undo completed.");
+            return;
+        }
+        if (action == "redo") {
+            mtlb_editor_redo();
+            g_stage_batch_dirty=true;
+            set_status("Redo completed.");
             return;
         }
         if (action == "save") {
@@ -1190,7 +1226,8 @@ static void maker_begin_asset_drag(int px,int py)
 static void maker_end_asset_drag(int px,int py)
 {
     if(!g_asset_drag_active)return;
-    maker_place_asset_at(px,py);
+    int grid_x=0,grid_y=0;
+    if(maker_stage_cell_at(px,py,grid_x,grid_y))maker_place_asset_at(px,py);
     g_asset_drag_active=false;
     g_drag_asset_id=-1;g_drag_asset_type="";
     if(Rml::Element *ghost=g_document->GetElementById("drop-ghost"))ghost->SetClass("hidden",true);
@@ -1207,9 +1244,9 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
             const std::string path(file);
             const std::string ext=path.substr(path.find_last_of('.')==std::string::npos?path.size():path.find_last_of('.'));
             if(ext==".glb"||ext==".gltf"||ext==".obj"||ext==".fbx"){
-                if(g_maker_modern)maker_open_model_importer();
+                if(g_maker_modern)maker_import_model_file(path.c_str());
                 else set_status("Modern Mode Required for 3D model imports.");
-            }else if(ext==".png"||ext==".tga")maker_open_texture_importer();
+            }else if(ext==".png"||ext==".tga")maker_import_texture_file(path.c_str());
             SDL_free(event->drop.file);
         }
     }else if(event->type==SDL_MOUSEBUTTONDOWN){
