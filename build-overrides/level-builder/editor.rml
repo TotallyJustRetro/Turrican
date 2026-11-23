@@ -112,46 +112,45 @@
           <button class="filter-button" id="filter-3d" data-action="asset-filter" data-filter="3d">3D</button>
           <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
         </div>
-        <div class="folder-scroll">
-          <div class="folder expanded" id="folder-tilesets">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="tilesets"><span class="folder-arrow">▾</span> Tilesets/</div>
-            <div id="folder-content-tilesets" class="folder-content">
-              <div class="folder-subheading asset-folder-row"><span>2D_16bit/</span><span><button class="tiny-button" data-action="asset-page" data-dir="-1">‹</button><button class="tiny-button" data-action="asset-page" data-dir="1">›</button></span></div>
-              <div id="asset-shelf-items" class="asset-card-grid"></div>
-              <div class="folder-subheading">3D_Modular_Blocks/</div>
-              <div id="asset-list-3d-tiles" class="asset-card-grid"></div>
-            </div>
-          </div>
-          <div class="folder expanded" id="folder-stage">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="stage"><span class="folder-arrow">▾</span> Stage_Elements/</div>
-            <div id="folder-content-stage" class="folder-content">
-              <div class="folder-subheading">Doors / Platforms / Plasma_Anchors / Hazards / Background_Props</div>
-              <div id="asset-list-stage" class="asset-card-grid"></div>
+        <div id="folder-scroll" class="folder-scroll">
+          <div class="folder expanded" id="folder-character">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="character"><span class="folder-arrow">▾</span> Character/</div>
+            <div id="folder-content-character" class="folder-content">
+              <div class="folder-subheading">PLAYER / PLAYER ANIMATIONS</div>
+              <div id="asset-list-character" class="asset-card-grid"></div>
+              <div id="asset-list-3d-character" class="asset-card-grid"></div>
             </div>
           </div>
           <div class="folder expanded" id="folder-items">
             <div class="folder-heading" data-action="folder-toggle" data-folder="items"><span class="folder-arrow">▾</span> Items_Pickups/</div>
             <div id="folder-content-items" class="folder-content">
-              <div class="folder-subheading">Diamonds / Weapon_Pods / 1Ups / Smart_Bombs</div>
+              <div class="folder-subheading">WEAPONS / POWERUPS / HEALTH / EXTRAS</div>
               <div id="asset-list-items" class="asset-card-grid"></div>
+              <div id="asset-list-3d-items" class="asset-card-grid"></div>
             </div>
           </div>
           <div class="folder expanded" id="folder-enemies">
             <div class="folder-heading" data-action="folder-toggle" data-folder="enemies"><span class="folder-arrow">▾</span> Enemies/</div>
             <div id="folder-content-enemies" class="folder-content">
-              <div class="folder-subheading">2D_Sprites/</div>
+              <div class="folder-subheading">STANDARD ENEMIES / HAZARDS</div>
               <div id="asset-list-enemies" class="asset-card-grid"></div>
-              <div class="folder-subheading">3D_Mechs/</div>
               <div id="asset-list-3d-enemies" class="asset-card-grid"></div>
             </div>
           </div>
           <div class="folder expanded" id="folder-bosses">
             <div class="folder-heading" data-action="folder-toggle" data-folder="bosses"><span class="folder-arrow">▾</span> Bosses/</div>
             <div id="folder-content-bosses" class="folder-content">
-              <div class="folder-subheading">2D_MultiPart/</div>
+              <div class="folder-subheading">BOSS / MULTI-PART / PHASED</div>
               <div id="asset-list-bosses" class="asset-card-grid"></div>
-              <div class="folder-subheading">3D_Articulated/</div>
               <div id="asset-list-3d-bosses" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-review">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▸</span> Needs_Review/</div>
+            <div id="folder-content-review" class="folder-content">
+              <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
+              <div id="asset-list-review" class="asset-card-grid"></div>
+              <div id="asset-list-3d-review" class="asset-card-grid"></div>
             </div>
           </div>
         </div>
@@ -159,7 +158,7 @@
 
       <div class="inspector-stack">
         <section class="model-import-card">
-        <div class="dock-title"><span>3D MODEL IMPORT</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
+        <div class="dock-title"><span>3D OBJECT IMPORT</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
         <div id="model-preview" class="model-preview">
           <div class="model-preview-placeholder">NO MODEL SELECTED</div>
         </div>
@@ -168,8 +167,8 @@
         <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NONE</strong></div>
         <div class="classification-row"><span>ASSET TYPE</span>
           <select id="model-classification" data-action="model-classification">
-            <option value="0">STAGE TILE / BLOCK</option>
-            <option value="1">LEVEL ELEMENT</option>
+            <option value="0">NEEDS REVIEW</option>
+            <option value="1">CHARACTER</option>
             <option value="2">ITEM / PICKUP</option>
             <option value="3">ENEMY</option>
             <option value="4">BOSS</option>
@@ -181,6 +180,16 @@
 
       <section class="property-inspector">
         <div class="dock-title"><span>PROPERTIES</span><span id="selected-asset-name" class="dock-subtitle">NO SELECTION</span></div>
+        <div id="rom-sprite-classification-row" class="property-row hidden">
+          <label>ROM SPRITE ROLE</label>
+          <select id="sprite-classification" data-action="sprite-classification">
+            <option value="0">NEEDS REVIEW</option>
+            <option value="1">CHARACTER</option>
+            <option value="2">ITEM / PICKUP</option>
+            <option value="3">ENEMY</option>
+            <option value="4">BOSS</option>
+          </select>
+        </div>
         <div class="property-row"><label>LAYER</label>
           <select id="layer-select" data-action="property" data-property="layer">
             <option>BG1</option><option>BG2</option><option>FG1</option><option>FG2</option><option>FG1 3D</option>
@@ -225,11 +234,11 @@
       <div class="modal-copy">What should this 3D asset function as?</div>
       <div class="modal-asset-info" id="modal-asset-info">MESH / TEXTURES / BOUNDS</div>
       <div class="classification-grid">
-        <button class="class-card" data-action="classify" data-class="0">STAGE TILE / BLOCK<span>16×16 snap / collision</span></button>
-        <button class="class-card" data-action="classify" data-class="1">LEVEL ELEMENT<span>door / platform / grapple</span></button>
-        <button class="class-card" data-action="classify" data-class="2">ITEM / PICKUP<span>bob / spin / pickup trigger</span></button>
-        <button class="class-card" data-action="classify" data-class="3">ENEMY<span>AI state / HP / hurtbox</span></button>
-        <button class="class-card boss-class" data-action="classify" data-class="4">BOSS<span>phases / weakpoints / arena</span></button>
+        <button class="class-card" data-action="classify" data-class="0">NEEDS REVIEW<span>sort this later</span></button>
+        <button class="class-card" data-action="classify" data-class="1">CHARACTER<span>player / playable actor</span></button>
+        <button class="class-card" data-action="classify" data-class="2">ITEM / PICKUP<span>weapons / powerups / health</span></button>
+        <button class="class-card" data-action="classify" data-class="3">ENEMY<span>standard hostile actors</span></button>
+        <button class="class-card boss-class" data-action="classify" data-class="4">BOSS<span>large / phased encounters</span></button>
       </div>
       <div class="modal-actions"><button class="button" data-action="import-cancel">CANCEL</button><button class="button primary" data-action="import-confirm">REGISTER ASSET</button></div>
     </div>
