@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <vector>
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -49,8 +50,8 @@ static int g_selected_x = 0, g_selected_y = 0, g_brush_tile = 1;
 static int g_undo_count = 0, g_redo_count = 0;
 static uint16_t g_undo_stack[12][64*32] = {}, g_redo_stack[12][64*32] = {};
 struct EditorEntity { float x,y; int type,hp; uint16_t tile_attr; uint8_t width_tiles,height_tiles; };
-static EditorEntity g_entities[64] = {};
-static int g_entity_count = 0, g_selected_entity = -1;
+static std::vector<EditorEntity> g_entities;
+static int g_selected_entity = -1;
 
 static int vdp_pixel(int tile,int x,int y)
 {
@@ -465,12 +466,13 @@ extern "C" int mtlb_map_save(void)
     FILE *file=std::fopen(path,"wb");if(!file)return 0;
     const char magic[8]={'M','T','L','B','L','V','L',2};
     const std::uint32_t cols=kEditorMapCols,rows=kEditorMapRows;
-    const std::uint32_t entityCount=(std::uint32_t)g_entity_count;
+    const std::uint32_t entityCount=(std::uint32_t)g_entities.size();
     bool ok=std::fwrite(magic,1,sizeof(magic),file)==sizeof(magic)&&
         std::fwrite(&cols,sizeof(cols),1,file)==1&&std::fwrite(&rows,sizeof(rows),1,file)==1&&
         std::fwrite(g_level_tiles,sizeof(g_level_tiles),1,file)==1&&
-        std::fwrite(&entityCount,sizeof(entityCount),1,file)==1&&
-        std::fwrite(g_entities,sizeof(EditorEntity),g_entity_count,file)==(size_t)g_entity_count;
+        std::fwrite(&entityCount,sizeof(entityCount),1,file)==1;
+    if(ok&&!g_entities.empty())
+        ok=std::fwrite(g_entities.data(),sizeof(EditorEntity),g_entities.size(),file)==g_entities.size();
     if(std::fclose(file)!=0)ok=false;
     if(ok)g_document_dirty=false;
     return ok?1:0;
@@ -487,17 +489,34 @@ extern "C" int mtlb_map_load(void)
         std::fread(&cols,sizeof(cols),1,file)==1&&std::fread(&rows,sizeof(rows),1,file)==1&&
         cols==(std::uint32_t)kEditorMapCols&&rows==(std::uint32_t)kEditorMapRows&&
         std::fread(loaded,sizeof(loaded),1,file)==1;
-    std::uint32_t entityCount=0;
-    EditorEntity loadedEntities[64]={};
+    std::vector<EditorEntity> loaded_entities;
     if(ok&&(unsigned char)magic[7]==2){
-        ok=std::fread(&entityCount,sizeof(entityCount),1,file)==1&&entityCount<=64&&
-           std::fread(loadedEntities,sizeof(EditorEntity),entityCount,file)==entityCount;
+        std::uint32_t entity_count=0;
+        ok=std::fread(&entity_count,sizeof(entity_count),1,file)==1;
+        if(ok){
+            const long payload_start=std::ftell(file);
+            if(payload_start<0||std::fseek(file,0,SEEK_END)!=0)ok=false;
+            else{
+                const long file_end=std::ftell(file);
+                if(file_end<payload_start)ok=false;
+                else{
+                    const unsigned long long available=(unsigned long long)(file_end-payload_start);
+                    const unsigned long long required=(unsigned long long)entity_count*sizeof(EditorEntity);
+                    if(required>available)ok=false;
+                    else if(std::fseek(file,payload_start,SEEK_SET)!=0)ok=false;
+                }
+            }
+            if(ok){
+                loaded_entities.resize((size_t)entity_count);
+                if(entity_count>0)
+                    ok=std::fread(loaded_entities.data(),sizeof(EditorEntity),entity_count,file)==entity_count;
+            }
+        }
     }
     std::fclose(file);
     if(!ok)return 0;
     std::memcpy(g_level_tiles,loaded,sizeof(g_level_tiles));
-    std::memcpy(g_entities,loadedEntities,sizeof(g_entities));
-    g_entity_count=(unsigned char)magic[7]==2?(int)entityCount:0;
+    g_entities.swap(loaded_entities);
     g_selected_entity=-1;
     g_document_dirty=false;
     return 1;
@@ -643,11 +662,10 @@ extern "C" void mtlb_map_set_cursor(int x,int y)
 extern "C" void mtlb_editor_push_undo(void) { push_level_undo(); }
 extern "C" void mtlb_editor_undo(void) { undo_level_edit(); }
 extern "C" void mtlb_editor_redo(void) { redo_level_edit(); }
-extern "C" int mtlb_editor_entity_count(void) { return g_entity_count; }
+extern "C" int mtlb_editor_entity_count(void) { return (int)g_entities.size(); }
 
 extern "C" int mtlb_editor_place_entity(float x,float y,int type,int sprite_asset_index)
 {
-    if(g_entity_count>=64)return -1;
     EditorEntity entity={};
     entity.x=std::max(0.0f,std::min(1.0f,x));
     entity.y=std::max(0.0f,std::min(1.0f,y));
@@ -661,17 +679,17 @@ extern "C" int mtlb_editor_place_entity(float x,float y,int type,int sprite_asse
             entity.height_tiles=(uint8_t)h;
         }
     }
-    g_entities[g_entity_count]=entity;
-    g_selected_entity=g_entity_count;
+    g_entities.push_back(entity);
+    g_selected_entity=(int)g_entities.size()-1;
     g_document_dirty=true;
-    return g_entity_count++;
+    return g_selected_entity;
 }
 
 extern "C" int mtlb_editor_entity_info(int index,float *x,float *y,int *type,int *hp,
                                          uint16_t *tile_attr,int *width_tiles,int *height_tiles)
 {
-    if(index<0||index>=g_entity_count)return 0;
-    const EditorEntity &entity=g_entities[index];
+    if(index<0||(size_t)index>=g_entities.size())return 0;
+    const EditorEntity &entity=g_entities[(size_t)index];
     if(x)*x=entity.x;if(y)*y=entity.y;if(type)*type=entity.type;if(hp)*hp=entity.hp;
     if(tile_attr)*tile_attr=entity.tile_attr;
     if(width_tiles)*width_tiles=entity.width_tiles;if(height_tiles)*height_tiles=entity.height_tiles;
