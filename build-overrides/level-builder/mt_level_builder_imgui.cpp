@@ -410,7 +410,9 @@ static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
     uint32_t packed=0;
     if(!maker_rom_read_u16(frame,y)||!maker_rom_read_u16(frame+2,x)||
        !maker_rom_read_u32(frame+4,packed))return false;
-    if(y==0 && x==0 && packed==0)return false;
+    // f_54A6 tests the next Y word with the 68k PL condition and stops
+    // when its sign bit is set; negative Y is the original frame terminator.
+    if(y&0x8000u)return false;
 
     uint16_t count=0;
     for(uint32_t part=0;part<64;part++) {
@@ -418,9 +420,9 @@ static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
         if(!maker_rom_range(at,8))break;
         uint16_t py=0,px=0;
         uint32_t attr=0;
-        if(!maker_rom_read_u16(at,py)||!maker_rom_read_u16(at+2,px)||
-           !maker_rom_read_u32(at+4,attr))break;
-        if(py==0 && px==0 && attr==0)break;
+        if(!maker_rom_read_u16(at,py))break;
+        if(py&0x8000u)break;
+        if(!maker_rom_read_u16(at+2,px)||!maker_rom_read_u32(at+4,attr))break;
         count++;
     }
     if(count==0)return false;
@@ -530,7 +532,7 @@ static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
         uint32_t packed=0;
         if(!maker_rom_read_u16(at,rawY)||!maker_rom_read_u16(at+2,rawX)||
            !maker_rom_read_u32(at+4,packed))break;
-        if(rawY==0 && rawX==0 && packed==0)break;
+        if(rawY&0x8000u)break;
         const uint16_t sizeLink=(uint16_t)(packed>>16);
         const uint16_t attr=(uint16_t)(packed&0x7FFFu);
         const int w=((sizeLink>>8)&3)+1;
