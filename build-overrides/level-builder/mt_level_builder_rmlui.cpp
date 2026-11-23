@@ -404,7 +404,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     const bool regular_loaded = Rml::LoadFontFace(font_regular, true);
     maker_log("Regular font result: %d.", regular_loaded ? 1 : 0);
     maker_log("Loading bold font: %s.", font_bold.c_str());
-    const bool bold_loaded = Rml::LoadFontFace(font_bold, false);
+    const bool bold_loaded = Rml::LoadFontFace(font_bold, "Lato", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false);
     maker_log("Bold font result: %d.", bold_loaded ? 1 : 0);
     if (!regular_loaded || !bold_loaded) {
         mtlbr_shutdown();

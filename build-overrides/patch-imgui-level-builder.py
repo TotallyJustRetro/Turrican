@@ -43,7 +43,7 @@ def main() -> None:
         s = once(s, include + "\n", include + "\n" + rml_include + "\n",
                  "RmlUi Maker frontend include")
 
-    # ImGui receives the same SDL input events as the native pause screen.
+    # Forward SDL input only to the active Maker frontend.
     route_anchor = (
         "    if(e->type==SDL_WINDOWEVENT&&e->window.event==SDL_WINDOWEVENT_RESIZED)"
         "{ws_update();make_texture();}\n"
@@ -108,8 +108,8 @@ def main() -> None:
     )
     if "initialize RmlUi Maker frontend first, with ImGui fallback" not in s:
         s = once(s, init_anchor,
-            init_patch + "\n    /* initialize Dear ImGui PC-resolution renderer */",
-            "initialize Dear ImGui PC-resolution renderer")
+            init_patch + "\n    /* initialize RmlUi Maker frontend first, with ImGui fallback */",
+            "initialize RmlUi Maker frontend first, with ImGui fallback")
 
     sdl_path.write_text(s, encoding="utf-8")
     print("Installed RmlUi Maker frontend over SDL_Renderer; Dear ImGui remains the fallback.")
