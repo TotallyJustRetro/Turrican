@@ -273,7 +273,6 @@ static void undo_level_edit()
     std::memcpy(g_redo_stack[g_redo_count++],g_level_tiles,sizeof(g_level_tiles));
     std::memcpy(g_level_tiles,g_undo_stack[--g_undo_count],sizeof(g_level_tiles));
     g_document_dirty=true;
-    std::snprintf(g_status,sizeof(g_status),"UNDONE");
 }
 static void redo_level_edit()
 {
@@ -285,7 +284,6 @@ static void redo_level_edit()
     std::memcpy(g_undo_stack[g_undo_count++],g_level_tiles,sizeof(g_level_tiles));
     std::memcpy(g_level_tiles,g_redo_stack[--g_redo_count],sizeof(g_level_tiles));
     g_document_dirty=true;
-    std::snprintf(g_status,sizeof(g_status),"REDONE");
 }
 
 
@@ -389,7 +387,7 @@ static bool mtlb_level_document_path(char *path,size_t capacity)
     }
     size_t base_len=std::strlen(base);
     while(base_len>1&&(base[base_len-1]=='/'||base[base_len-1]=='\\')){
-        base[--base_len]='\\0';
+        base[--base_len]='\0';
     }
     char folder[4096];
     const int folder_len=std::snprintf(folder,sizeof(folder),"%s/levels",base);
