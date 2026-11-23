@@ -12,7 +12,12 @@ int mtlb_imported_model_scan(void);
 int mtlb_imported_model_info(int index,char *name,int name_capacity,char *path,int path_capacity,
                              uint32_t *triangles,uint32_t *bones,float bounds_xyz[3],
                              int *has_diffuse,int *has_normal,int *has_emissive,int *classification);
-int mtlb_imported_model_preview(int index,float *xyz,int max_vertices);
+int mtlb_imported_model_preview(int index,float *xyz,float *uv,int max_vertices);
+int mtlb_imported_model_diffuse_path(int index,char *path,int capacity);
+int mtlb_imported_model_base_color(int index,float rgba[4]);
+int mtlb_imported_model_animation_count(int index);
+int mtlb_imported_model_animation_info(int index,int animation,char *name,int name_capacity,
+                                       float *duration_seconds,uint32_t *channels);
 void mtlb_imported_model_classify(int index,int classification);
 int mtlb_imported_texture_count(void);
 int mtlb_imported_texture_info(int index,char *name,int name_capacity,char *path,int path_capacity,
