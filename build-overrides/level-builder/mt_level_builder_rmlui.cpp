@@ -507,59 +507,62 @@ static const char *maker_tool_list(int mode)
 
 static void maker_update_mode_ui()
 {
-    if(!g_document) return;
-    for(int i=0;i<MAKER_MODE_COUNT;i++){
+    if(!g_document)return;
+    for(int i=0;i<5;i++){
         char id[32];std::snprintf(id,sizeof(id),"mode-%d",i);
-        if(Rml::Element *tab=g_document->GetElementById(id)) tab->SetClass("active",i==g_maker_mode);
+        if(Rml::Element *tab=g_document->GetElementById(id))tab->SetClass("active",i==g_maker_mode);
     }
-    if(Rml::Element *heading=g_document->GetElementById("tool-heading"))
-        heading->SetInnerRML(std::string(maker_mode_name(g_maker_mode))+" TOOLS");
-    if(Rml::Element *tools=g_document->GetElementById("tool-list"))
-        tools->SetInnerRML(maker_tool_list(g_maker_mode));
-    if(Rml::Element *meta=g_document->GetElementById("stage-meta"))
-        meta->SetInnerRML(std::string(maker_mode_name(g_maker_mode))+" / 64 × 32 / "+(g_maker_layer==2?"GAMEPLAY":"CUSTOM LAYER"));
-    if(Rml::Element *hint=g_document->GetElementById("stage-hint")){
-        static const char *hints[MAKER_MODE_COUNT]={
-            "Select a cartridge tile below. Left click paints; right click erases. Brush size and palette are in the inspector.",
-            "Choose a ROM sprite set below, then click the stage to place an enemy, pickup or spawn marker.",
-            "Choose a trigger, condition, action or dialogue tool. Click the stage to place a script marker.",
-            "Choose 16×16 or 32×32, Genesis 64-color or Modern RGBA in Settings. The pixel canvas tools are shown in the inspector.",
-            "Choose a ROM sprite set below, then select a boss part or phase tool. Boss assembly options are in the inspector.",
-            "Select one of five depth layers. Parallax and raster controls are available in the inspector."
-        };
-        hint->SetInnerRML(hints[g_maker_mode]);
+    static const char *tool_names[]={"select","brush","fill","slope","rope","trigger","light","erase"};
+    const int tool_index=std::max(0,std::min(7,g_maker_tool));
+    g_selected_tool=tool_names[tool_index];
+    for(int i=0;i<8;i++){
+        char id[32];std::snprintf(id,sizeof(id),"tool-%d",i);
+        if(Rml::Element *tool=g_document->GetElementById(id))tool->SetClass("active",i==tool_index);
     }
-    if(Rml::Element *inspector=g_document->GetElementById("mode-inspector")){
-        std::string content;
-        if(g_maker_mode==MAKER_TILES){
-            char value[80];std::snprintf(value,sizeof(value),"$%04X",g_brush_tile);
-            content="<div class='inspector-section'><div class='inspector-label'>TILE BRUSH</div><div id='brush-value' class='inspector-value'>"+std::string(value)+"</div><div class='inspector-copy'>Selected cartridge tile and VDP palette attributes.</div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>PALETTE</div><div class='option-row'>";
-            for(int i=0;i<4;i++){char b[140];std::snprintf(b,sizeof(b),"<div class='option-button %s' data-action='palette' data-palette='%d'>PAL %d</div>",i==g_maker_palette?"active":"",i,i);content+=b;}
-            content+="</div><div class='inspector-label'>TILE OPTIONS</div><div class='option-row'><div class='option-name'>COLLISION OVERLAY</div>";
-            content+=std::string("<div class='option-button ")+(g_maker_collision?"active":"")+"' data-action='toggle' data-key='collision'>"+(g_maker_collision?"ON":"OFF")+"</div></div></div>";
-            content+="<div class='inspector-section'><div class='inspector-label'>SELECTED CELL</div><div id='selected-cell' class='inspector-value'>X:"+std::to_string(mtlb_map_cursor_x())+" / Y:"+std::to_string(mtlb_map_cursor_y())+"</div><div class='inspector-copy'>64 × 32 cells. Undo and redo are available in the top bar.</div></div>";
-        }else if(g_maker_mode==MAKER_OBJECTS){
-            content="<div class='inspector-section'><div class='inspector-label'>OBJECT PLACEMENT</div><div class='inspector-value'>ROM SPRITE SETS</div><div class='inspector-copy'>Choose a cartridge sprite set in the asset shelf. Select PLACE ENEMY or PLACE PICKUP, then click the stage.</div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>OBJECT OPTIONS</div><div class='option-row'><div class='option-name'>SNAP TO GRID</div><div class='option-button active' data-action='toggle' data-key='snap'>ON / OFF</div></div><div class='option-row'><div class='option-name'>COLLISION</div><div class='option-button active' data-action='toggle' data-key='collision'>ON / OFF</div></div></div>";
-        }else if(g_maker_mode==MAKER_EVENTS){
-            content="<div class='inspector-section'><div class='inspector-label'>SCRIPT MAKER</div><div class='inspector-value'>EVENT FLOW</div><div class='inspector-copy'>Create nodes using the tools. Supported node types include WHEN triggers, IF conditions, actions, dialogue and boss spawn markers.</div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>QUICK ADD</div><div class='option-row'><div class='option-button' data-action='event-add' data-event='0'>+ WHEN</div><div class='option-button' data-action='event-add' data-event='1'>+ IF</div></div><div class='option-row'><div class='option-button' data-action='event-add' data-event='2'>+ ACTION</div><div class='option-button' data-action='event-add' data-event='3'>+ DIALOGUE</div></div><div id='event-count' class='inspector-copy'>0 event nodes in this level.</div></div>";
-        }else if(g_maker_mode==MAKER_ASSETS){
-            content="<div class='inspector-section'><div class='inspector-label'>ASSET STUDIO</div><div class='inspector-value'>"+std::to_string(g_maker_canvas_size)+" × "+std::to_string(g_maker_canvas_size)+" PIXEL CANVAS</div><div class='inspector-copy'>Genesis mode uses 64-color palettes. Modern mode allows unrestricted RGBA color.</div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>CANVAS SIZE</div><div class='option-row'><div class='option-button "+std::string(g_maker_canvas_size==16?"active":"")+"' data-action='canvas-size' data-size='16'>16 × 16</div><div class='option-button "+(g_maker_canvas_size==32?"active":"")+"' data-action='canvas-size' data-size='32'>32 × 32</div></div><div class='option-row'><div class='option-button "+(g_maker_modern?"":"active")+"' data-action='graphics' data-value='vanilla'>GENESIS CRAM</div><div class='option-button "+(g_maker_modern?"active":"")+"' data-action='graphics' data-value='modern'>MODERN RGBA</div></div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>PALETTE COLOR</div><div class='option-copy'>Choose a color swatch in the settings window. Pixel drawing canvas is the active work surface.</div></div>";
-        }else if(g_maker_mode==MAKER_BOSS){
-            char b[80];std::snprintf(b,sizeof(b),"%d HP / PHASE %d",g_boss_hp,g_boss_phase);
-            content="<div class='inspector-section'><div class='inspector-label'>BOSS ASSEMBLY</div><div class='inspector-value'>"+std::string(g_boss_created?"CORE CREATED":"NO CORE")+"</div><div class='inspector-copy'>Assemble body parts, turrets, shield plates and weakpoints from ROM sprite sets.</div></div>"
-            "<div class='inspector-section'><div class='inspector-label'>BOSS CORE</div><div class='option-row'><div class='option-button' data-action='boss-create'>CREATE CORE</div><div class='option-button' data-action='boss-hp' data-delta='-10'>- HP</div><div class='option-button' data-action='boss-hp' data-delta='10'>+ HP</div></div><div class='inspector-value'>"+std::string(b)+"</div><div class='option-row'><div class='option-button' data-action='boss-phase' data-phase='1'>PHASE 1</div><div class='option-button' data-action='boss-phase' data-phase='2'>PHASE 2</div><div class='option-button' data-action='boss-phase' data-phase='3'>ENRAGE</div></div></div>";
+
+    static const char *tab_names[]={"tiles","entity","script","assets","boss","assets"};
+    g_active_tab=tab_names[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))];
+    g_global_mode=g_maker_modern?"MODERN REBORN":"VANILLA 1994";
+    if(Rml::Element *label=g_document->GetElementById("global-mode-label"))
+        label->SetInnerRML(g_global_mode);
+    if(Rml::Element *button=g_document->GetElementById("global-mode-button"))
+        button->SetClass("active",g_maker_modern);
+    if(Rml::Element *resolution=g_document->GetElementById("stage-resolution"))
+        resolution->SetInnerRML(g_maker_modern?"MODERN 16:9 / 2.5D":"VANILLA 320 × 224 / 16-BIT");
+    if(Rml::Element *stage=g_document->GetElementById("stage-viewport")){
+        if(g_maker_modern){
+            stage->SetProperty("width","100%");
+            stage->SetProperty("height","100%");
+            stage->SetProperty("flex-grow","1");
+            stage->SetProperty("align-self","stretch");
         }else{
-            content="<div class='inspector-section'><div class='inspector-label'>BACKGROUND LAYERS</div><div class='inspector-value'>4 PARALLAX PLANES</div><div class='inspector-copy'>Choose a depth layer, then adjust its horizontal and vertical scroll multipliers.</div></div>";
-            for(int i=0;i<4;i++){char row[260];std::snprintf(row,sizeof(row),"<div class='inspector-section'><div class='inspector-label'>LAYER %d / X %.2f / Y %.2f</div><div class='option-row'><div class='option-name'>SCROLL X</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='x' data-delta='-0.1'>-</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='x' data-delta='0.1'>+</div></div><div class='option-row'><div class='option-name'>SCROLL Y</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='y' data-delta='-0.1'>-</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='y' data-delta='0.1'>+</div></div></div>",i+1,g_parallax_x[i],g_parallax_y[i],i,i,i,i);
-                content+=row;}
+            stage->SetProperty("width","320px");
+            stage->SetProperty("height","224px");
+            stage->SetProperty("flex-grow","0");
+            stage->SetProperty("align-self","center");
         }
-        inspector->SetInnerRML(content);
     }
+    if(Rml::Element *locked=g_document->GetElementById("vanilla-lock-note"))
+        locked->SetClass("hidden",g_maker_modern);
+
+    static const char *hints[MAKER_MODE_COUNT]={
+        "ROM TILES / Drag a tile card onto the stage, or use BRUSH to paint. Right-click erases.",
+        "ENTITY PLACEMENT / Drag a 2D sprite or 3D model onto the stage. Snap and collision are in Properties.",
+        "EVENT SCRIPT / Add trigger, condition, action and dialogue nodes to the bottom flow strip.",
+        "ASSET STUDIO / Import GLB, GLTF, OBJ, FBX models and PNG/TGA textures into the portable project.",
+        "BOSS FORGE / Drag a multipart sprite or articulated 3D model, then configure phases and weakpoints.",
+        "BACKGROUND / Select a depth layer and configure parallax, raster and background props."
+    };
+    if(Rml::Element *hint=g_document->GetElementById("stage-hint"))
+        hint->SetInnerRML(hints[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))]);
+
+    if(g_model_handle){
+        g_model_handle.DirtyVariable("global_mode");
+        g_model_handle.DirtyVariable("selected_tool");
+        g_model_handle.DirtyVariable("active_tab");
+        g_model_handle.DirtyVariable("selected_entity");
+    }
+    g_stage_batch_dirty=true;
 }
 
 static void maker_refresh_asset_shelf()
