@@ -406,23 +406,23 @@ static bool maker_rom_range(uint32_t address,uint32_t bytes)
 static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
 {
     if(!maker_rom_range(frame,8))return false;
-    uint16_t y=0,x=0;
+    uint16_t x=0,y=0;
     uint32_t packed=0;
-    if(!maker_rom_read_u16(frame,y)||!maker_rom_read_u16(frame+2,x)||
+    if(!maker_rom_read_u16(frame,x)||!maker_rom_read_u16(frame+2,y)||
        !maker_rom_read_u32(frame+4,packed))return false;
-    // f_54A6 tests the next Y word with the 68k PL condition and stops
-    // when its sign bit is set; negative Y is the original frame terminator.
-    if(y&0x8000u)return false;
+    // f_54A6 tests the next X word with the 68k PL condition and stops
+    // when its sign bit is set; negative X is the original frame terminator.
+    if(x&0x8000u)return false;
 
     uint16_t count=0;
     for(uint32_t part=0;part<64;part++) {
         const uint32_t at=frame+part*8u;
         if(!maker_rom_range(at,8))break;
-        uint16_t py=0,px=0;
+        uint16_t px=0,py=0;
         uint32_t attr=0;
-        if(!maker_rom_read_u16(at,py))break;
-        if(py&0x8000u)break;
-        if(!maker_rom_read_u16(at+2,px)||!maker_rom_read_u32(at+4,attr))break;
+        if(!maker_rom_read_u16(at,px))break;
+        if(px&0x8000u)break;
+        if(!maker_rom_read_u16(at+2,py)||!maker_rom_read_u32(at+4,attr))break;
         count++;
     }
     if(count==0)return false;
@@ -528,11 +528,11 @@ static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
     int count=0,minX=0,minY=0,maxX=0,maxY=0;
     for(int i=0;i<asset.first_frame_parts && i<64;i++) {
         const uint32_t at=asset.first_frame_pc+(uint32_t)i*8u;
-        uint16_t rawY=0,rawX=0;
+        uint16_t rawX=0,rawY=0;
         uint32_t packed=0;
-        if(!maker_rom_read_u16(at,rawY)||!maker_rom_read_u16(at+2,rawX)||
+        if(!maker_rom_read_u16(at,rawX)||!maker_rom_read_u16(at+2,rawY)||
            !maker_rom_read_u32(at+4,packed))break;
-        if(rawY&0x8000u)break;
+        if(rawX&0x8000u)break;
         const uint16_t sizeLink=(uint16_t)(packed>>16);
         const uint16_t attr=(uint16_t)(packed&0x7FFFu);
         const int w=((sizeLink>>8)&3)+1;
