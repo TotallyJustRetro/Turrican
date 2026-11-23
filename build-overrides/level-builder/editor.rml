@@ -1,0 +1,270 @@
+<rml>
+<head>
+  <title>Mega Turrican Maker</title>
+  <link type="text/rcss" href="editor.rcss"/>
+</head>
+<body>
+<div id="viewport" class="maker-app" data-model="editor">
+  <header class="topbar">
+    <div class="brand-mark">MT</div>
+    <div class="brand-block">
+      <div class="brand-title">MEGA TURRICAN MAKER</div>
+      <div class="brand-file">/ <span id="level-name">UNTITLED_LEVEL.MTL</span></div>
+    </div>
+    <nav class="menu-strip">
+      <button class="menu-item" data-action="menu" data-menu="file">FILE</button>
+      <button class="menu-item" data-action="menu" data-menu="edit">EDIT</button>
+      <button class="menu-item" data-action="menu" data-menu="view">VIEW</button>
+      <button class="menu-item" data-action="settings">SETTINGS</button>
+      <button class="menu-item" data-action="menu" data-menu="help">HELP</button>
+    </nav>
+    <button id="global-mode-button" class="mode-toggle active" data-action="global-mode">
+      GLOBAL MODE: <span id="global-mode-label" data-text="global_mode">MODERN REBORN</span>
+    </button>
+    <div class="top-spacer"></div>
+    <button class="button playtest" data-action="playtest">▶ PLAYTEST</button>
+    <button class="button icon-button" data-action="undo">↶</button>
+    <button class="button icon-button" data-action="redo">↷</button>
+  </header>
+
+  <div class="workspace">
+    <nav class="tool-rail">
+      <div class="rail-caption">TOOLS</div>
+      <button class="tool-button active" data-action="tool" data-tool="select" data-class-active="selected_tool == 'select'"><span class="tool-glyph">⌖</span><span>SELECT</span></button>
+      <button class="tool-button" data-action="tool" data-tool="brush" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
+      <button class="tool-button" data-action="tool" data-tool="fill"><span class="tool-glyph">◩</span><span>FILL</span></button>
+      <button class="tool-button" data-action="tool" data-tool="slope"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
+      <button class="tool-button" data-action="tool" data-tool="rope"><span class="tool-glyph">⌁</span><span>ROPE</span></button>
+      <button class="tool-button" data-action="tool" data-tool="trigger"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
+      <button class="tool-button" data-action="tool" data-tool="light"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
+      <button class="tool-button" data-action="tool" data-tool="erase"><span class="tool-glyph">⌫</span><span>ERASE</span></button>
+      <div class="rail-spacer"></div>
+      <div class="rail-foot">MKR<br/>V1</div>
+    </nav>
+
+    <main class="center-dock">
+      <div class="center-tabs">
+        <button class="center-tab active" data-action="tab" data-tab="tiles">TILES</button>
+        <button class="center-tab" data-action="tab" data-tab="entity">ENTITY</button>
+        <button class="center-tab" data-action="tab" data-tab="script">SCRIPT</button>
+        <button class="center-tab" data-action="tab" data-tab="assets">ASSET FOLDER</button>
+        <button class="center-tab" data-action="tab" data-tab="boss">BOSS</button>
+      </div>
+      <div class="stage-head">
+        <div class="stage-title">STAGE VIEWPORT <span class="accent-cyan">/ LIVE GAME PLANE</span></div>
+        <div class="stage-head-right">
+          <span id="stage-resolution">MODERN 16:9</span>
+          <span class="separator">|</span>
+          <span>GRID 16 × 16</span>
+          <span class="separator">|</span>
+          <button class="tiny-button active" data-action="toggle" data-key="grid">GRID</button>
+          <button class="tiny-button active" data-action="toggle" data-key="snap">SNAP</button>
+        </div>
+      </div>
+      <div id="stage-viewport" class="stage-viewport" data-action="stage-drop">
+        <div id="stage-grid" class="stage-grid"></div>
+        <div class="stage-coordinate"><span>X:</span> <span id="cursor-x" data-text="cursor_x">24</span> <span>Y:</span> <span id="cursor-y" data-text="cursor_y">12</span></div>
+        <div id="player-spawn-badge" class="spawn-badge">PLAYER SPAWN</div>
+        <div id="drop-ghost" class="drop-ghost hidden">DROP ASSET</div>
+        <div id="stage-hint" class="stage-hint">Drag an asset from the folder drawer onto the game plane. Brush paints tiles; right-click erases.</div>
+      </div>
+      <div class="bottom-workspace">
+        <div class="bottom-actions">
+          <button class="button" data-action="undo">UNDO</button>
+          <button class="button" data-action="redo">REDO</button>
+          <button class="button save-button" data-action="save">SAVE</button>
+          <button class="button" data-action="exit">EXIT</button>
+        </div>
+        <div class="script-flow">
+          <div class="dock-caption">EVENT / SCRIPT FLOW</div>
+          <div id="script-flow-items" class="script-flow-items">
+            <div class="script-node trigger-node" data-action="event-select" data-node="0">TRG_01</div>
+            <div class="script-arrow">➜</div>
+            <div class="script-node dialogue-node" data-action="event-select" data-node="1">NPC DIALOGUE</div>
+            <div class="script-arrow">➜</div>
+            <div class="script-node boss-node" data-action="event-select" data-node="2">BOSS_SPAWN</div>
+            <button class="tiny-button" data-action="event-add" data-event="0">+ NODE</button>
+          </div>
+        </div>
+        <div class="animation-sequencer">
+          <div class="dock-caption">ANIMATION SEQUENCER <span id="frame-label">FRAME 01</span></div>
+          <div class="timeline-ruler">
+            <div class="timeline-track"></div>
+            <div class="timeline-key" data-action="frame" data-frame="0"></div>
+            <div class="timeline-key" data-action="frame" data-frame="4"></div>
+            <div class="timeline-key" data-action="frame" data-frame="8"></div>
+          </div>
+          <div class="timeline-controls">
+            <button class="tiny-button" data-action="frame-step" data-delta="-1">◀</button>
+            <button class="tiny-button" data-action="frame-step" data-delta="1">▶</button>
+            <button class="tiny-button" data-action="keyframe-add">+ KEY</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="right-dock">
+      <section class="asset-drawer">
+        <div class="dock-title"><span>ASSET FOLDER</span><span class="dock-subtitle">2D / 3D LIBRARY</span></div>
+        <div class="asset-filter">
+          <button class="filter-button active" data-action="asset-filter" data-filter="all">ALL</button>
+          <button class="filter-button" data-action="asset-filter" data-filter="2d">2D</button>
+          <button class="filter-button" data-action="asset-filter" data-filter="3d">3D</button>
+          <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
+        </div>
+        <div class="folder-scroll">
+          <div class="folder expanded" id="folder-tilesets">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="tilesets"><span class="folder-arrow">▾</span> Tilesets/</div>
+            <div id="folder-content-tilesets" class="folder-content">
+              <div class="folder-subheading">2D_16bit/</div>
+              <div id="asset-shelf-items" class="asset-card-grid"></div>
+              <div class="folder-subheading">3D_Modular_Blocks/</div>
+              <div id="asset-list-3d-tiles" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder expanded" id="folder-stage">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="stage"><span class="folder-arrow">▾</span> Stage_Elements/</div>
+            <div id="folder-content-stage" class="folder-content">
+              <div class="folder-subheading">Doors / Platforms / Plasma_Anchors / Hazards / Background_Props</div>
+              <div id="asset-list-stage" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder expanded" id="folder-items">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="items"><span class="folder-arrow">▾</span> Items_Pickups/</div>
+            <div id="folder-content-items" class="folder-content">
+              <div class="folder-subheading">Diamonds / Weapon_Pods / 1Ups / Smart_Bombs</div>
+              <div id="asset-list-items" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder expanded" id="folder-enemies">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="enemies"><span class="folder-arrow">▾</span> Enemies/</div>
+            <div id="folder-content-enemies" class="folder-content">
+              <div class="folder-subheading">2D_Sprites/</div>
+              <div id="asset-list-enemies" class="asset-card-grid"></div>
+              <div class="folder-subheading">3D_Mechs/</div>
+              <div id="asset-list-3d-enemies" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder expanded" id="folder-bosses">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="bosses"><span class="folder-arrow">▾</span> Bosses/</div>
+            <div id="folder-content-bosses" class="folder-content">
+              <div class="folder-subheading">2D_MultiPart/</div>
+              <div id="asset-list-bosses" class="asset-card-grid"></div>
+              <div class="folder-subheading">3D_Articulated/</div>
+              <div id="asset-list-3d-bosses" class="asset-card-grid"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="model-import-card">
+        <div class="dock-title"><span>3D MODEL IMPORT</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
+        <div id="model-preview" class="model-preview">
+          <div class="model-preview-placeholder">NO MODEL SELECTED</div>
+        </div>
+        <div class="model-stats"><span>TRIANGLE BUDGET</span><strong id="model-triangle-count">0 / 256 TRIS</strong></div>
+        <div class="model-stats"><span>BONES / ARMATURE</span><strong id="model-bone-count">0</strong></div>
+        <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NONE</strong></div>
+        <div class="classification-row"><span>ASSET TYPE</span>
+          <select id="model-classification" data-action="model-classification">
+            <option value="0">STAGE TILE / BLOCK</option>
+            <option value="1">LEVEL ELEMENT</option>
+            <option value="2">ITEM / PICKUP</option>
+            <option value="3">ENEMY</option>
+            <option value="4">BOSS</option>
+          </select>
+        </div>
+        <button class="button import-wide" data-action="import-model">IMPORT GLB / GLTF / OBJ / FBX</button>
+        <button class="button import-wide" data-action="import-texture">IMPORT PNG / TGA TEXTURE</button>
+      </section>
+
+      <section class="property-inspector">
+        <div class="dock-title"><span>PROPERTIES</span><span id="selected-asset-name" class="dock-subtitle">NO SELECTION</span></div>
+        <div class="property-row"><label>LAYER</label>
+          <select id="layer-select" data-action="property" data-property="layer">
+            <option>BG1</option><option>BG2</option><option>FG1</option><option>FG2</option><option>FG1 3D</option>
+          </select>
+        </div>
+        <div class="property-row"><label>COLLISION</label>
+          <select id="collision-select" data-action="property" data-property="collision">
+            <option>SOLID</option><option>SLOPE</option><option>HAZARD</option><option>TRIGGER</option><option>NONE</option>
+          </select>
+        </div>
+        <div class="inspector-divider"></div>
+        <div class="property-subtitle">GRAPHICS &amp; LIGHTING</div>
+        <div class="property-row"><label>LIGHT TYPE</label>
+          <select id="light-type" data-action="property" data-property="light-type">
+            <option>POINT</option><option>SPOTLIGHT</option><option>AMBIENT TINT</option>
+          </select>
+        </div>
+        <div class="property-row"><label>LIGHT COLOR</label><input id="light-color" type="text" value="#E619E6" data-action="property" data-property="light-color"/></div>
+        <div class="property-row"><label>LIGHT RADIUS</label><input id="light-radius" type="range" min="8" max="256" value="96" data-action="property" data-property="light-radius"/></div>
+        <div class="property-row"><label>INTENSITY</label><input id="light-intensity" type="range" min="0" max="100" value="65" data-action="property" data-property="light-intensity"/></div>
+        <div class="property-subtitle">POST PROCESSING</div>
+        <div class="toggle-row"><label>BLOOM / NEON GLOW</label><input type="checkbox" id="fx-bloom" data-action="property" data-property="bloom"/></div>
+        <div class="toggle-row"><label>RIM LIGHTING</label><input type="checkbox" id="fx-rim" data-action="property" data-property="rim"/></div>
+        <div class="toggle-row"><label>CEL / TOON OUTLINES</label><input type="checkbox" id="fx-cel" data-action="property" data-property="cel"/></div>
+        <div class="toggle-row"><label>PARALLAX DEPTH FOG</label><input type="checkbox" id="fx-fog" data-action="property" data-property="fog"/></div>
+        <div class="toggle-row"><label>CRT / NTSC FILTER</label><input type="checkbox" id="fx-crt" data-action="property" data-property="crt"/></div>
+        <div id="vanilla-lock-note" class="modern-lock hidden">MODERN MODE REQUIRED FOR 3D / DYNAMIC LIGHTING</div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <div class="status-left"><span class="status-led"></span><span id="status-text">READY / RMLUI MAKER</span></div>
+    <div id="coordinate-status" class="status-right">X: <span id="cursor-x-status">24</span> / Y: <span id="cursor-y-status">12</span></div>
+    <div class="status-right">MEGA TURRICAN REBORN / MAKER</div>
+  </footer>
+
+  <div id="model-import-modal" class="modal-shade hidden">
+    <div class="modal-card import-wizard">
+      <div class="modal-title">3D ASSET CLASSIFICATION</div>
+      <div class="modal-copy">What should this 3D asset function as?</div>
+      <div class="modal-asset-info" id="modal-asset-info">MESH / TEXTURES / BOUNDS</div>
+      <div class="classification-grid">
+        <button class="class-card" data-action="classify" data-class="0">STAGE TILE / BLOCK<span>16×16 snap / collision</span></button>
+        <button class="class-card" data-action="classify" data-class="1">LEVEL ELEMENT<span>door / platform / grapple</span></button>
+        <button class="class-card" data-action="classify" data-class="2">ITEM / PICKUP<span>bob / spin / pickup trigger</span></button>
+        <button class="class-card" data-action="classify" data-class="3">ENEMY<span>AI state / HP / hurtbox</span></button>
+        <button class="class-card boss-class" data-action="classify" data-class="4">BOSS<span>phases / weakpoints / arena</span></button>
+      </div>
+      <div class="modal-actions"><button class="button" data-action="import-cancel">CANCEL</button><button class="button primary" data-action="import-confirm">REGISTER ASSET</button></div>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="modal-shade hidden">
+    <div class="modal-card settings-dialog">
+      <div class="modal-title">EDITOR / PROJECT SETTINGS</div>
+      <div class="settings-grid">
+        <div class="settings-card">
+          <div class="property-subtitle">GLOBAL GRAPHICS MODE</div>
+          <button class="button mode-choice" data-action="global-mode" data-mode="modern">MODERN REBORN / 2.5D</button>
+          <button class="button mode-choice" data-action="global-mode" data-mode="vanilla">VANILLA 1994 / GENESIS</button>
+          <div class="settings-note">Vanilla locks the viewport to 320×224, Genesis CRAM palettes and 2D assets. Modern unlocks widescreen, imported 3D and dynamic lighting.</div>
+        </div>
+        <div class="settings-card">
+          <div class="property-subtitle">2D / PIXEL CANVAS</div>
+          <button class="button" data-action="canvas-size" data-size="16">16 × 16</button>
+          <button class="button" data-action="canvas-size" data-size="32">32 × 32</button>
+          <div class="settings-note">Genesis mode: 64-color CRAM palette. Modern mode: full RGBA.</div>
+        </div>
+        <div class="settings-card">
+          <div class="property-subtitle">STAGE / GRID</div>
+          <button class="button" data-action="toggle" data-key="grid">GRID ON / OFF</button>
+          <button class="button" data-action="toggle" data-key="snap">SNAP ON / OFF</button>
+          <button class="button" data-action="toggle" data-key="collision">COLLISION OVERLAY</button>
+        </div>
+        <div class="settings-card">
+          <div class="property-subtitle">ASSET IMPORT</div>
+          <button class="button" data-action="import-model">IMPORT 3D MODEL</button>
+          <button class="button" data-action="import-texture">IMPORT TEXTURE</button>
+          <div class="settings-note">GLB / GLTF / OBJ / FBX and PNG / TGA. Imported assets are classified before use.</div>
+        </div>
+      </div>
+      <div class="modal-actions"><button class="button" data-action="settings-close">CLOSE</button><button class="button primary" data-action="settings-save">APPLY / SAVE</button></div>
+    </div>
+  </div>
+</div>
+</body>
+</rml>
