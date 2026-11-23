@@ -386,6 +386,9 @@ extern "C" void mtlbr_shutdown(void)
 extern "C" void mtlbr_process_event(const SDL_Event *event)
 {
     if (!g_context || !g_window || !event) return;
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE) {
+        g_exit_requested = true;
+    }
     SDL_Event copy = *event;
     RmlSDL::InputEventHandler(g_context, g_window, copy);
 }
