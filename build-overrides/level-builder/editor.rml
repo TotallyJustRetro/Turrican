@@ -30,25 +30,25 @@
   <div class="workspace">
     <nav class="tool-rail">
       <div class="rail-caption">TOOLS</div>
-      <button class="tool-button active" data-action="tool" data-tool="select" data-class-active="selected_tool == 'select'"><span class="tool-glyph">⌖</span><span>SELECT</span></button>
-      <button class="tool-button" data-action="tool" data-tool="brush" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
-      <button class="tool-button" data-action="tool" data-tool="fill"><span class="tool-glyph">◩</span><span>FILL</span></button>
-      <button class="tool-button" data-action="tool" data-tool="slope"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
-      <button class="tool-button" data-action="tool" data-tool="rope"><span class="tool-glyph">⌁</span><span>ROPE</span></button>
-      <button class="tool-button" data-action="tool" data-tool="trigger"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
-      <button class="tool-button" data-action="tool" data-tool="light"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
-      <button class="tool-button" data-action="tool" data-tool="erase"><span class="tool-glyph">⌫</span><span>ERASE</span></button>
+      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">⌖</span><span>SELECT</span></button>
+      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
+      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">◩</span><span>FILL</span></button>
+      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
+      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">⌁</span><span>ROPE</span></button>
+      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
+      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
+      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">⌫</span><span>ERASE</span></button>
       <div class="rail-spacer"></div>
       <div class="rail-foot">MKR<br/>V1</div>
     </nav>
 
     <main class="center-dock">
       <div class="center-tabs">
-        <button class="center-tab active" data-action="tab" data-tab="tiles">TILES</button>
-        <button class="center-tab" data-action="tab" data-tab="entity">ENTITY</button>
-        <button class="center-tab" data-action="tab" data-tab="script">SCRIPT</button>
-        <button class="center-tab" data-action="tab" data-tab="assets">ASSET FOLDER</button>
-        <button class="center-tab" data-action="tab" data-tab="boss">BOSS</button>
+        <button class="center-tab active" id="mode-0" data-action="mode" data-mode="0">TILES</button>
+        <button class="center-tab" id="mode-1" data-action="mode" data-mode="1">ENTITY</button>
+        <button class="center-tab" id="mode-2" data-action="mode" data-mode="2">SCRIPT</button>
+        <button class="center-tab" id="mode-3" data-action="mode" data-mode="3">ASSET FOLDER</button>
+        <button class="center-tab" id="mode-4" data-action="mode" data-mode="4">BOSS</button>
       </div>
       <div class="stage-head">
         <div class="stage-title">STAGE VIEWPORT <span class="accent-cyan">/ LIVE GAME PLANE</span></div>
@@ -116,7 +116,7 @@
           <div class="folder expanded" id="folder-tilesets">
             <div class="folder-heading" data-action="folder-toggle" data-folder="tilesets"><span class="folder-arrow">▾</span> Tilesets/</div>
             <div id="folder-content-tilesets" class="folder-content">
-              <div class="folder-subheading">2D_16bit/</div>
+              <div class="folder-subheading asset-folder-row"><span>2D_16bit/</span><span><button class="tiny-button" data-action="asset-page" data-dir="-1">‹</button><button class="tiny-button" data-action="asset-page" data-dir="1">›</button></span></div>
               <div id="asset-shelf-items" class="asset-card-grid"></div>
               <div class="folder-subheading">3D_Modular_Blocks/</div>
               <div id="asset-list-3d-tiles" class="asset-card-grid"></div>

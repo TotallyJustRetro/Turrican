@@ -27,6 +27,8 @@ def main() -> None:
     required = (
         "mt_level_builder_model.cpp",
         "mt_level_builder_model.h",
+        "mt_level_builder_importer.cpp",
+        "mt_level_builder_importer.h",
         "mt_level_builder_rmlui.cpp",
         "mt_level_builder_rmlui.h",
     )
