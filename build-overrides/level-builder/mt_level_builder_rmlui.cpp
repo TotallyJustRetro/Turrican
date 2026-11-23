@@ -78,6 +78,7 @@ static int g_selected_model_asset = -1;
 static int g_pending_model_asset = -1;
 static int g_selected_texture_asset = -1;
 static bool g_asset_drag_active = false;
+static bool g_placement_armed = false;
 static int g_drag_asset_id = -1;
 static Rml::String g_drag_asset_type;
 static int g_placed_model_count = 0;
@@ -136,6 +137,46 @@ static const std::string &maker_portable_root()
            (g_portable_root.back() == '/' || g_portable_root.back() == '\\'))
         g_portable_root.pop_back();
     return g_portable_root;
+}
+
+static bool maker_save_placed_models()
+{
+    const std::string path=maker_portable_root()+"/maker-stage-models.ini";
+    FILE *file=std::fopen(path.c_str(),"wb");
+    if(!file)return false;
+    bool ok=std::fprintf(file,"MT_STAGE_MODELS 1 %d\n",g_placed_model_count)>=0;
+    for(int i=0;ok&&i<g_placed_model_count;i++){
+        const PlacedMakerModel &model=g_placed_models[i];
+        if(std::fprintf(file,"%d %.6f %.6f\n",model.asset_id,model.x,model.y)<0)ok=false;
+    }
+    if(std::fclose(file)!=0)ok=false;
+    return ok;
+}
+
+static void maker_load_placed_models()
+{
+    g_placed_model_count=0;
+    const std::string path=maker_portable_root()+"/maker-stage-models.ini";
+    FILE *file=std::fopen(path.c_str(),"rb");
+    if(!file)return;
+    char magic[32]={};int version=0,count=0;
+    if(std::fscanf(file,"%31s %d %d",magic,&version,&count)!=3||
+       std::strcmp(magic,"MT_STAGE_MODELS")!=0||version!=1||count<0||count>64){
+        std::fclose(file);return;
+    }
+    for(int i=0;i<count;i++){
+        int asset_id=-1;float x=0.0f,y=0.0f;
+        if(std::fscanf(file,"%d %f %f",&asset_id,&x,&y)!=3)break;
+        char name[128]={},asset_path[1024]={};uint32_t triangles=0,bones=0;
+        float bounds[3]={0,0,0};int diffuse=0,normal=0,emissive=0,classification=0;
+        if(!mtlb_imported_model_info(asset_id,name,sizeof(name),asset_path,sizeof(asset_path),
+            &triangles,&bones,bounds,&diffuse,&normal,&emissive,&classification))continue;
+        PlacedMakerModel &model=g_placed_models[g_placed_model_count++];
+        model.asset_id=asset_id;
+        model.x=std::max(0.0f,std::min(1.0f,x));
+        model.y=std::max(0.0f,std::min(1.0f,y));
+    }
+    std::fclose(file);
 }
 
 
@@ -218,6 +259,8 @@ static void maker_update_imported_model_panel(int index)
 
     if (Rml::Element *element=g_document->GetElementById("model-preview"))
         element->SetInnerRML("<div class='model-wireframe-label'>SELECTED: "+Rml::StringUtilities::EncodeRml(name)+"</div>");
+    if (Rml::Element *label=g_document->GetElementById("selected-asset-name"))
+        label->SetInnerRML(Rml::StringUtilities::EncodeRml(name));
     if (Rml::Element *element=g_document->GetElementById("model-triangle-count")) {
         char value[64]; std::snprintf(value,sizeof(value),"%u / 256 TRIS",triangles); element->SetInnerRML(value);
     }
@@ -308,6 +351,32 @@ static void maker_open_texture_importer()
     const std::string path=maker_choose_file(true);
     if(!path.empty())maker_import_texture_file(path.c_str());
 }
+
+static void maker_refresh_tile_shelf()
+{
+    if(!g_document)return;
+    const int total=mtlb_editor_tile_count();
+    const int max_offset=std::max(0,total-20);
+    g_asset_shelf_offset=std::max(0,std::min(max_offset,g_asset_shelf_offset));
+    const int visible=std::min(20,std::max(0,total-g_asset_shelf_offset));
+    std::string cards;
+    for(int n=0;n<visible;n++){
+        const int index=g_asset_shelf_offset+n;
+        const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
+        char card[512];
+        std::snprintf(card,sizeof(card),
+            "<div id='asset-tile-%d' class='asset-card tile-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb tile-thumb'></div><div>TILE %03d</div><div class='asset-tag'>2D / VDP</div></div>",
+            index,entry==g_brush_tile?"selected":"",index,index+1);
+        cards+=card;
+    }
+    if(cards.empty())cards="<div class='folder-subheading'>No visible VDP tiles yet. Start or resume the game to populate the cartridge tile atlas.</div>";
+    if(Rml::Element *list=g_document->GetElementById("asset-list-tiles"))list->SetInnerRML(cards);
+    char page[48];
+    const int pages=std::max(1,(total+19)/20);
+    std::snprintf(page,sizeof(page),"PAGE %d / %d",std::min(pages,g_asset_shelf_offset/20+1),pages);
+    if(Rml::Element *label=g_document->GetElementById("asset-page-label"))label->SetInnerRML(page);
+}
+
 static void maker_refresh_sprite_lists()
 {
     if(!g_document)return;
@@ -350,10 +419,12 @@ static void maker_refresh_imported_asset_lists()
         if(!mtlb_imported_model_info(i,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
             &diffuse,&normal,&emissive,&classification))continue;
         char card[1024];
-        const bool locked=!g_maker_modern;
+        std::string classes="asset-card";
+        if(i==g_selected_model_asset)classes+=" selected";
+        if(!g_maker_modern)classes+=" model-modern-only";
         std::snprintf(card,sizeof(card),
-            "<div id='asset-model-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
-            i,locked?"locked-modern-only":"",i,Rml::StringUtilities::EncodeRml(name).c_str());
+            "<div id='asset-model-%d' class='%s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
+            i,classes.c_str(),i,Rml::StringUtilities::EncodeRml(name).c_str());
         lists[std::max(0,std::min(4,classification))]+=card;
     }
     for(int i=0;i<5;i++){
@@ -365,6 +436,7 @@ static void maker_refresh_imported_asset_lists()
 static void maker_refresh_asset_shelf()
 {
     if(!g_document)return;
+    maker_refresh_tile_shelf();
     maker_refresh_sprite_lists();
     maker_refresh_imported_asset_lists();
 }
@@ -409,9 +481,22 @@ static void draw_stage_grid(SDL_Renderer *renderer)
         for(int y=0;y<g_map_rows;y++)for(int x=0;x<g_map_cols;x++){
             const int tile=mtlb_map_get(x,y);
             if(tile==0)continue;
-            const int ci=(tile>=176&&tile<=183)?tile-176:(tile&7);
-            append_stage_quad(origin.x+x*cell_w+1.0f,origin.y+y*cell_h+1.0f,
-                origin.x+(x+1)*cell_w-1.0f,origin.y+(y+1)*cell_h-1.0f,palette[ci]);
+            const float pixel_w=cell_w/8.0f,pixel_h=cell_h/8.0f;
+            bool drew_pixel=false;
+            for(int py=0;py<8;py++)for(int px=0;px<8;px++){
+                uint8_t rgba[4]={0,0,0,0};
+                mtlb_editor_tile_rgba(tile,px,py,rgba);
+                if(rgba[3]==0)continue;
+                drew_pixel=true;
+                const SDL_Color color={rgba[0],rgba[1],rgba[2],rgba[3]};
+                append_stage_quad(origin.x+x*cell_w+px*pixel_w,origin.y+y*cell_h+py*pixel_h,
+                    origin.x+x*cell_w+(px+1)*pixel_w,origin.y+y*cell_h+(py+1)*pixel_h,color);
+            }
+            if(!drew_pixel){
+                const int ci=(tile>=176&&tile<=183)?tile-176:(tile&7);
+                append_stage_quad(origin.x+x*cell_w+1.0f,origin.y+y*cell_h+1.0f,
+                    origin.x+(x+1)*cell_w-1.0f,origin.y+(y+1)*cell_h-1.0f,palette[ci]);
+            }
         }
         if(g_maker_show_grid){
             const SDL_Color minor_grid={43,63,96,255};
@@ -584,17 +669,23 @@ static const char *maker_tool_list(int mode)
 static void maker_update_mode_ui()
 {
     if(!g_document)return;
-    for(int i=0;i<5;i++){
+    for(int i=0;i<MAKER_MODE_COUNT;i++){
         char id[32];std::snprintf(id,sizeof(id),"mode-%d",i);
         if(Rml::Element *tab=g_document->GetElementById(id))tab->SetClass("active",i==g_maker_mode);
     }
-    static const char *tool_names[]={"select","brush","fill","slope","rope","trigger","light","erase"};
-    const int tool_index=std::max(0,std::min(7,g_maker_tool));
+    static const char *tool_names[]={"select","brush","fill","slope","rope","trigger","light","erase","asset-select"};
+    const int tool_index=std::max(0,std::min(8,g_maker_tool));
     g_selected_tool=tool_names[tool_index];
-    for(int i=0;i<8;i++){
-        char id[32];std::snprintf(id,sizeof(id),"tool-%d",i);
-        if(Rml::Element *tool=g_document->GetElementById(id))tool->SetClass("active",i==tool_index);
+    if(Rml::Element *palette=g_document->GetElementById("tool-palette")){
+        palette->SetInnerRML(maker_tool_list(g_maker_mode));
+        for(int i=0;i<palette->GetNumChildren();i++){
+            Rml::Element *tool=palette->GetChild(i);
+            if(tool&&tool->HasAttribute("data-tool"))
+                tool->SetClass("active",tool->GetAttribute<int>("data-tool",0)==tool_index);
+        }
     }
+    if(Rml::Element *place=g_document->GetElementById("place-selected-asset"))
+        place->SetClass("active",g_placement_armed);
 
     static const char *tab_names[]={"tiles","entity","script","assets","boss","assets"};
     g_active_tab=tab_names[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))];
@@ -630,7 +721,9 @@ static void maker_update_mode_ui()
         "BACKGROUND / Select a depth layer and configure parallax, raster and background props."
     };
     if(Rml::Element *hint=g_document->GetElementById("stage-hint"))
-        hint->SetInnerRML(hints[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))]);
+        hint->SetInnerRML(g_placement_armed?
+            "PLACEMENT ARMED / CLICK INSIDE THE PLAYFIELD TO PLACE THE SELECTED ASSET.":
+            hints[std::max(0,std::min(MAKER_MODE_COUNT-1,g_maker_mode))]);
 
     if(g_model_handle){
         g_model_handle.DirtyVariable("global_mode");
@@ -685,7 +778,7 @@ public:
         const Rml::String action = element->GetAttribute<Rml::String>("data-action", "");
 
         if (action == "mode") {
-            g_maker_mode = std::max(0,std::min(4,element->GetAttribute<int>("data-mode",0)));
+            g_maker_mode = std::max(0,std::min(MAKER_MODE_COUNT-1,element->GetAttribute<int>("data-mode",0)));
             g_maker_tool = 0;
             maker_update_mode_ui();
             maker_save_settings();
@@ -699,6 +792,7 @@ public:
             else g_maker_modern=!g_maker_modern;
             maker_update_mode_ui();
             maker_refresh_asset_shelf();
+            maker_update_mode_ui();
             maker_save_settings();
             set_status(g_maker_modern?
                 "MODERN REBORN: widescreen, 3D models and dynamic lighting unlocked.":
@@ -714,6 +808,7 @@ public:
             const char *models[]={"asset-list-3d-review","asset-list-3d-character","asset-list-3d-items","asset-list-3d-enemies","asset-list-3d-bosses"};
             for(const char *id:groups)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==2);
             for(const char *id:models)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==1);
+            if(Rml::Element *tiles=g_document->GetElementById("folder-tiles"))tiles->SetClass("hidden",g_asset_filter==2);
             return;
         }
         if (action == "folder-toggle") {
@@ -744,16 +839,51 @@ public:
                     g_maker_tool=(role==1)?3:((role==2)?2:((role==3)?1:0));
                 }
             }else if(g_selected_asset_type=="3d_model"){
-                if(!g_maker_modern){
-                    set_status("Modern Mode Required: this 3D model is locked by the Vanilla 1994 quality gate.");
-                    return;
-                }
+                g_placement_armed=false;
                 g_selected_rom_sprite=-1;
                 maker_update_sprite_panel(-1);
                 g_selected_model_asset=g_selected_asset_id;
+                g_maker_mode=MAKER_OBJECTS;
+                g_maker_tool=0;
                 maker_update_imported_model_panel(g_selected_model_asset);
             }
             maker_update_mode_ui();
+            if(g_selected_asset_type=="2d_tile")
+                set_status("Tile selected as the brush. Click or drag across the playfield to paint.");
+            else if(g_selected_asset_type=="3d_model"&&!g_maker_modern)
+                set_status("3D model selected and previewed. Switch GLOBAL MODE to MODERN REBORN to place it.");
+            else
+                set_status("Asset selected. Use PLACE SELECTED ON STAGE, or drag it into the playfield.");
+            return;
+        }
+        if (action == "place-selected-asset") {
+            if(g_selected_asset_id<0||g_selected_asset_type.empty()){
+                set_status("Select a tile, sprite or 3D model from the Asset Bay first.");
+                return;
+            }
+            if(g_selected_asset_type=="2d_tile"){
+                const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
+                if(tile){
+                    select_brush(tile);
+                    g_maker_mode=MAKER_TILES;
+                    g_maker_tool=1;
+                    maker_update_mode_ui();
+                    set_status("Tile loaded into the brush. Click or drag across the playfield to paint.");
+                }
+                return;
+            }
+            if(g_selected_asset_type=="3d_model"&&!g_maker_modern){
+                set_status("The model is selected. Switch GLOBAL MODE to MODERN REBORN before placing 3D stage props.");
+                return;
+            }
+            if(g_selected_asset_type!="3d_model"&&g_selected_asset_type!="rom_sprite"&&
+               g_selected_asset_type!="enemy"&&g_selected_asset_type!="boss"){
+                set_status("This asset type cannot be placed directly on the stage.");
+                return;
+            }
+            g_placement_armed=true;
+            maker_update_mode_ui();
+            set_status("PLACEMENT ARMED — click once inside the playfield to place the selected asset.");
             return;
         }
         if (action == "import-model") {
@@ -778,6 +908,9 @@ public:
                 }
                 mtlb_imported_model_classify(g_pending_model_asset,classification);
                 g_selected_model_asset=g_pending_model_asset;
+                g_selected_asset_id=g_pending_model_asset;
+                g_selected_asset_type="3d_model";
+                g_placement_armed=false;
                 g_pending_model_asset=-1;
                 maker_refresh_imported_asset_lists();
                 maker_update_imported_model_panel(g_selected_model_asset);
@@ -846,7 +979,7 @@ public:
         }
 
         if (action == "tool") {
-            g_maker_tool = std::max(0,std::min(7,element->GetAttribute<int>("data-tool",0)));
+            g_maker_tool = std::max(0,std::min(8,element->GetAttribute<int>("data-tool",0)));
             if(g_maker_mode==MAKER_TILES && g_maker_tool==1) select_brush(g_brush_tile);
             maker_update_mode_ui();
             maker_save_settings();
@@ -982,13 +1115,17 @@ public:
             return;
         }
         if (action == "save") {
-            set_status(mtlb_map_save() ? "Level saved to the Maker levels folder." : "Could not save the level document.");
+            const bool map_saved=mtlb_map_save()!=0;
+            const bool props_saved=maker_save_placed_models();
+            set_status(map_saved&&props_saved?"Level and 3D stage props saved.":
+                (!map_saved?"Could not save the level document.":"Level saved, but 3D stage props could not be saved."));
             return;
         }
         if (action == "load") {
             if (mtlb_map_load()) {
+                maker_load_placed_models();
                 g_stage_batch_dirty = true;
-                set_status("Level document loaded.");
+                set_status("Level and saved 3D stage props loaded.");
             } else {
                 set_status("No saved level document was found.");
             }
@@ -1040,6 +1177,9 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_map_rows = mtlb_map_rows();
     mtlb_editor_prepare_rom_assets();
     maker_load_settings();
+    const int restored_models=mtlb_imported_model_scan();
+    maker_load_placed_models();
+    maker_log("Restored %d imported 3D models and %d stage props.",restored_models,g_placed_model_count);
     g_global_mode = g_maker_modern ? "MODERN REBORN" : "VANILLA 1994";
     maker_log("Map dimensions: %d x %d.", g_map_cols, g_map_rows);
     if (g_map_cols <= 0 || g_map_rows <= 0)
@@ -1257,6 +1397,15 @@ static void maker_place_asset_at(int px,int py)
             select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;
             set_status("Cartridge tile snapped to the stage grid.");
         }
+    }else if(g_drag_asset_type=="rom_sprite"){
+        const int role=mtlb_editor_sprite_asset_category(g_drag_asset_id);
+        const int type=std::max(0,std::min(4,role));
+        const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
+        if(index>=0){
+            g_ui_selected_entity=index;
+            if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
+            set_status("ROM sprite placed on the stage. Its role is stored in the Asset Bay.");
+        }else set_status("The level already contains the maximum number of placed entities.");
     }else if(g_drag_asset_type=="enemy"||g_drag_asset_type=="boss"){
         const int type=(g_drag_asset_type=="boss")?4:3;
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
@@ -1271,7 +1420,10 @@ static void maker_place_asset_at(int px,int py)
         g_placed_models[g_placed_model_count++]={g_drag_asset_id,(x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows};
         g_selected_model_asset=g_drag_asset_id;
         maker_update_imported_model_panel(g_selected_model_asset);
-        set_status("3D model snapped onto the 2D gameplay plane.");
+        if(!maker_save_placed_models())
+            set_status("3D model placed, but its stage position could not be saved.");
+        else
+            set_status("3D model placed on the stage. Its position is saved with the Maker project.");
     }
     maker_save_settings();
 }
@@ -1331,7 +1483,12 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
                     else if(g_maker_tool==5){++g_event_node_count;set_status("Stage trigger marker added to the event flow.");}
                     else if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->button.x,event->button.y,g_brush_tile);
                     else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->button.x,event->button.y,0);
-                    else if(g_selected_asset_id>=0&&(g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
+                    else if(g_placement_armed&&g_selected_asset_id>=0){
+                        g_drag_asset_id=g_selected_asset_id;g_drag_asset_type=g_selected_asset_type;
+                        maker_place_asset_at(event->button.x,event->button.y);
+                        g_placement_armed=false;
+                        maker_update_mode_ui();
+                    }else if(g_selected_asset_id>=0&&(g_selected_asset_type=="rom_sprite"||g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
                         g_drag_asset_id=g_selected_asset_id;g_drag_asset_type=g_selected_asset_type;g_asset_drag_active=true;
                         maker_place_asset_at(event->button.x,event->button.y);g_asset_drag_active=false;
                     }else{g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}}
@@ -1678,6 +1835,7 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     draw_model_previews(renderer);
     draw_stage_lighting(renderer);
     draw_rom_sprite_cards(renderer);
+    draw_asset_shelf_previews(renderer);
     const Uint64 grid_end = SDL_GetPerformanceCounter();
 
     const double ticks_to_ms = 1000.0 / (double)SDL_GetPerformanceFrequency();

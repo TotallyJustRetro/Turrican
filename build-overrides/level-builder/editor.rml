@@ -29,15 +29,8 @@
 
   <div class="workspace">
     <nav class="tool-rail">
-      <div class="rail-caption">TOOLS</div>
-      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">↖</span><span>SELECT</span></button>
-      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
-      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">◆</span><span>FILL</span></button>
-      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
-      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">∿</span><span>ROPE</span></button>
-      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
-      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
-      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">×</span><span>ERASE</span></button>
+      <div class="rail-caption">TOOL DECK</div>
+      <div id="tool-palette" class="tool-palette"></div>
       <div class="rail-spacer"></div>
       <div class="rail-actions">
         <button class="rail-mini-button" data-action="undo">UNDO</button>
@@ -55,6 +48,7 @@
         <button class="center-tab" id="mode-2" data-action="mode" data-mode="2">SCRIPT</button>
         <button class="center-tab" id="mode-3" data-action="mode" data-mode="3">ASSET FOLDER</button>
         <button class="center-tab" id="mode-4" data-action="mode" data-mode="4">BOSS</button>
+        <button class="center-tab" id="mode-5" data-action="mode" data-mode="5">BACKDROP</button>
       </div>
       <div class="stage-head">
         <div class="stage-title">PLAYFIELD MONITOR <span class="accent-cyan">/ CHARACTER · ITEMS · ENEMIES · BOSSES</span></div>
@@ -113,7 +107,19 @@
           <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
         </div>
         <div id="folder-scroll" class="folder-scroll">
-          <div class="folder expanded" id="folder-review">
+          <div class="folder expanded" id="folder-tiles">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="tiles"><span class="folder-arrow">▾</span> TILES / VDP LIBRARY</div>
+            <div id="folder-content-tiles" class="folder-content">
+              <div class="folder-subheading">SELECT A TILE TO LOAD IT INTO THE BRUSH · CLICK THE STAGE TO PAINT</div>
+              <div id="asset-list-tiles" class="asset-card-grid tile-card-grid"></div>
+              <div class="tile-pager">
+                <button class="tiny-button" data-action="asset-page" data-dir="-1">◂ PREVIOUS</button>
+                <span id="asset-page-label">PAGE 1 / 1</span>
+                <button class="tiny-button" data-action="asset-page" data-dir="1">NEXT ▸</button>
+              </div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-review">
             <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▾</span> Needs_Review/</div>
             <div id="folder-content-review" class="folder-content">
               <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
@@ -158,13 +164,17 @@
 
       <div class="inspector-stack">
         <section class="model-import-card">
-        <div class="dock-title"><span>3D OBJECT IMPORT</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
-        <div id="model-preview" class="model-preview">
-          <div class="model-preview-placeholder">NO MODEL SELECTED</div>
+        <div class="dock-title"><span>STAGE OBJECTS / 3D</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
+        <div class="model-preview-row">
+          <div id="model-preview" class="model-preview">
+            <div class="model-preview-placeholder">NO MODEL SELECTED</div>
+          </div>
+          <div class="model-metrics">
+            <div class="model-stats"><span>TRIANGLES</span><strong id="model-triangle-count">0 / 256</strong></div>
+            <div class="model-stats"><span>BONES</span><strong id="model-bone-count">0</strong></div>
+            <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NONE</strong></div>
+          </div>
         </div>
-        <div class="model-stats"><span>TRIANGLE BUDGET</span><strong id="model-triangle-count">0 / 256 TRIS</strong></div>
-        <div class="model-stats"><span>BONES / ARMATURE</span><strong id="model-bone-count">0</strong></div>
-        <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NONE</strong></div>
         <div class="classification-row"><span>ASSET TYPE</span>
           <select id="model-classification" data-action="model-classification">
             <option value="0">NEEDS REVIEW</option>
@@ -174,8 +184,12 @@
             <option value="4">BOSS</option>
           </select>
         </div>
-        <button class="button import-wide" data-action="import-model">IMPORT GLB / GLTF / OBJ / FBX</button>
-        <button class="button import-wide" data-action="import-texture">IMPORT PNG / TGA TEXTURE</button>
+        <div class="import-actions">
+          <button class="button import-wide" data-action="import-model">＋ IMPORT 3D MODEL</button>
+          <button class="button place-stage-button" id="place-selected-asset" data-action="place-selected-asset">PLACE SELECTED ON STAGE</button>
+        </div>
+        <button class="button import-texture-button" data-action="import-texture">IMPORT PNG / TGA TEXTURE</button>
+        <div class="placement-help">Select a model, choose PLACE, then click its position in the playfield. 3D placement requires MODERN REBORN.</div>
       </section>
 
       <section class="property-inspector">

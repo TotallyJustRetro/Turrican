@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 namespace {
@@ -45,6 +46,7 @@ static ImportedModel g_models[kMaxImportedModels];
 static ImportedTexture g_textures[kMaxImportedTextures];
 static int g_model_count = 0;
 static int g_texture_count = 0;
+static bool g_models_scanned = false;
 static std::string g_import_error;
 
 static std::string portable_root()
@@ -132,7 +134,7 @@ static void build_preview(const aiScene *scene,ImportedModel &asset,
 }
 } // namespace
 
-extern "C" int mtlb_import_model(const char *path)
+static int import_model_internal(const char *path, bool copy_into_library)
 {
     g_import_error.clear();
     if(!path||!path[0]){g_import_error="No model file was selected.";return -1;}
@@ -172,11 +174,57 @@ extern "C" int mtlb_import_model(const char *path)
     asset.bounds[0]=hi.x-lo.x;asset.bounds[1]=hi.y-lo.y;asset.bounds[2]=hi.z-lo.z;
     collect_material_textures(scene,asset);
     build_preview(scene,asset,lo,hi);
-    fs::path copied;
-    if(copy_model_bundle(source,scene,g_model_count,copied))safe_copy(asset.path,sizeof(asset.path),copied.string());
+    if(copy_into_library){
+        fs::path copied;
+        if(!copy_model_bundle(source,scene,g_model_count,copied)){
+            g_import_error="The model was read, but could not be copied into the portable Assets/Imported library.";
+            return -1;
+        }
+        safe_copy(asset.path,sizeof(asset.path),copied.string());
+    }
     g_models[g_model_count]=asset;
     return g_model_count++;
 }
+
+extern "C" int mtlb_import_model(const char *path)
+{
+    return import_model_internal(path,true);
+}
+
+extern "C" int mtlb_imported_model_scan(void)
+{
+    if(g_models_scanned)return g_model_count;
+    g_models_scanned=true;
+    const fs::path root=fs::path(portable_root())/"Assets"/"Imported";
+    std::error_code ec;
+    if(!fs::exists(root,ec)||ec)return g_model_count;
+    std::vector<fs::path> candidates;
+    for(fs::recursive_directory_iterator it(root,ec),end;it!=end;it.increment(ec)){
+        if(ec){ec.clear();continue;}
+        if(!it->is_regular_file(ec)){ec.clear();continue;}
+        std::string ext=it->path().extension().string();
+        std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return (char)std::tolower(c);});
+        if(ext==".glb"||ext==".gltf"||ext==".obj"||ext==".fbx")
+            candidates.push_back(it->path());
+    }
+    auto asset_order=[](const fs::path &path){
+        int order=0x7fffffff;
+        const std::string folder=path.parent_path().filename().string();
+        if(std::sscanf(folder.c_str(),"asset_%d_",&order)!=1)order=0x7fffffff;
+        return order;
+    };
+    std::stable_sort(candidates.begin(),candidates.end(),[&](const fs::path &a,const fs::path &b){
+        const int oa=asset_order(a),ob=asset_order(b);
+        if(oa!=ob)return oa<ob;
+        return a.generic_string()<b.generic_string();
+    });
+    for(const fs::path &candidate:candidates){
+        if(g_model_count>=kMaxImportedModels)break;
+        import_model_internal(candidate.string().c_str(),false);
+    }
+    return g_model_count;
+}
+
 extern "C" int mtlb_import_texture(const char *path)
 {
     g_import_error.clear();

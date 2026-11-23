@@ -3597,3 +3597,222 @@ body {
   .property-row label { font-size: 7px; }
   .property-row select, .property-row input { font-size: 8px; }
 }
+
+
+/* =========================================================================
+   MAKER WORKFLOW LAYOUT — room for real assets and readable controls
+   ========================================================================= */
+.workspace {
+  gap: 8px;
+  padding: 8px;
+}
+.tool-rail {
+  width: 98px;
+  min-width: 98px;
+  padding: 8px 7px;
+  gap: 6px;
+}
+.tool-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tool-palette .tool-button {
+  width: 100%;
+  height: auto;
+  min-height: 42px;
+  padding: 7px 5px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+  font-family: "Turrican";
+  font-size: 9px;
+}
+.center-tabs {
+  height: 40px;
+  min-height: 40px;
+  gap: 5px;
+}
+.center-tab {
+  min-width: 0;
+  padding: 5px 3px;
+  font-size: 10px;
+}
+.right-dock {
+  width: 410px;
+  min-width: 390px;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+.asset-drawer {
+  width: 100%;
+  min-width: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0%;
+  min-height: 205px;
+  padding: 10px;
+}
+.inspector-stack {
+  width: 100%;
+  flex-grow: 1.15;
+  flex-shrink: 1;
+  flex-basis: 0%;
+  gap: 8px;
+}
+.model-import-card {
+  height: 186px;
+  min-height: 186px;
+  padding: 9px;
+  overflow: hidden;
+}
+.property-inspector {
+  padding: 10px;
+}
+.asset-filter {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.asset-filter .filter-button {
+  min-height: 28px;
+  padding: 5px 7px;
+}
+.folder-scroll {
+  padding-right: 4px;
+}
+.folder-heading {
+  padding: 8px 7px;
+}
+.folder-content {
+  padding: 6px 0 8px 5px;
+}
+.folder-subheading {
+  padding: 6px 4px;
+  line-height: 1.35;
+}
+.asset-card-grid {
+  gap: 6px;
+  padding: 4px;
+}
+.asset-card {
+  width: 76px;
+  height: 78px;
+  padding: 5px;
+  font-size: 8px;
+}
+.asset-thumb {
+  width: 54px;
+  height: 48px;
+}
+.tile-card .asset-thumb {
+  background-color: #081321;
+  border: 1px solid #405979;
+}
+.tile-card-grid {
+  padding-bottom: 7px;
+}
+.tile-pager {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 3px 2px;
+  color: #c7d7eb;
+  font-family: Lato;
+  font-size: 10px;
+}
+.tile-pager .tiny-button {
+  min-height: 27px;
+}
+#mode-5 { border-bottom-color: #72d4a3; }
+#mode-5.active { background-color: #194c42; }
+
+.model-preview-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 9px;
+  min-height: 58px;
+}
+.model-preview {
+  width: 112px;
+  min-width: 112px;
+  height: 58px;
+  margin-bottom: 0;
+}
+.model-metrics {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  justify-content: center;
+  min-width: 0;
+}
+.model-stats {
+  padding: 3px 0;
+}
+.classification-row {
+  padding: 5px 0;
+}
+.import-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+.import-actions .import-wide,
+.import-actions .place-stage-button {
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 6px;
+  font-size: 8px;
+}
+.place-stage-button {
+  color: #fff0b9;
+  background-color: #523c22;
+  border: 1px solid #e2b96b;
+}
+.place-stage-button:hover,
+.place-stage-button.active {
+  color: #ffffff;
+  background-color: #775126;
+  border-color: #ffe2a0;
+}
+.import-texture-button {
+  width: 100%;
+  min-height: 24px;
+  margin-top: 5px;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+.placement-help {
+  color: #9eb4cf;
+  font-family: Lato;
+  font-size: 9px;
+  padding-top: 4px;
+}
+.asset-card.model-modern-only:after {
+  content: "MODERN TO PLACE";
+  color: #f1ca79;
+  font-size: 7px;
+}
+.asset-card.selected {
+  border-color: #ffe08b;
+}
+@media (max-width: 1100px) {
+  .workspace { gap: 6px; padding: 6px; }
+  .tool-rail { width: 92px; min-width: 92px; }
+  .right-dock { width: 37%; min-width: 330px; }
+  .asset-drawer { min-height: 190px; }
+  .asset-card { width: 69px; height: 74px; }
+  .asset-thumb { width: 49px; height: 45px; }
+  .center-tab { font-size: 9px; }
+  .model-import-card { height: 178px; min-height: 178px; }
+  .property-row label { width: 76px; min-width: 76px; }
+}
