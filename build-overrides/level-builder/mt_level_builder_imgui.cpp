@@ -931,6 +931,19 @@ static void draw_asset_shelf()
         ImGui::SameLine();
         if(ImGui::SmallButton("<"))g_tile_shelf_offset=std::max(0,g_tile_shelf_offset-8);
         if(g_rom_tile_count>0){ImGui::SameLine(0,2);if(ImGui::SmallButton("ROM ART"))g_tile_shelf_offset=g_rom_tile_start_index;}
+        if(g_rom_fx_tile_start_index>=0){
+            ImGui::SameLine(0,2);
+            if(ImGui::SmallButton("ROM FX"))g_tile_shelf_offset=g_rom_fx_tile_start_index;
+            ImGui::SameLine(0,2);
+            if(ImGui::SmallButton("FX NEXT")){
+                for(int step=1;step<=20;step++){
+                    int next=(g_rom_fx_frame+step)%20;
+                    if(g_rom_fx_frame_valid[next]){g_rom_fx_frame=next;break;}
+                }
+            }
+            ImGui::SameLine(0,2);
+            ImGui::TextDisabled("FX %02d/%02d",g_rom_fx_frame+1,20);
+        }
         for(int i=g_tile_shelf_offset;i<g_live_tile_count&&i<g_tile_shelf_offset+8;i++){
             ImGui::SameLine(0,2);
             const bool romTile=(g_rom_tile_start_index>=0 && i>=g_rom_tile_start_index && i<g_rom_tile_start_index+g_rom_tile_count);
