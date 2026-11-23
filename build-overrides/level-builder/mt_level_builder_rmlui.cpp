@@ -36,6 +36,8 @@ static int g_map_rows = 32;
 static int g_cached_window_width = -1, g_cached_window_height = -1;
 static int g_cached_view_x = -1, g_cached_view_y = -1, g_cached_view_width = -1, g_cached_view_height = -1;
 static int g_last_painted_x = -1, g_last_painted_y = -1, g_drag_tile = -1;
+static bool g_stage_batch_dirty = true;
+static float g_stage_batch_x=-1.0f,g_stage_batch_y=-1.0f,g_stage_batch_w=-1.0f,g_stage_batch_h=-1.0f;
 static unsigned g_perf_frames = 0;
 static double g_perf_update_ms = 0.0, g_perf_render_ms = 0.0, g_perf_grid_ms = 0.0;
 static std::vector<SDL_Vertex> g_stage_vertices;
@@ -378,47 +380,50 @@ static void draw_stage_grid(SDL_Renderer *renderer)
     const float height = g_stage_grid->GetClientHeight();
     if (width < 2.0f || height < 2.0f) return;
 
-    g_stage_vertices.clear();
-    g_stage_indices.clear();
-    const size_t quads = (size_t)g_map_cols * (size_t)g_map_rows + (size_t)g_map_cols + (size_t)g_map_rows + 2u;
-    if (g_stage_vertices.capacity() < quads * 4u) g_stage_vertices.reserve(quads * 4u);
-    if (g_stage_indices.capacity() < quads * 6u) g_stage_indices.reserve(quads * 6u);
+    const bool viewport_changed = origin.x != g_stage_batch_x || origin.y != g_stage_batch_y ||
+        width != g_stage_batch_w || height != g_stage_batch_h;
+    if (viewport_changed) g_stage_batch_dirty = true;
 
-    static const SDL_Color palette[8] = {
-        {104,145,125,255}, {112,151,185,255}, {196,132,77,255}, {135,119,184,255},
-        {167,166,119,255}, {77,151,157,255}, {181,103,111,255}, {103,124,155,255}
-    };
-    const float cell_w = width / (float)g_map_cols;
-    const float cell_h = height / (float)g_map_rows;
+    if (g_stage_batch_dirty) {
+        g_stage_vertices.clear();
+        g_stage_indices.clear();
+        const size_t quads=(size_t)g_map_cols*(size_t)g_map_rows+(size_t)g_map_cols+(size_t)g_map_rows+2u;
+        if(g_stage_vertices.capacity()<quads*4u)g_stage_vertices.reserve(quads*4u);
+        if(g_stage_indices.capacity()<quads*6u)g_stage_indices.reserve(quads*6u);
 
-    // Fill existing cells in one geometry batch instead of creating 2,048 DOM elements.
-    for (int y = 0; y < g_map_rows; ++y) {
-        for (int x = 0; x < g_map_cols; ++x) {
-            const int tile = mtlb_map_get(x, y);
-            if (tile == 0) continue;
-            const int ci = (tile >= 176 && tile <= 183) ? tile - 176 : (tile & 7);
-            append_stage_quad(origin.x + x*cell_w + 1.0f, origin.y + y*cell_h + 1.0f,
-                origin.x + (x+1)*cell_w - 1.0f, origin.y + (y+1)*cell_h - 1.0f, palette[ci]);
+        static const SDL_Color palette[8]={
+            {104,145,125,255},{112,151,185,255},{196,132,77,255},{135,119,184,255},
+            {167,166,119,255},{77,151,157,255},{181,103,111,255},{103,124,155,255}
+        };
+        const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
+        for(int y=0;y<g_map_rows;y++)for(int x=0;x<g_map_cols;x++){
+            const int tile=mtlb_map_get(x,y);
+            if(tile==0)continue;
+            const int ci=(tile>=176&&tile<=183)?tile-176:(tile&7);
+            append_stage_quad(origin.x+x*cell_w+1.0f,origin.y+y*cell_h+1.0f,
+                origin.x+(x+1)*cell_w-1.0f,origin.y+(y+1)*cell_h-1.0f,palette[ci]);
         }
+        const SDL_Color grid={43,65,83,255};
+        for(int x=0;x<=g_map_cols;x++){
+            const float px=origin.x+x*cell_w;
+            append_stage_quad(px,origin.y,px+1.0f,origin.y+height,grid);
+        }
+        for(int y=0;y<=g_map_rows;y++){
+            const float py=origin.y+y*cell_h;
+            append_stage_quad(origin.x,py,origin.x+width,py+1.0f,grid);
+        }
+        g_stage_batch_x=origin.x;g_stage_batch_y=origin.y;
+        g_stage_batch_w=width;g_stage_batch_h=height;
+        g_stage_batch_dirty=false;
     }
-
-    const SDL_Color grid = {43,65,83,255};
-    for (int x = 0; x <= g_map_cols; ++x) {
-        const float px = origin.x + x*cell_w;
-        append_stage_quad(px, origin.y, px + 1.0f, origin.y + height, grid);
-    }
-    for (int y = 0; y <= g_map_rows; ++y) {
-        const float py = origin.y + y*cell_h;
-        append_stage_quad(origin.x, py, origin.x + width, py + 1.0f, grid);
-    }
-
-    SDL_Rect clip{(int)std::floor(origin.x), (int)std::floor(origin.y),
-        (int)std::ceil(width), (int)std::ceil(height)};
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-    SDL_RenderSetClipRect(renderer, &clip);
-    SDL_RenderGeometry(renderer, nullptr, g_stage_vertices.data(), (int)g_stage_vertices.size(),
-        g_stage_indices.data(), (int)g_stage_indices.size());
-    SDL_RenderSetClipRect(renderer, nullptr);
+    if(g_stage_indices.empty())return;
+    SDL_Rect clip{(int)std::floor(origin.x),(int)std::floor(origin.y),
+        (int)std::ceil(width),(int)std::ceil(height)};
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    SDL_RenderSetClipRect(renderer,&clip);
+    SDL_RenderGeometry(renderer,nullptr,g_stage_vertices.data(),(int)g_stage_vertices.size(),
+        g_stage_indices.data(),(int)g_stage_indices.size());
+    SDL_RenderSetClipRect(renderer,nullptr);
 }
 
 static void paint_stage_at(int mouse_x, int mouse_y, int tile)
@@ -437,6 +442,7 @@ static void paint_stage_at(int mouse_x, int mouse_y, int tile)
     if (x == g_last_painted_x && y == g_last_painted_y && tile == g_drag_tile) return;
     g_last_painted_x = x; g_last_painted_y = y; g_drag_tile = tile;
     mtlb_map_set(x, y, tile);
+    g_stage_batch_dirty = true;
     char message[96];
     std::snprintf(message, sizeof(message), "%s cell %d, %d with tile $%04X.",
         tile == 0 ? "Erased" : "Painted", x, y, tile);
@@ -802,6 +808,7 @@ public:
         }
         if (action == "load") {
             if (mtlb_map_load()) {
+                g_stage_batch_dirty = true;
                 set_status("Level document loaded.");
             } else {
                 set_status("No saved level document was found.");
