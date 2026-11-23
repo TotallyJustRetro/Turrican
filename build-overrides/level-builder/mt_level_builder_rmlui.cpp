@@ -48,6 +48,8 @@ static int g_map_rows = 32;
 static int g_cached_window_width = -1, g_cached_window_height = -1;
 static int g_cached_view_x = -1, g_cached_view_y = -1, g_cached_view_width = -1, g_cached_view_height = -1;
 static int g_last_painted_x = -1, g_last_painted_y = -1, g_drag_tile = -1;
+static bool g_undo_pushed_for_stroke = false;
+static int g_selected_light = -1;
 static bool g_stage_batch_dirty = true;
 static float g_stage_batch_x=-1.0f,g_stage_batch_y=-1.0f,g_stage_batch_w=-1.0f,g_stage_batch_h=-1.0f;
 static unsigned g_perf_frames = 0;
@@ -397,8 +399,11 @@ static void paint_stage_at(int mouse_x, int mouse_y, int tile)
     }
     const int x = std::min(g_map_cols-1, (int)((mouse_x-origin.x)*g_map_cols/width));
     const int y = std::min(g_map_rows-1, (int)((mouse_y-origin.y)*g_map_rows/height));
+    g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);
+    if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}
     if (x == g_last_painted_x && y == g_last_painted_y && tile == g_drag_tile) return;
     g_last_painted_x = x; g_last_painted_y = y; g_drag_tile = tile;
+    if(!g_undo_pushed_for_stroke){mtlb_editor_push_undo();g_undo_pushed_for_stroke=true;}
     mtlb_map_set(x, y, tile);
     g_stage_batch_dirty = true;
     char message[96];
@@ -1079,30 +1084,176 @@ extern "C" void mtlbr_shutdown(void)
     g_exit_requested = false;
 }
 
+static Rml::Element *maker_find_asset_card(Rml::Element *element)
+{
+    while(element){
+        if(element->HasAttribute("data-asset-id")&&element->HasAttribute("data-asset-type"))return element;
+        element=element->GetParentNode();
+    }
+    return nullptr;
+}
+
+static bool maker_stage_cell_at(int px,int py,int &grid_x,int &grid_y)
+{
+    if(!g_stage_grid||g_map_cols<=0||g_map_rows<=0)return false;
+    const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
+    const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
+    if(width<=0||height<=0||px<origin.x||py<origin.y||px>=origin.x+width||py>=origin.y+height)return false;
+    grid_x=std::max(0,std::min(g_map_cols-1,(int)((px-origin.x)*g_map_cols/width)));
+    grid_y=std::max(0,std::min(g_map_rows-1,(int)((py-origin.y)*g_map_rows/height)));
+    return true;
+}
+
+static void maker_update_cursor(int px,int py)
+{
+    int x=0,y=0;
+    if(!maker_stage_cell_at(px,py,x,y))return;
+    if(x==g_cursor_x&&y==g_cursor_y)return;
+    g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);
+    if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}
+    if(Rml::Element *status=g_document->GetElementById("cursor-x-status"))status->SetInnerRML(std::to_string(x));
+    if(Rml::Element *status=g_document->GetElementById("cursor-y-status"))status->SetInnerRML(std::to_string(y));
+}
+
+static void maker_add_light(int px,int py)
+{
+    if(!g_maker_modern){
+        set_status("Dynamic point lights are Modern-only. Vanilla uses the Genesis CRAM palette path.");
+        return;
+    }
+    int x=0,y=0;if(!maker_stage_cell_at(px,py,x,y))return;
+    if(g_light_count>=32){set_status("The stage light limit has been reached.");return;}
+    const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
+    const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
+    MakerLight &light=g_lights[g_light_count];
+    light.x=(float)(px-origin.x)/width;
+    light.y=(float)(py-origin.y)/height;
+    light.radius=g_light_radius;
+    light.intensity=g_light_intensity;
+    light.color=g_light_color;
+    light.type=g_light_type;
+    g_selected_light=g_light_count++;
+    set_status("Modern point light placed. Adjust radius, color and intensity in Properties.");
+}
+
+static void maker_place_asset_at(int px,int py)
+{
+    int x=0,y=0;
+    if(!maker_stage_cell_at(px,py,x,y)){set_status("Drop the asset inside the stage viewport.");return;}
+    mtlb_map_set_cursor(x,y);
+    g_cursor_x=x;g_cursor_y=y;
+    if(g_drag_asset_type=="2d_tile"){
+        const int tile=mtlb_editor_tile_entry(g_drag_asset_id,g_maker_palette);
+        if(tile){
+            mtlb_editor_push_undo();mtlb_map_set(x,y,tile);g_stage_batch_dirty=true;
+            select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;
+            set_status("Cartridge tile snapped to the stage grid.");
+        }
+    }else if(g_drag_asset_type=="enemy"||g_drag_asset_type=="boss"){
+        const int type=(g_drag_asset_type=="boss")?4:3;
+        const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
+        if(index>=0){
+            g_ui_selected_entity=index;
+            if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
+            set_status(g_drag_asset_type=="boss"?"2D boss sprite set placed on the stage.":"2D enemy sprite set placed on the stage.");
+        }else set_status("The level already contains the maximum number of placed entities.");
+    }else if(g_drag_asset_type=="3d_model"){
+        if(!g_maker_modern){set_status("Modern Mode Required: 3D model placement is locked in Vanilla.");return;}
+        if(g_placed_model_count>=64){set_status("The stage 3D prop limit has been reached.");return;}
+        g_placed_models[g_placed_model_count++]={g_drag_asset_id,(x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows};
+        g_selected_model_asset=g_drag_asset_id;
+        maker_update_imported_model_panel(g_selected_model_asset);
+        set_status("3D model snapped onto the 2D gameplay plane.");
+    }
+    maker_save_settings();
+}
+
+static void maker_begin_asset_drag(int px,int py)
+{
+    Rml::Element *element=g_context?g_context->GetElementAtPoint(Rml::Vector2f((float)px,(float)py)):nullptr;
+    element=maker_find_asset_card(element);
+    if(!element)return;
+    g_drag_asset_id=element->GetAttribute<int>("data-asset-id",-1);
+    g_drag_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
+    if(g_drag_asset_id<0||g_drag_asset_type.empty())return;
+    if(g_drag_asset_type=="3d_model"&&!g_maker_modern){
+        set_status("Modern Mode Required: this imported model is locked in Vanilla 1994.");
+        return;
+    }
+    g_asset_drag_active=true;
+    if(Rml::Element *ghost=g_document->GetElementById("drop-ghost")){
+        ghost->SetInnerRML(g_drag_asset_type=="3d_model"?"3D MODEL DROP":"ASSET DROP");
+        ghost->SetClass("hidden",false);
+    }
+}
+
+static void maker_end_asset_drag(int px,int py)
+{
+    if(!g_asset_drag_active)return;
+    maker_place_asset_at(px,py);
+    g_asset_drag_active=false;
+    g_drag_asset_id=-1;g_drag_asset_type="";
+    if(Rml::Element *ghost=g_document->GetElementById("drop-ghost"))ghost->SetClass("hidden",true);
+}
+
 extern "C" void mtlbr_process_event(const SDL_Event *event)
 {
-    if (!g_context || !g_window || !event) return;
-    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE)
-        g_exit_requested = true;
+    if(!g_context||!g_window||!event)return;
+    if(event->type==SDL_KEYDOWN&&event->key.keysym.sym==SDLK_ESCAPE)g_exit_requested=true;
 
-    if (event->type == SDL_MOUSEBUTTONDOWN) {
-        const int tile = event->button.button == SDL_BUTTON_RIGHT ? 0 :
-            (event->button.button == SDL_BUTTON_LEFT ? g_brush_tile : -1);
-        if (tile >= 0) paint_stage_at(event->button.x, event->button.y, tile);
-    } else if (event->type == SDL_MOUSEMOTION) {
-        if (event->motion.state & SDL_BUTTON_LMASK)
-            paint_stage_at(event->motion.x, event->motion.y, g_brush_tile);
-        else if (event->motion.state & SDL_BUTTON_RMASK)
-            paint_stage_at(event->motion.x, event->motion.y, 0);
-        else
-            g_last_painted_x = g_last_painted_y = -1;
-    } else if (event->type == SDL_MOUSEBUTTONUP) {
-        g_last_painted_x = g_last_painted_y = -1;
-        g_drag_tile = -1;
+    if(event->type==SDL_DROPFILE){
+        const char *file=event->drop.file;
+        if(file){
+            const std::string path(file);
+            const std::string ext=path.substr(path.find_last_of('.')==std::string::npos?path.size():path.find_last_of('.'));
+            if(ext==".glb"||ext==".gltf"||ext==".obj"||ext==".fbx"){
+                if(g_maker_modern)maker_open_model_importer();
+                else set_status("Modern Mode Required for 3D model imports.");
+            }else if(ext==".png"||ext==".tga")maker_open_texture_importer();
+            SDL_free(event->drop.file);
+        }
+    }else if(event->type==SDL_MOUSEBUTTONDOWN){
+        if(event->button.button==SDL_BUTTON_LEFT){
+            maker_begin_asset_drag(event->button.x,event->button.y);
+            if(!g_asset_drag_active){
+                int x=0,y=0;
+                if(maker_stage_cell_at(event->button.x,event->button.y,x,y)){
+                    if(g_maker_tool==6)maker_add_light(event->button.x,event->button.y);
+                    else if(g_maker_tool==5){++g_event_node_count;set_status("Stage trigger marker added to the event flow.");}
+                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->button.x,event->button.y,g_brush_tile);
+                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->button.x,event->button.y,0);
+                    else if(g_selected_asset_id>=0&&(g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
+                        g_drag_asset_id=g_selected_asset_id;g_drag_asset_type=g_selected_asset_type;g_asset_drag_active=true;
+                        maker_place_asset_at(event->button.x,event->button.y);g_asset_drag_active=false;
+                    }else{g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}}
+                }
+            }
+        }else if(event->button.button==SDL_BUTTON_RIGHT){
+            int x=0,y=0;if(maker_stage_cell_at(event->button.x,event->button.y,x,y))paint_stage_at(event->button.x,event->button.y,0);
+        }
+    }else if(event->type==SDL_MOUSEMOTION){
+        maker_update_cursor(event->motion.x,event->motion.y);
+        if(g_asset_drag_active){
+            if(Rml::Element *ghost=g_document->GetElementById("drop-ghost")){
+                char left[32],top[32];
+                std::snprintf(left,sizeof(left),"%dpx",event->motion.x+12);
+                std::snprintf(top,sizeof(top),"%dpx",event->motion.y+12);
+                ghost->SetProperty("left",left);ghost->SetProperty("top",top);
+            }
+        }else if(event->motion.state&SDL_BUTTON_LMASK){
+            if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->motion.x,event->motion.y,g_brush_tile);
+            else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->motion.x,event->motion.y,0);
+        }else if(event->motion.state&SDL_BUTTON_RMASK)paint_stage_at(event->motion.x,event->motion.y,0);
+        else g_last_painted_x=g_last_painted_y=-1;
+    }else if(event->type==SDL_MOUSEBUTTONUP){
+        if(event->button.button==SDL_BUTTON_LEFT&&g_asset_drag_active)maker_end_asset_drag(event->button.x,event->button.y);
+        g_last_painted_x=g_last_painted_y=-1;
+        g_drag_tile=-1;
+        g_undo_pushed_for_stroke=false;
     }
 
-    SDL_Event copy = *event;
-    RmlSDL::InputEventHandler(g_context, g_window, copy);
+    SDL_Event copy=*event;
+    RmlSDL::InputEventHandler(g_context,g_window,copy);
 }
 
 extern "C" int mtlbr_is_active(void)
