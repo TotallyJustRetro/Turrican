@@ -57,7 +57,7 @@
         <button class="center-tab" id="mode-4" data-action="mode" data-mode="4">BOSS</button>
       </div>
       <div class="stage-head">
-        <div class="stage-title">STAGE VIEWPORT <span class="accent-cyan">/ LIVE GAME PLANE</span></div>
+        <div class="stage-title">OBJECT PREVIEW <span class="accent-cyan">/ CHARACTER · ITEMS · ENEMIES · BOSSES</span></div>
         <div class="stage-head-right">
           <span id="stage-resolution">MODERN 16:9</span>
           <span class="separator">|</span>
@@ -68,24 +68,11 @@
         </div>
       </div>
       <div id="stage-viewport" class="stage-viewport" data-action="stage-drop">
-        <div class="scene-backdrop">
-          <div class="scene-wall scene-wall-left"></div>
-          <div class="scene-wall scene-wall-right"></div>
-          <div class="scene-overhead"></div>
-          <div class="scene-core"></div>
-          <div class="scene-light scene-light-left"></div>
-          <div class="scene-light scene-light-right"></div>
-          <div class="scene-platform scene-platform-main"></div>
-          <div class="scene-platform scene-platform-lower"></div>
-          <div class="scene-floor"></div>
-          <div class="scene-rail scene-rail-left"></div>
-          <div class="scene-rail scene-rail-right"></div>
-        </div>
         <div id="stage-grid" class="stage-grid"></div>
         <div class="stage-coordinate"><span>X:</span> <span id="cursor-x" data-text="cursor_x">24</span> <span>Y:</span> <span id="cursor-y" data-text="cursor_y">12</span></div>
-        <div id="player-spawn-badge" class="spawn-badge">PLAYER SPAWN</div>
+        <div id="player-spawn-badge" class="spawn-badge">CHARACTER START</div>
         <div id="drop-ghost" class="drop-ghost hidden">DROP ASSET</div>
-        <div id="stage-hint" class="stage-hint">EMPTY STAGE / PAINT TILES OR DROP ASSETS TO BUILD THE ROOM</div>
+        <div id="stage-hint" class="stage-hint">DROP A CHARACTER, ITEM, ENEMY OR BOSS TO PREVIEW ITS PLACEMENT</div>
       </div>
       <div class="bottom-workspace">
         <div class="script-flow">
