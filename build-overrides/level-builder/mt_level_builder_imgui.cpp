@@ -288,23 +288,29 @@ static int vdp_pixel(int tile,int x,int y)
 
 static int rom_vdp_pixel(int tile,int x,int y)
 {
-    if(tile<0||tile>=112)return 0;
+    if(tile<0||tile>=2048)return 0;
     const uint8_t *block=nullptr;
     int localTile=tile;
+    // Local catalogue indices used by the tile shelf.
     if(tile<80 && g_rom_art_valid) {
         block=g_rom_art_block;
     } else if(tile>=80 && tile<96 && g_rom_hud_art_a_valid) {
-        block=g_rom_hud_art_a;
-        localTile=tile-80;
+        block=g_rom_hud_art_a; localTile=tile-80;
     } else if(tile>=96 && tile<112 && g_rom_hud_art_b_valid) {
-        block=g_rom_hud_art_b;
-        localTile=tile-96;
+        block=g_rom_hud_art_b; localTile=tile-96;
+    }
+    // Original VDP tile indices read from the game's sprite-frame descriptors.
+    else if(tile>=0xB0 && tile<0x100 && g_rom_art_valid) {
+        block=g_rom_art_block; localTile=tile-0xB0;
+    } else if(tile>=0x1E9 && tile<=0x1F8 && g_rom_hud_art_a_valid) {
+        block=g_rom_hud_art_a; localTile=tile-0x1E9;
+    } else if(tile>=0x1EA && tile<=0x1F9 && g_rom_hud_art_b_valid) {
+        block=g_rom_hud_art_b; localTile=tile-0x1EA;
     }
     if(!block)return 0;
     const uint8_t packed=block[localTile*32+y*4+(x>>1)];
     return (x&1)?(packed&15):(packed>>4);
 }
-
 static void append_rom_art_tiles()
 {
     if(g_rom_tile_count)return;
@@ -460,6 +466,59 @@ static void maker_build_rom_sprite_catalog()
             } else misses=0;
         }
     }
+}
+
+static bool maker_sprite_tile_supported(int tile)
+{
+    return (tile>=0xB0 && tile<0x100 && g_rom_art_valid) ||
+           (tile>=0x1E9 && tile<=0x1F9 &&
+            (g_rom_hud_art_a_valid||g_rom_hud_art_b_valid));
+}
+static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
+                                    float boxHeight,const MakerRomSpriteAsset &asset)
+{
+    struct Part { int x,y,w,h; uint16_t attr; };
+    Part parts[64]={};
+    int count=0,minX=0,minY=0,maxX=0,maxY=0;
+    for(int i=0;i<asset.first_frame_parts && i<64;i++) {
+        const uint32_t at=asset.first_frame_pc+(uint32_t)i*8u;
+        uint16_t rawY=0,rawX=0;
+        uint32_t packed=0;
+        if(!maker_rom_read_u16(at,rawY)||!maker_rom_read_u16(at+2,rawX)||
+           !maker_rom_read_u32(at+4,packed))break;
+        if(rawY==0 && rawX==0 && packed==0)break;
+        const uint16_t sizeLink=(uint16_t)(packed>>16);
+        const uint16_t attr=(uint16_t)(packed&0x7FFFu);
+        const int w=((sizeLink>>8)&3)+1;
+        const int h=((sizeLink>>10)&3)+1;
+        const int baseTile=attr&0x07FF;
+        bool supported=true;
+        for(int row=0;row<h;row++)for(int col=0;col<w;col++)
+            if(!maker_sprite_tile_supported(baseTile+col*h+row))supported=false;
+        if(!supported)continue;
+        const int px=(int)(int16_t)rawX,py=(int)(int16_t)rawY;
+        parts[count++]=Part{px,py,w,h,(uint16_t)(attr|0x8000u)};
+        if(count==1) { minX=px;minY=py;maxX=px+w*8;maxY=py+h*8; }
+        else {
+            minX=std::min(minX,px); minY=std::min(minY,py);
+            maxX=std::max(maxX,px+w*8); maxY=std::max(maxY,py+h*8);
+        }
+    }
+    if(count==0)return false;
+    const float worldW=(float)std::max(8,maxX-minX);
+    const float worldH=(float)std::max(8,maxY-minY);
+    const float scale=std::min((boxWidth-6.0f)/worldW,(boxHeight-6.0f)/worldH);
+    if(scale<=0.0f)return false;
+    const float offsetX=box.x+(boxWidth-worldW*scale)*0.5f;
+    const float offsetY=box.y+(boxHeight-worldH*scale)*0.5f;
+    const float tileSize=8.0f*scale;
+    for(int i=0;i<count;i++) {
+        const Part &p=parts[i];
+        draw_vdp_sprite(draw,
+            ImVec2(offsetX+(p.x-minX)*scale,offsetY+(p.y-minY)*scale),
+            tileSize,p.attr,p.w,p.h);
+    }
+    return true;
 }
 
 static void push_level_undo();
@@ -867,18 +926,30 @@ static void draw_asset_shelf()
             for(int i=0;i<shown;i++){
                 ImGui::SameLine(0,3);
                 ImGui::PushID(4000+i);
-                char label[20];
-                std::snprintf(label,sizeof(label),"SET %02d",i+1);
+                const MakerRomSpriteAsset &asset=g_rom_sprite_assets[i];
+                const ImVec2 p=ImGui::GetCursorScreenPos();
+                ImGui::InvisibleButton("##rom_sprite_preview",ImVec2(ui(44),ui(42)));
+                ImDrawList *d=ImGui::GetWindowDrawList();
                 const bool active=g_selected_rom_sprite==i;
-                if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.50f,.27f,.10f,1));
-                if(ImGui::SmallButton(label))g_selected_rom_sprite=i;
-                if(active)ImGui::PopStyleColor();
-                if(ImGui::IsItemHovered()){
-                    const MakerRomSpriteAsset &asset=g_rom_sprite_assets[i];
+                d->AddRectFilled(p,ImVec2(p.x+ui(44),p.y+ui(42)),
+                    active?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
+                const bool previewed=draw_rom_sprite_preview(d,ImVec2(p.x+ui(2),p.y+ui(2)),
+                    ui(40),ui(38),asset);
+                if(!previewed) {
+                    char label[12];
+                    std::snprintf(label,sizeof(label),"SET %02d",i+1);
+                    const ImVec2 t=ImGui::CalcTextSize(label);
+                    d->AddText(ImVec2(p.x+(ui(44)-t.x)*.5f,p.y+(ui(42)-t.y)*.5f),
+                        IM_COL32(190,200,207,255),label);
+                }
+                d->AddRect(p,ImVec2(p.x+ui(44),p.y+ui(42)),
+                    active?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,
+                    active?2.0f:1.0f);
+                if(ImGui::IsItemClicked())g_selected_rom_sprite=i;
+                if(ImGui::IsItemHovered())
                     ImGui::SetTooltip("ROM descriptor $%06X\nOwner routine $%06X\nFrames %u  |  First-frame parts %u",
                         asset.descriptor_pc,asset.owner_pc,(unsigned)asset.frame_count,
                         (unsigned)asset.first_frame_parts);
-                }
                 ImGui::PopID();
             }
             ImGui::SameLine();
