@@ -314,7 +314,9 @@ jobs:
           $turricanArchivePath = Join-Path $env:RUNNER_TEMP 'Turrican3-MegaTurrican-FontStruct.zip'
           $turricanExtractPath = Join-Path $env:RUNNER_TEMP 'Turrican3-MegaTurrican-FontStruct'
           Invoke-WebRequest -Uri $turricanFontUrl -Headers @{ Referer = 'https://fontstruct.com/fontstructions/download/2448475'; 'User-Agent' = 'Mozilla/5.0' } -OutFile $turricanArchivePath
-          $zipSignature = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($turricanArchivePath)[0..1])
+          $turricanArchiveBytes = [System.IO.File]::ReadAllBytes($turricanArchivePath)
+          if ($turricanArchiveBytes.Length -lt 4) { throw 'FontStruct archive download is unexpectedly small.' }
+          $zipSignature = [System.Text.Encoding]::ASCII.GetString($turricanArchiveBytes, 0, 2)
           if ($zipSignature -ne 'PK') { throw "FontStruct download is not a ZIP archive (signature: $zipSignature)." }
           Expand-Archive -LiteralPath $turricanArchivePath -DestinationPath $turricanExtractPath -Force
           $turricanCandidates = @(Get-ChildItem -Path $turricanExtractPath -Recurse -File | Where-Object { $_.Extension -in @('.otf', '.ttf') })
@@ -327,7 +329,9 @@ jobs:
           $turricanFontSignature = [System.Text.Encoding]::ASCII.GetString($turricanFontBytes, 0, 4)
           $validSfntSignature = ($turricanFontSignature -eq 'OTTO') -or ($turricanFontSignature -eq 'true') -or ($turricanFontSignature -eq 'typ1') -or ($turricanFontBytes[0] -eq 0 -and $turricanFontBytes[1] -eq 1 -and $turricanFontBytes[2] -eq 0 -and $turricanFontBytes[3] -eq 0)
           if (-not $validSfntSignature) { throw "Extracted Mega Turrican font is not a valid OpenType/TrueType font (signature: $turricanFontSignature)." }
-          Write-Host "Using Mega Turrican font file: $($turricanSourceFont.Name) ($($turricanFontBytes.Length) bytes)."
+          Write-Host "Using Mega Turrican font file: $($turricanSourceFont.Name) ($($turricanFontBytes.Length) bytes)." 
+          python -c "from PIL import ImageFont; import sys; f=ImageFont.truetype(sys.argv[1], 18); print('Validated Mega Turrican font with FreeType:', f.getbbox('MEGA TURRICAN'))" "$turricanFontPath"
+          if ($LASTEXITCODE -ne 0) { throw 'Pillow/FreeType could not parse the extracted Mega Turrican font.' }
           @'
           Font: Turrican 3 / Mega Turrican
           Typeface recreation: Patrick H. Lauke (redux)
