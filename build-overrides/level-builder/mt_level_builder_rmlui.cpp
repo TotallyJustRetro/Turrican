@@ -138,6 +138,7 @@ static const std::string &maker_portable_root()
 }
 
 static void set_status(const char *message);
+static void maker_refresh_asset_shelf();
 
 static std::string maker_choose_file(bool texture)
 {

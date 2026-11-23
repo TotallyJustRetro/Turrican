@@ -107,9 +107,9 @@
       <section class="asset-drawer">
         <div class="dock-title"><span>ASSET FOLDER</span><span class="dock-subtitle">2D / 3D LIBRARY</span></div>
         <div class="asset-filter">
-          <button class="filter-button active" data-action="asset-filter" data-filter="all">ALL</button>
-          <button class="filter-button" data-action="asset-filter" data-filter="2d">2D</button>
-          <button class="filter-button" data-action="asset-filter" data-filter="3d">3D</button>
+          <button class="filter-button active" id="filter-all" data-action="asset-filter" data-filter="all">ALL</button>
+          <button class="filter-button" id="filter-2d" data-action="asset-filter" data-filter="2d">2D</button>
+          <button class="filter-button" id="filter-3d" data-action="asset-filter" data-filter="3d">3D</button>
           <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
         </div>
         <div class="folder-scroll">
