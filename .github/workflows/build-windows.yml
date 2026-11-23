@@ -227,7 +227,13 @@ jobs:
           for source in imgui_impl_sdl2.cpp imgui_impl_sdlrenderer2.cpp; do
             g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -I"$IMGUI_SOURCE/backends" -c "$IMGUI_SOURCE/backends/$source" -o "_objects/${source%.cpp}.o"
           done
-          g++ _objects/*.o MegaTurrican-icon.o $(sdl2-config --libs) -lm -static-libgcc -static-libstdc++ -mwindows -o MegaTurrican.exe
+          rmlui_source="$(cygpath -u "$RMLUI_SOURCE")"
+          rmlui_prefix="$(cygpath -u "$RMLUI_PREFIX")"
+          rmlui_includes="-I$rmlui_source/Include -I$rmlui_source/Backends -DRMLUI_SDL_VERSION_MAJOR=2"
+          g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -Iruntime -c runtime/mt_level_builder_rmlui.cpp -o _objects/mt_level_builder_rmlui.o
+          g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Platform_SDL.cpp" -o _objects/rmlui_platform_sdl.o
+          g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Renderer_SDL.cpp" -o _objects/rmlui_renderer_sdl.o
+          g++ _objects/*.o MegaTurrican-icon.o "$rmlui_prefix/lib/librmlui.a" -lSDL2_image -lfreetype $(sdl2-config --libs) -lm -static-libgcc -static-libstdc++ -mwindows -o MegaTurrican.exe
           test -s MegaTurrican.exe
           mkdir -p launcher/native
           cp MegaTurrican.exe launcher/native/MegaTurrican.exe
@@ -299,6 +305,7 @@ jobs:
           Get-ChildItem (Join-Path $project 'launcher/native') -Filter '*.dll' -File | Copy-Item -Destination $release
           Copy-Item (Join-Path $project 'config.ini') $release
           Copy-Item (Join-Path $project 'README.txt') $release
+          Copy-Item (Join-Path $env:RMLUI_SOURCE 'LICENSE.txt') (Join-Path $release 'RmlUi-LICENSE.txt')
           @'
           START HERE: run the MegaTurricanLauncher portable executable.
           In the launcher, browse to your own Mega Drive ROM and press LAUNCH MEGA TURRICAN.
