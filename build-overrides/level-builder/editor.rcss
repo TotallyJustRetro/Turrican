@@ -6,13 +6,13 @@
 * { box-sizing: border-box; }
 body {
   margin: 0; padding: 0; width: 100%; height: 100%;
-  color: #d7deef; background-color: transparent;
+  color: #d7deef; background-color: #0b0d16;
   font-family: MakerPixel, monospace; font-size: 11px;
 }
 .maker-app {
   position: absolute; left: 0; top: 0; width: 100%; height: 100%;
   display: flex; flex-direction: column; overflow: hidden;
-  background-color: transparent;
+  background-color: #0b0d16;
 }
 .topbar {
   height: 44px; min-height: 44px; display: flex; flex-direction: row;
