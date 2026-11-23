@@ -251,6 +251,8 @@ static const char *kDocument = R"RML(
 </rml>
 )RML";
 
+static void set_status(const char *message);
+
 static void append_stage_quad(float x0, float y0, float x1, float y1, SDL_Color color)
 {
     const int base = (int)g_stage_vertices.size();
