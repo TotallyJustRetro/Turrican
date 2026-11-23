@@ -313,7 +313,6 @@ static void maker_refresh_sprite_lists()
     if(!g_document)return;
     static const char *folders[]={"review","character","items","enemies","bosses"};
     static const char *list_ids[]={"asset-list-review","asset-list-character","asset-list-items","asset-list-enemies","asset-list-bosses"};
-    static const char *role_names[]={"NEEDS REVIEW","CHARACTER","ITEM / PICKUP","ENEMY","BOSS"};
     std::string lists[5];
     const int count=mtlb_editor_sprite_asset_count();
     for(int i=0;i<count;i++){
@@ -723,6 +722,8 @@ public:
             if(Rml::Element *label=g_document->GetElementById("selected-asset-name"))
                 label->SetInnerRML(Rml::StringUtilities::EncodeRml(g_selected_asset_type+" / "+std::to_string(g_selected_asset_id)));
             if(g_selected_asset_type=="2d_tile"){
+                g_selected_rom_sprite=-1;
+                maker_update_sprite_panel(-1);
                 const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
                 if(tile){select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;}
             }else if(g_selected_asset_type=="rom_sprite"){
