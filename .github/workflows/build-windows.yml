@@ -148,6 +148,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/inspect-static-recomp.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Static recomp diagnostics failed.' }
 
+      - name: Generate built-in Maker sprite descriptor index
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/generate-maker-asset-catalog.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Generating the Maker sprite descriptor index failed.' }
+
       - name: Upload private runtime state report
         uses: actions/upload-artifact@v4
         with:
