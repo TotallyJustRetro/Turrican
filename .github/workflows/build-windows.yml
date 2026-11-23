@@ -310,14 +310,23 @@ jobs:
           if ((Get-Item (Join-Path $fontDir 'Silkscreen-Regular.ttf')).Length -ne 32220) { throw 'Silkscreen regular font download did not match the pinned asset.' }
           if ((Get-Item (Join-Path $fontDir 'Silkscreen-Bold.ttf')).Length -ne 30632) { throw 'Silkscreen bold font download did not match the pinned asset.' }
           if ((Get-Item (Join-Path $release 'Silkscreen-OFL.txt')).Length -ne 4394) { throw 'Silkscreen font license download did not match the pinned asset.' }
-          $pixelifyRevision = '39df74aba80df8157546034b878e8be1eb565ced'
-          $pixelifyBase = "https://raw.githubusercontent.com/eifetx/Pixelify-Sans/$pixelifyRevision"
-          Invoke-WebRequest -Uri "$pixelifyBase/fonts/ttf/PixelifySans-Regular.ttf" -OutFile (Join-Path $fontDir 'PixelifySans-Regular.ttf')
-          Invoke-WebRequest -Uri "$pixelifyBase/fonts/ttf/PixelifySans-Bold.ttf" -OutFile (Join-Path $fontDir 'PixelifySans-Bold.ttf')
-          Invoke-WebRequest -Uri "$pixelifyBase/OFL.txt" -OutFile (Join-Path $release 'PixelifySans-OFL.txt')
-          if ((Get-Item (Join-Path $fontDir 'PixelifySans-Regular.ttf')).Length -ne 93780) { throw 'Pixelify Sans regular font download did not match the pinned asset.' }
-          if ((Get-Item (Join-Path $fontDir 'PixelifySans-Bold.ttf')).Length -ne 95056) { throw 'Pixelify Sans bold font download did not match the pinned asset.' }
-          if ((Get-Item (Join-Path $release 'PixelifySans-OFL.txt')).Length -ne 4488) { throw 'Pixelify Sans font license download did not match the pinned asset.' }
+          $turricanFontUrl = 'https://fontstruct.com/font_archives/download/2448475/otf'
+          $turricanFontPath = Join-Path $fontDir 'Turrican3-MegaTurrican.otf'
+          Invoke-WebRequest -Uri $turricanFontUrl -Headers @{ Referer = 'https://fontstruct.com/fontstructions/download/2448475'; 'User-Agent' = 'Mozilla/5.0' } -OutFile $turricanFontPath
+          $turricanFontBytes = [System.IO.File]::ReadAllBytes($turricanFontPath)
+          if ($turricanFontBytes.Length -lt 1024) { throw 'The Mega Turrican display font download is unexpectedly small.' }
+          $turricanFontSignature = [System.Text.Encoding]::ASCII.GetString($turricanFontBytes, 0, 4)
+          if ($turricanFontSignature -ne 'OTTO') { throw "Mega Turrican font is not a valid OpenType CFF file (signature: $turricanFontSignature)." }
+          @'
+          Font: Turrican 3 / Mega Turrican
+          Typeface recreation: Patrick H. Lauke (redux)
+          Source: https://fontstruct.com/fontstructions/show/2448475/turrican-3-mega-turrican
+          Download source: https://fontstruct.com/fontstructions/download/2448475
+          License: Creative Commons Attribution 3.0 (CC BY 3.0)
+          License text: https://creativecommons.org/licenses/by/3.0/
+          Attribution: Turrican 3 / Mega Turrican by Patrick H. Lauke (redux), via FontStruct, licensed under CC BY 3.0.
+          The font file is included unmodified.
+          '@ | Set-Content -Encoding UTF8 (Join-Path $release 'Turrican-Font-Attribution.txt')
           $makerDir = Join-Path $release 'assets/maker'
           New-Item -ItemType Directory -Force -Path $makerDir | Out-Null
           Copy-Item (Join-Path $PWD 'build-overrides/level-builder/editor.rml') $makerDir
@@ -345,9 +354,8 @@ jobs:
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/Silkscreen-Regular.ttf' })) { throw 'Bundled Silkscreen regular font is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/Silkscreen-Bold.ttf' })) { throw 'Bundled Silkscreen bold font is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*Silkscreen-OFL.txt' })) { throw 'Silkscreen font license is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/PixelifySans-Regular.ttf' })) { throw 'Pixelify Sans regular font is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/PixelifySans-Bold.ttf' })) { throw 'Pixelify Sans bold font is missing from the package.' }
-          if (-not ($entries | Where-Object { $_ -like '*PixelifySans-OFL.txt' })) { throw 'Pixelify Sans font license is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/Turrican3-MegaTurrican.otf' })) { throw 'Mega Turrican display font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*Turrican-Font-Attribution.txt' })) { throw 'Mega Turrican display font attribution is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rml' })) { throw 'RmlUi Maker document is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rcss' })) { throw 'RmlUi Maker stylesheet is missing from the package.' }
           Write-Host 'Verified EXEs, SDL runtimes, and Maker fonts in Windows package:'
