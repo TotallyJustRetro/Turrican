@@ -332,6 +332,33 @@ static void maker_refresh_imported_asset_lists()
     }
 }
 
+
+static void maker_refresh_asset_shelf()
+{
+    if(!g_document)return;
+    const int count=mtlb_editor_tile_count();
+    const uint32_t page_key=(uint32_t)(g_asset_shelf_offset+1);
+    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=page_key){
+        g_asset_shelf_count=count;
+        g_asset_shelf_hash=page_key;
+        std::string markup;
+        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
+        for(int i=0;i<visible;i++){
+            const int index=g_asset_shelf_offset+i;
+            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
+            char card[420];
+            std::snprintf(card,sizeof(card),
+                "<div id='asset-tile-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb'></div><div>$%03X</div><div class='asset-tag'>2D</div></div>",
+                index,entry==g_brush_tile?"selected":"",index,entry&0x07FF);
+            markup+=card;
+        }
+        if(count==0)markup="<div class='folder-subheading'>Waiting for cartridge VDP tiles and ROM tile banks.</div>";
+        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items"))shelf->SetInnerRML(markup);
+    }
+    maker_refresh_sprite_lists();
+    maker_refresh_imported_asset_lists();
+}
+
 static void set_status(const char *message)
 {
     if (g_status) g_status->SetInnerRML(message ? message : "");
