@@ -4020,3 +4020,52 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
   .tool-palette .tool-button { font-size: 9px; min-height: 34px; }
   .folder-heading, .stage-title { font-size: 9px; }
 }
+
+
+/* Industrial finish carried through the lower script and animation decks. */
+.script-flow, .animation-sequencer {
+  background-color: #1a2228;
+  border-color: #58636a;
+}
+.script-node {
+  color: #e3dfd5;
+  background-color: #303a40;
+  border-color: #727b7d;
+  font-family: Lato;
+  font-size: 9px;
+}
+.trigger-node { border-color: #c28b4e; }
+.dialogue-node { border-color: #8b927f; }
+.boss-node { border-color: #a65e47; }
+.script-arrow { color: #dba65f; }
+.dock-caption { color: #e0b16a; font-family: Lato; }
+.dock-caption span { color: #c6c2b7; }
+.timeline-ruler {
+  border-color: #657078;
+  background-color: #11171b;
+}
+.timeline-track { background-color: #687278; }
+.timeline-key {
+  background-color: #d99a4e;
+  border-color: #f0c27e;
+}
+.stage-coordinate {
+  color: #e4d7bf;
+  background-color: #1b2429;
+  border-color: #68747a;
+  font-family: Lato;
+}
+.stage-coordinate span { color: #e0aa62; }
+.spawn-badge {
+  color: #ffe4ad;
+  background-color: #433322;
+  border-color: #bc8748;
+  font-family: Lato;
+}
+.drop-ghost {
+  color: #fff0d3;
+  background-color: #5c4229;
+  border-color: #dca45c;
+  font-family: Lato;
+}
+.status-led { background-color: #c59a5e; }
