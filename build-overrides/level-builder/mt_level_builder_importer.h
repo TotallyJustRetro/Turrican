@@ -14,6 +14,7 @@ int mtlb_imported_model_info(int index,char *name,int name_capacity,char *path,i
                              int *has_diffuse,int *has_normal,int *has_emissive,int *classification);
 int mtlb_imported_model_preview(int index,float *xyz,float *uv,int max_vertices);
 int mtlb_imported_model_diffuse_path(int index,char *path,int capacity);
+int mtlb_imported_model_source_folder(int index,char *path,int capacity);
 int mtlb_imported_model_base_color(int index,float rgba[4]);
 int mtlb_imported_model_animation_count(int index);
 int mtlb_imported_model_animation_info(int index,int animation,char *name,int name_capacity,

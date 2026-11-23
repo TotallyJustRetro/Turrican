@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <limits>
+#include <new>
 #include <cstdio>
 #include <cmath>
 #include <cstdarg>
@@ -89,10 +91,15 @@ static int g_drag_asset_id = -1;
 static Rml::String g_drag_asset_type;
 struct PlacedMakerModel { int asset_id; float x, y; };
 static std::vector<PlacedMakerModel> g_placed_models;
-struct ModelPreviewTexture { int asset_id; std::string path; SDL_Texture *texture; bool attempted; };
+struct ModelPreviewTexture { int asset_id; SDL_Texture *texture; bool attempted; };
 static std::vector<ModelPreviewTexture> g_model_preview_textures;
 struct ModelPreviewGeometry { int asset_id; std::vector<float> xyz; std::vector<float> uv; };
 static std::vector<ModelPreviewGeometry> g_model_preview_geometry;
+struct StageSpriteTexture { uint16_t tile_attr; int width_tiles; int height_tiles; SDL_Texture *texture; };
+static std::vector<StageSpriteTexture> g_stage_sprite_textures;
+static int g_right_dock_tab = 0;
+static int g_last_logged_entity_count = -1;
+static int g_last_logged_model_count = -1;
 struct MakerLight { float x,y,radius,intensity; uint32_t color; int type; };
 static MakerLight g_lights[32] = {};
 static int g_light_count = 0;
@@ -277,11 +284,15 @@ static void maker_clear_model_preview()
     if(Rml::Element *preview=g_document->GetElementById("model-preview"))
         preview->SetInnerRML("<div class='model-preview-placeholder'>NO MODEL SELECTED</div>");
     if(Rml::Element *triangles=g_document->GetElementById("model-triangle-count"))
-        triangles->SetInnerRML("0 / 256");
+        triangles->SetInnerRML("0 TRIS");
     if(Rml::Element *bones=g_document->GetElementById("model-bone-count"))
         bones->SetInnerRML("0");
     if(Rml::Element *textures=g_document->GetElementById("model-texture-state"))
         textures->SetInnerRML("NO MAP");
+    if(Rml::Element *source=g_document->GetElementById("model-source-folder"))
+        source->SetInnerRML("SOURCE FOLDER / NOT SELECTED");
+    if(Rml::Element *texture=g_document->GetElementById("model-texture-source"))
+        texture->SetInnerRML("TEXTURE SEARCH / WAITING FOR MODEL");
     if(Rml::Element *clips=g_document->GetElementById("model-animation-select"))
         clips->SetInnerRML("<option value='-1'>NO MODEL SELECTED</option>");
     if(Rml::Element *status=g_document->GetElementById("model-animation-status"))
@@ -310,12 +321,22 @@ static void maker_update_imported_model_panel(int index)
     if (Rml::Element *element=g_document->GetElementById("model-bone-count")) {
         char value[48]; std::snprintf(value,sizeof(value),"%u",bones); element->SetInnerRML(value);
     }
+    char texture_path[2048]={},source_folder[2048]={};
+    const bool linked=mtlb_imported_model_diffuse_path(index,texture_path,sizeof(texture_path))!=0;
+    const bool has_source=mtlb_imported_model_source_folder(index,source_folder,sizeof(source_folder))!=0;
     if (Rml::Element *element=g_document->GetElementById("model-texture-state")) {
-        char texture_path[2048]={};
-        const bool linked=mtlb_imported_model_diffuse_path(index,texture_path,sizeof(texture_path))!=0;
         char value[96]; std::snprintf(value,sizeof(value),"%s%s%s",
             linked?"DIFFUSE LINKED ":"",normal?"NORMAL ":"",emissive?"EMISSIVE":"");
         element->SetInnerRML(value[0]?value:(diffuse?"MATERIAL MAP MISSING":"MATERIAL COLOR"));
+    }
+    if(Rml::Element *source=g_document->GetElementById("model-source-folder")){
+        const std::string folder=has_source?source_folder:std::filesystem::path(path).parent_path().string();
+        source->SetInnerRML("SOURCE FOLDER / "+Rml::StringUtilities::EncodeRml(folder));
+    }
+    if(Rml::Element *texture=g_document->GetElementById("model-texture-source")){
+        texture->SetInnerRML(linked?
+            "DIFFUSE MAP / "+Rml::StringUtilities::EncodeRml(std::filesystem::path(texture_path).filename().string()):
+            "TEXTURE SEARCH / NO MATCH FOUND IN MODEL FOLDER");
     }
     if (Rml::Element *list=g_document->GetElementById("model-animation-select")) {
         const int clips=mtlb_imported_model_animation_count(index);
@@ -737,9 +758,24 @@ static const char *maker_tool_list(int mode)
     }
 }
 
+static void maker_update_right_dock()
+{
+    if(!g_document)return;
+    static const char *panel_ids[]={"dock-panel-assets","dock-panel-model","dock-panel-properties"};
+    static const char *tab_ids[]={"dock-tab-assets","dock-tab-model","dock-tab-properties"};
+    g_right_dock_tab=std::max(0,std::min(2,g_right_dock_tab));
+    for(int i=0;i<3;i++){
+        if(Rml::Element *panel=g_document->GetElementById(panel_ids[i]))
+            panel->SetClass("hidden",i!=g_right_dock_tab);
+        if(Rml::Element *tab=g_document->GetElementById(tab_ids[i]))
+            tab->SetClass("active",i==g_right_dock_tab);
+    }
+}
+
 static void maker_update_mode_ui()
 {
     if(!g_document)return;
+    maker_update_right_dock();
     for(int i=0;i<MAKER_MODE_COUNT;i++){
         char id[32];std::snprintf(id,sizeof(id),"mode-%d",i);
         if(Rml::Element *tab=g_document->GetElementById(id))tab->SetClass("active",i==g_maker_mode);
@@ -909,12 +945,14 @@ public:
             if(Rml::Element *label=g_document->GetElementById("selected-asset-name"))
                 label->SetInnerRML(Rml::StringUtilities::EncodeRml(g_selected_asset_type+" / "+std::to_string(g_selected_asset_id)));
             if(g_selected_asset_type=="2d_tile"){
+                g_right_dock_tab=0;
                 g_selected_rom_sprite=-1;
                 maker_clear_model_preview();
                 maker_update_sprite_panel(-1);
                 const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
                 if(tile){select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;}
             }else if(g_selected_asset_type=="rom_sprite"){
+                g_right_dock_tab=2;
                 g_selected_rom_sprite=g_selected_asset_id;
                 maker_clear_model_preview();
                 maker_update_sprite_panel(g_selected_rom_sprite);
@@ -925,6 +963,7 @@ public:
                     g_maker_tool=6;
                 }
             }else if(g_selected_asset_type=="3d_model"){
+                g_right_dock_tab=1;
                 g_placement_armed=false;
                 g_selected_rom_sprite=-1;
                 maker_update_sprite_panel(-1);
@@ -941,6 +980,12 @@ public:
                 set_status("3D model selected and previewed. Switch GLOBAL MODE to MODERN REBORN to place it.");
             else
                 set_status("Asset selected. Use PLACE SELECTED ON STAGE, or drag it into the playfield.");
+            return;
+        }
+        if (action == "dock-tab") {
+            const Rml::String selected=element->GetAttribute<Rml::String>("data-dock","assets");
+            g_right_dock_tab=selected=="model"?1:(selected=="properties"?2:0);
+            maker_update_right_dock();
             return;
         }
         if (action == "place-selected-asset") {
@@ -974,10 +1019,14 @@ public:
             return;
         }
         if (action == "import-model") {
+            g_right_dock_tab=1;
+            maker_update_right_dock();
             maker_open_model_importer();
             return;
         }
         if (action == "import-texture") {
+            g_right_dock_tab=1;
+            maker_update_right_dock();
             maker_open_texture_importer();
             return;
         }
@@ -991,6 +1040,7 @@ public:
                 }
                 mtlb_imported_model_classify(g_pending_model_asset,classification);
                 g_selected_model_asset=g_pending_model_asset;
+                g_right_dock_tab=1;
                 g_selected_asset_id=g_pending_model_asset;
                 g_selected_asset_type="3d_model";
                 g_selected_model_animation=-1;
@@ -1399,6 +1449,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_brush_tile = mtlb_map_brush();
     if (g_brush_tile < 176 || g_brush_tile > 180) g_brush_tile = 176;
     select_brush(g_brush_tile);
+    g_right_dock_tab=0;
     maker_update_mode_ui();
     maker_refresh_asset_shelf();
     g_model_handle.DirtyAllVariables();
@@ -1418,6 +1469,9 @@ extern "C" void mtlbr_shutdown(void)
     for(ModelPreviewTexture &entry:g_model_preview_textures)
         if(entry.texture)SDL_DestroyTexture(entry.texture);
     g_model_preview_textures.clear();
+    for(StageSpriteTexture &entry:g_stage_sprite_textures)
+        if(entry.texture)SDL_DestroyTexture(entry.texture);
+    g_stage_sprite_textures.clear();
     g_model_preview_geometry.clear();
     if (g_document) {
         g_document->RemoveEventListener("click", &g_listener);
@@ -1514,6 +1568,7 @@ static void maker_place_asset_at(int px,int py)
             set_status("Cartridge tile snapped to the stage grid.");
         }
     }else if(g_drag_asset_type=="rom_sprite"){
+        maker_log("Place ROM sprite asset %d at cell %d,%d.",g_drag_asset_id,x,y);
         const int role=mtlb_editor_sprite_asset_category(g_drag_asset_id);
         const int type=std::max(0,std::min(4,role));
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
@@ -1523,6 +1578,7 @@ static void maker_place_asset_at(int px,int py)
             set_status("ROM sprite placed on the stage. Its role is stored in the Asset Bay.");
         }else set_status("Could not add the selected sprite to the level.");
     }else if(g_drag_asset_type=="enemy"||g_drag_asset_type=="boss"){
+        maker_log("Place 2D %s asset %d at cell %d,%d.",g_drag_asset_type.c_str(),g_drag_asset_id,x,y);
         const int type=(g_drag_asset_type=="boss")?4:3;
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
         if(index>=0){
@@ -1531,6 +1587,7 @@ static void maker_place_asset_at(int px,int py)
             set_status(g_drag_asset_type=="boss"?"2D boss sprite set placed on the stage.":"2D enemy sprite set placed on the stage.");
         }else set_status("Could not add the selected sprite to the level.");
     }else if(g_drag_asset_type=="3d_model"){
+        maker_log("Place 3D model asset %d at cell %d,%d.",g_drag_asset_id,x,y);
         if(!g_maker_modern){set_status("Modern Mode Required: 3D model placement is locked in Vanilla.");return;}
         const float nx=(x+0.5f)/(float)g_map_cols;
         const float ny=(y+0.5f)/(float)g_map_rows;
@@ -1805,57 +1862,82 @@ static void draw_rom_sprite_cards(SDL_Renderer *renderer)
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
 }
 
+static SDL_Texture *maker_stage_sprite_texture(SDL_Renderer *renderer,uint16_t tile_attr,
+                                                       int width_tiles,int height_tiles)
+{
+    if(!renderer||width_tiles<1||height_tiles<1||width_tiles>4||height_tiles>4)return nullptr;
+    for(const StageSpriteTexture &entry:g_stage_sprite_textures)
+        if(entry.tile_attr==tile_attr&&entry.width_tiles==width_tiles&&entry.height_tiles==height_tiles)
+            return entry.texture;
+
+    SDL_Surface *surface=SDL_CreateRGBSurfaceWithFormat(0,width_tiles*8,height_tiles*8,32,SDL_PIXELFORMAT_RGBA32);
+    if(!surface){
+        maker_log("Stage sprite surface allocation failed: %s",SDL_GetError());
+        return nullptr;
+    }
+    if(SDL_MUSTLOCK(surface)&&SDL_LockSurface(surface)!=0){
+        maker_log("Stage sprite surface lock failed: %s",SDL_GetError());
+        SDL_FreeSurface(surface);
+        return nullptr;
+    }
+    const int base_tile=tile_attr&0x07FF;
+    const int flags=tile_attr&0x7800;
+    for(int ty=0;ty<height_tiles;ty++)for(int tx=0;tx<width_tiles;tx++){
+        const int tile=base_tile+tx*height_tiles+ty;
+        const int entry=0x8000|flags|tile;
+        for(int py=0;py<8;py++)for(int px=0;px<8;px++){
+            uint8_t rgba[4]={0,0,0,0};
+            mtlb_editor_tile_rgba(entry,px,py,rgba);
+            const Uint32 mapped=SDL_MapRGBA(surface->format,rgba[0],rgba[1],rgba[2],rgba[3]);
+            auto *row=reinterpret_cast<Uint32*>(
+                static_cast<Uint8*>(surface->pixels)+(size_t)(ty*8+py)*(size_t)surface->pitch);
+            row[tx*8+px]=mapped;
+        }
+    }
+    if(SDL_MUSTLOCK(surface))SDL_UnlockSurface(surface);
+    SDL_Texture *texture=SDL_CreateTextureFromSurface(renderer,surface);
+    SDL_FreeSurface(surface);
+    if(!texture){
+        maker_log("Stage sprite texture creation failed (tile $%04X): %s",tile_attr,SDL_GetError());
+        return nullptr;
+    }
+    SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_BLEND);
+    g_stage_sprite_textures.push_back({tile_attr,width_tiles,height_tiles,texture});
+    return texture;
+}
+
 static void draw_stage_entities(SDL_Renderer *renderer)
 {
     if(!renderer||!g_stage_grid)return;
+    const int entity_count=mtlb_editor_entity_count();
+    if(entity_count!=g_last_logged_entity_count){
+        maker_log("Stage entity renderer: %d level entities.",entity_count);
+        g_last_logged_entity_count=entity_count;
+    }
     const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
     const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
     const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
-    static std::vector<SDL_Vertex> vertices;
-    static std::vector<int> indices;
-    vertices.clear();indices.clear();
-    for(int i=0;i<mtlb_editor_entity_count();i++){
-        float x=0,y=0;int type=0,hp=0,w=0,h=0;uint16_t attr=0;
-        if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&attr,&w,&h))continue;
-        const float sprite_w=std::max(1.0f,w*cell_w);
-        const float sprite_h=std::max(1.0f,h*cell_h);
-        append_rom_sprite_part(vertices,indices,origin.x+x*width-sprite_w*0.5f,
-            origin.y+y*height-sprite_h*0.5f,sprite_w,sprite_h,w,h,attr);
-    }
-    if(indices.empty())return;
     SDL_Rect clip{(int)origin.x,(int)origin.y,(int)width,(int)height};
     SDL_RenderSetClipRect(renderer,&clip);
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
-    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    SDL_RenderSetClipRect(renderer,nullptr);
-}
-
-static SDL_Texture *maker_model_preview_texture(int asset)
-{
-    if(asset<0)return nullptr;
-    char path[2048]={};
-    if(!mtlb_imported_model_diffuse_path(asset,path,sizeof(path))||!path[0])return nullptr;
-    for(ModelPreviewTexture &entry:g_model_preview_textures){
-        if(entry.asset_id==asset&&entry.path==path){
-            if(!entry.attempted){
-                entry.attempted=true;
-                entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
-                if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
-                else maker_log("Model %d diffuse texture failed to load (%s): %s",asset,entry.path.c_str(),IMG_GetError());
-            }
-            return entry.texture;
-        }
+    for(int i=0;i<entity_count;i++){
+        float x=0,y=0;int type=0,hp=0,w=0,h=0;uint16_t attr=0;
+        if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&attr,&w,&h))continue;
+        const int safe_w=std::max(1,std::min(4,w));
+        const int safe_h=std::max(1,std::min(4,h));
+        SDL_Texture *texture=maker_stage_sprite_texture(renderer,attr,safe_w,safe_h);
+        if(!texture)continue;
+        const float pixel_scale=std::min(cell_w/8.0f,cell_h/8.0f);
+        const int sprite_w=std::max(1,(int)std::lround(safe_w*8.0f*pixel_scale));
+        const int sprite_h=std::max(1,(int)std::lround(safe_h*8.0f*pixel_scale));
+        SDL_Rect destination{
+            (int)std::lround(origin.x+x*width-sprite_w*0.5f),
+            (int)std::lround(origin.y+y*height-sprite_h*0.5f),
+            sprite_w,sprite_h
+        };
+        if(SDL_RenderCopy(renderer,texture,nullptr,&destination)!=0)
+            maker_log("Stage sprite draw failed for entity %d: %s",i,SDL_GetError());
     }
-    ModelPreviewTexture entry{};
-    entry.asset_id=asset;
-    entry.path=path;
-    entry.attempted=true;
-    entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
-    if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
-    else maker_log("Model %d diffuse texture failed to load (%s): %s",asset,entry.path.c_str(),IMG_GetError());
-    g_model_preview_textures.push_back(entry);
-    return g_model_preview_textures.back().texture;
+    SDL_RenderSetClipRect(renderer,nullptr);
 }
 
 static const ModelPreviewGeometry *maker_model_preview_geometry(int asset)
@@ -1869,83 +1951,217 @@ static const ModelPreviewGeometry *maker_model_preview_geometry(int asset)
     int diffuse=0,normal=0,emissive=0,classification=0;
     if(!mtlb_imported_model_info(asset,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
         &diffuse,&normal,&emissive,&classification)||triangles==0)return nullptr;
-    const size_t wanted=(size_t)triangles*3u;
-    const int max_vertices=wanted>(size_t)0x7fffffff?0x7fffffff:(int)wanted;
-    ModelPreviewGeometry geometry{};
-    geometry.asset_id=asset;
-    geometry.xyz.resize((size_t)max_vertices*3u);
-    geometry.uv.resize((size_t)max_vertices*2u);
-    const int count=mtlb_imported_model_preview(asset,geometry.xyz.data(),geometry.uv.data(),max_vertices);
-    if(count<3)return nullptr;
-    geometry.xyz.resize((size_t)count*3u);
-    geometry.uv.resize((size_t)count*2u);
-    g_model_preview_geometry.push_back(std::move(geometry));
-    return &g_model_preview_geometry.back();
+    try{
+        const size_t wanted=(size_t)triangles*3u;
+        if(wanted>(size_t)0x7fffffff)return nullptr;
+        ModelPreviewGeometry geometry{};
+        geometry.asset_id=asset;
+        geometry.xyz.resize(wanted*3u);
+        geometry.uv.resize(wanted*2u);
+        const int count=mtlb_imported_model_preview(asset,geometry.xyz.data(),geometry.uv.data(),(int)wanted);
+        if(count<3)return nullptr;
+        geometry.xyz.resize((size_t)count*3u);
+        geometry.uv.resize((size_t)count*2u);
+        g_model_preview_geometry.push_back(std::move(geometry));
+        return &g_model_preview_geometry.back();
+    }catch(const std::bad_alloc&){
+        maker_log("Model %d preview geometry allocation failed (%u triangles).",asset,triangles);
+        return nullptr;
+    }
+}
+
+static SDL_Texture *maker_model_preview_texture(SDL_Renderer *renderer,int asset)
+{
+    if(!renderer||asset<0)return nullptr;
+    for(const ModelPreviewTexture &entry:g_model_preview_textures)
+        if(entry.asset_id==asset)return entry.texture;
+
+    ModelPreviewTexture cache{};
+    cache.asset_id=asset;
+    cache.attempted=true;
+    const ModelPreviewGeometry *geometry=maker_model_preview_geometry(asset);
+    if(!geometry)return nullptr;
+    const int count=(int)(geometry->xyz.size()/3u);
+    if(count<3||count%3!=0)return nullptr;
+
+    try{
+        constexpr int kPreviewSize=256;
+        std::vector<float> depth((size_t)kPreviewSize*kPreviewSize,std::numeric_limits<float>::infinity());
+        SDL_Surface *target=SDL_CreateRGBSurfaceWithFormat(0,kPreviewSize,kPreviewSize,32,SDL_PIXELFORMAT_RGBA32);
+        if(!target){
+            maker_log("Model %d preview target allocation failed: %s",asset,SDL_GetError());
+            g_model_preview_textures.push_back(cache);
+            return nullptr;
+        }
+
+        float material[4]={0.72f,0.72f,0.72f,1.0f};
+        mtlb_imported_model_base_color(asset,material);
+        auto channel=[](float value)->Uint8{
+            return (Uint8)(std::max(0.0f,std::min(1.0f,value))*255.0f);
+        };
+
+        SDL_Surface *loaded=nullptr,*diffuse_surface=nullptr;
+        char diffuse_path[2048]={};
+        if(mtlb_imported_model_diffuse_path(asset,diffuse_path,sizeof(diffuse_path))&&diffuse_path[0]){
+            loaded=IMG_Load(diffuse_path);
+            if(loaded){
+                diffuse_surface=SDL_ConvertSurfaceFormat(loaded,SDL_PIXELFORMAT_RGBA32,0);
+                SDL_FreeSurface(loaded);
+                loaded=nullptr;
+                if(!diffuse_surface)
+                    maker_log("Model %d texture conversion failed (%s): %s",asset,diffuse_path,SDL_GetError());
+            }else{
+                maker_log("Model %d texture load failed (%s): %s",asset,diffuse_path,IMG_GetError());
+            }
+        }
+
+        if(SDL_MUSTLOCK(target)&&SDL_LockSurface(target)!=0){
+            if(diffuse_surface)SDL_FreeSurface(diffuse_surface);
+            SDL_FreeSurface(target);
+            maker_log("Model %d preview surface lock failed: %s",asset,SDL_GetError());
+            g_model_preview_textures.push_back(cache);
+            return nullptr;
+        }
+
+        const Uint32 clear=SDL_MapRGBA(target->format,0,0,0,0);
+        for(int y=0;y<kPreviewSize;y++){
+            auto *row=reinterpret_cast<Uint32*>(
+                static_cast<Uint8*>(target->pixels)+(size_t)y*(size_t)target->pitch);
+            std::fill(row,row+kPreviewSize,clear);
+        }
+
+        bool diffuse_locked=false;
+        if(diffuse_surface&&SDL_MUSTLOCK(diffuse_surface)){
+            if(SDL_LockSurface(diffuse_surface)==0)diffuse_locked=true;
+            else{
+                maker_log("Model %d diffuse surface lock failed: %s",asset,SDL_GetError());
+                SDL_FreeSurface(diffuse_surface);
+                diffuse_surface=nullptr;
+            }
+        }
+        const Uint8 *texture_pixels=diffuse_surface?static_cast<const Uint8*>(diffuse_surface->pixels):nullptr;
+        const int texture_width=diffuse_surface?diffuse_surface->w:0;
+        const int texture_height=diffuse_surface?diffuse_surface->h:0;
+
+        const float yaw=0.52f,cy=std::cos(yaw),sy=std::sin(yaw);
+        const float tilt=0.28f,ct=std::cos(tilt),st=std::sin(tilt),scale=104.0f;
+        struct Projected { float x,y,z,u,v; };
+        const SDL_Color fallback={
+            channel(material[0]),channel(material[1]),channel(material[2]),channel(material[3])
+        };
+
+        for(int tri=0;tri<count;tri+=3){
+            Projected p[3]{};
+            bool valid=true;
+            for(int k=0;k<3;k++){
+                const size_t at=(size_t)(tri+k);
+                const float px=geometry->xyz[at*3u];
+                const float py=geometry->xyz[at*3u+1u];
+                const float pz=geometry->xyz[at*3u+2u];
+                if(!std::isfinite(px)||!std::isfinite(py)||!std::isfinite(pz)){valid=false;break;}
+                const float rx=px*cy-pz*sy,rz=px*sy+pz*cy;
+                const float ry=py*ct-rz*st,dz=py*st+rz*ct;
+                const float perspective=2.8f+dz;
+                if(!std::isfinite(perspective)||perspective<=0.05f){valid=false;break;}
+                p[k].x=128.0f+(rx*scale)/perspective;
+                p[k].y=142.0f-(ry*scale)/perspective;
+                p[k].z=perspective;
+                p[k].u=geometry->uv[at*2u];
+                p[k].v=geometry->uv[at*2u+1u];
+                if(!std::isfinite(p[k].x)||!std::isfinite(p[k].y)||
+                   !std::isfinite(p[k].u)||!std::isfinite(p[k].v)){valid=false;break;}
+            }
+            if(!valid)continue;
+            const float area=(p[1].x-p[0].x)*(p[2].y-p[0].y)-
+                             (p[1].y-p[0].y)*(p[2].x-p[0].x);
+            if(!std::isfinite(area)||std::fabs(area)<0.0001f)continue;
+
+            const float low_x=std::max(0.0f,std::min({p[0].x,p[1].x,p[2].x}));
+            const float high_x=std::min((float)kPreviewSize-1.0f,std::max({p[0].x,p[1].x,p[2].x}));
+            const float low_y=std::max(0.0f,std::min({p[0].y,p[1].y,p[2].y}));
+            const float high_y=std::min((float)kPreviewSize-1.0f,std::max({p[0].y,p[1].y,p[2].y}));
+            if(!std::isfinite(low_x)||!std::isfinite(high_x)||!std::isfinite(low_y)||!std::isfinite(high_y)||
+               low_x>high_x||low_y>high_y)continue;
+            const int min_x=(int)std::floor(low_x),max_x=(int)std::ceil(high_x);
+            const int min_y=(int)std::floor(low_y),max_y=(int)std::ceil(high_y);
+
+            for(int py=min_y;py<=max_y;py++){
+                auto *target_row=reinterpret_cast<Uint32*>(
+                    static_cast<Uint8*>(target->pixels)+(size_t)py*(size_t)target->pitch);
+                for(int px=min_x;px<=max_x;px++){
+                    const float sx=px+0.5f,sypos=py+0.5f;
+                    const float w0=((p[1].x-sx)*(p[2].y-sypos)-(p[1].y-sypos)*(p[2].x-sx))/area;
+                    const float w1=((p[2].x-sx)*(p[0].y-sypos)-(p[2].y-sypos)*(p[0].x-sx))/area;
+                    const float w2=1.0f-w0-w1;
+                    if(w0<-0.0001f||w1<-0.0001f||w2<-0.0001f)continue;
+                    const float z=w0*p[0].z+w1*p[1].z+w2*p[2].z;
+                    const size_t pixel=(size_t)py*kPreviewSize+(size_t)px;
+                    if(z>=depth[pixel])continue;
+
+                    Uint8 rr=fallback.r,gg=fallback.g,bb=fallback.b,aa=fallback.a;
+                    if(texture_pixels&&texture_width>0&&texture_height>0){
+                        float u=w0*p[0].u+w1*p[1].u+w2*p[2].u;
+                        float v=w0*p[0].v+w1*p[1].v+w2*p[2].v;
+                        u-=std::floor(u);v-=std::floor(v);
+                        const int tx=std::max(0,std::min(texture_width-1,(int)(u*texture_width)));
+                        const int ty=std::max(0,std::min(texture_height-1,(int)((1.0f-v)*texture_height)));
+                        const Uint8 *sample=texture_pixels+(size_t)ty*(size_t)diffuse_surface->pitch+(size_t)tx*4u;
+                        rr=sample[0];gg=sample[1];bb=sample[2];aa=sample[3];
+                    }
+                    target_row[px]=SDL_MapRGBA(target->format,rr,gg,bb,aa);
+                    depth[pixel]=z;
+                }
+            }
+        }
+
+        if(diffuse_locked)SDL_UnlockSurface(diffuse_surface);
+        if(diffuse_surface)SDL_FreeSurface(diffuse_surface);
+        if(SDL_MUSTLOCK(target))SDL_UnlockSurface(target);
+        cache.texture=SDL_CreateTextureFromSurface(renderer,target);
+        SDL_FreeSurface(target);
+        if(cache.texture)SDL_SetTextureBlendMode(cache.texture,SDL_BLENDMODE_BLEND);
+        else maker_log("Model %d preview texture creation failed: %s",asset,SDL_GetError());
+        g_model_preview_textures.push_back(cache);
+        return cache.texture;
+    }catch(const std::bad_alloc&){
+        maker_log("Model %d preview rasterization ran out of memory.",asset);
+        g_model_preview_textures.push_back(cache);
+        return nullptr;
+    }
 }
 
 static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
                             float rotation,bool outline)
 {
+    (void)rotation;
     if(!renderer||asset<0||width<4||height<4)return;
-    const ModelPreviewGeometry *geometry=maker_model_preview_geometry(asset);
-    if(!geometry)return;
-    const int count=(int)(geometry->xyz.size()/3u);
-    if(count<3)return;
-    SDL_Texture *texture=maker_model_preview_texture(asset);
-    float material[4]={0.72f,0.72f,0.72f,1.0f};
-    mtlb_imported_model_base_color(asset,material);
-    const auto channel=[](float value)->Uint8{
-        return (Uint8)(std::max(0.0f,std::min(1.0f,value))*255.0f);
+    SDL_Texture *texture=maker_model_preview_texture(renderer,asset);
+    if(!texture)return;
+    int texture_w=0,texture_h=0;
+    if(SDL_QueryTexture(texture,nullptr,nullptr,&texture_w,&texture_h)!=0||texture_w<=0||texture_h<=0)return;
+    const float scale=std::min(width/(float)texture_w,height/(float)texture_h);
+    const int draw_w=std::max(1,(int)std::lround(texture_w*scale));
+    const int draw_h=std::max(1,(int)std::lround(texture_h*scale));
+    SDL_Rect destination{
+        (int)std::lround(x+(width-draw_w)*0.5f),
+        (int)std::lround(y+(height-draw_h)*0.5f),draw_w,draw_h
     };
-    const SDL_Color base_color=texture?SDL_Color{255,255,255,255}:
-        SDL_Color{channel(material[0]),channel(material[1]),channel(material[2]),channel(material[3])};
-    static std::vector<SDL_Vertex> vertices;
-    static std::vector<int> indices;
-    vertices.clear();
-    indices.clear();
-    vertices.reserve((size_t)count);
-    indices.reserve((size_t)count);
-    const float cy=std::cos(rotation),sy=std::sin(rotation);
-    const float tilt=0.28f,ct=std::cos(tilt),st=std::sin(tilt);
-    const float scale=std::min(width,height)*0.58f;
-    for(int i=0;i<count;i++){
-        const float px=geometry->xyz[(size_t)i*3u];
-        const float py=geometry->xyz[(size_t)i*3u+1u];
-        const float pz=geometry->xyz[(size_t)i*3u+2u];
-        const float rx=px*cy-pz*sy,rz=px*sy+pz*cy;
-        const float ry=py*ct-rz*st,dz=py*st+rz*ct;
-        const float perspective=2.6f+dz;
-        SDL_Vertex vertex{};
-        vertex.position=SDL_FPoint{x+width*0.5f+(rx*scale)/perspective,
-            y+height*0.52f-(ry*scale)/perspective};
-        vertex.tex_coord=SDL_FPoint{geometry->uv[(size_t)i*2u],
-            1.0f-geometry->uv[(size_t)i*2u+1u]};
-        vertex.color=outline?SDL_Color{235,174,97,255}:base_color;
-        vertices.push_back(vertex);
-        indices.push_back(i);
-    }
-    SDL_Rect clip{(int)x,(int)y,(int)width,(int)height};
-    SDL_RenderSetClipRect(renderer,&clip);
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
-    SDL_RenderGeometry(renderer,texture,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    if(SDL_RenderCopy(renderer,texture,nullptr,&destination)!=0)
+        maker_log("Model %d cached preview draw failed: %s",asset,SDL_GetError());
     if(outline){
-        SDL_SetRenderDrawColor(renderer,235,174,97,220);
-        for(int i=0;i+2<count;i+=3){
-            const SDL_FPoint a=vertices[(size_t)i].position;
-            const SDL_FPoint b=vertices[(size_t)i+1u].position;
-            const SDL_FPoint c=vertices[(size_t)i+2u].position;
-            SDL_RenderDrawLineF(renderer,a.x,a.y,b.x,b.y);
-            SDL_RenderDrawLineF(renderer,b.x,b.y,c.x,c.y);
-            SDL_RenderDrawLineF(renderer,c.x,c.y,a.x,a.y);
-        }
+        SDL_SetRenderDrawColor(renderer,205,151,87,220);
+        SDL_RenderDrawRect(renderer,&destination);
     }
-    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    SDL_RenderSetClipRect(renderer,nullptr);
 }
 
 static void draw_model_previews(SDL_Renderer *renderer)
 {
     if(!renderer||!g_document)return;
+    const int placed_count=(int)g_placed_models.size();
+    if(placed_count!=g_last_logged_model_count){
+        maker_log("Stage model renderer: %d placed model instances.",placed_count);
+        g_last_logged_model_count=placed_count;
+    }
     if(g_selected_model_asset>=0){
         if(Rml::Element *preview=g_document->GetElementById("model-preview")){
             const Rml::Vector2f p=preview->GetAbsoluteOffset();

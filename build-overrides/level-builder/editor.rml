@@ -98,7 +98,12 @@
     </main>
 
     <aside class="right-dock">
-      <section class="asset-drawer">
+      <div class="dock-tabs">
+        <button id="dock-tab-assets" class="dock-tab active" data-action="dock-tab" data-dock="assets">ASSETS</button>
+        <button id="dock-tab-model" class="dock-tab" data-action="dock-tab" data-dock="model">MODEL</button>
+        <button id="dock-tab-properties" class="dock-tab" data-action="dock-tab" data-dock="properties">PROPERTIES</button>
+      </div>
+      <section id="dock-panel-assets" class="asset-drawer dock-panel">
         <div class="dock-title"><span>CARTRIDGE ASSET BAY</span><span class="dock-subtitle">ROM / IMPORTED</span></div>
         <div class="asset-filter">
           <button class="filter-button active" id="filter-all" data-action="asset-filter" data-filter="all">ALL</button>
@@ -162,8 +167,7 @@
         </div>
       </section>
 
-      <div class="inspector-stack">
-        <section class="model-import-card">
+      <section id="dock-panel-model" class="model-import-card dock-panel hidden">
         <div class="dock-title"><span>STAGE OBJECTS / 3D</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
         <div class="model-preview-row">
           <div id="model-preview" class="model-preview">
@@ -175,6 +179,8 @@
             <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NO MAP</strong></div>
           </div>
         </div>
+        <div id="model-source-folder" class="model-source-folder">SOURCE FOLDER / NOT SELECTED</div>
+        <div id="model-texture-source" class="model-texture-source">TEXTURE SEARCH / WAITING FOR MODEL</div>
         <div class="model-animation-row">
           <label for="model-animation-select">ANIMATION CLIPS</label>
           <select id="model-animation-select" data-action="model-animation-select">
@@ -199,7 +205,7 @@
         <div class="placement-help">Select a sprite or model, choose SPRITE / MODEL BRUSH, then drag across the playfield to stamp a row or path. PLACE SELECTED makes a single stamp.</div>
       </section>
 
-      <section class="property-inspector">
+      <section id="dock-panel-properties" class="property-inspector dock-panel hidden">
         <div class="dock-title"><span>PROPERTIES</span><span id="selected-asset-name" class="dock-subtitle">NO SELECTION</span></div>
         <div id="rom-sprite-classification-row" class="property-row hidden">
           <label>ROM SPRITE ROLE</label>
@@ -239,7 +245,6 @@
         <div class="toggle-row"><label>CRT / NTSC FILTER</label><input type="checkbox" id="fx-crt" data-action="property" data-property="crt"/></div>
         <div id="vanilla-lock-note" class="modern-lock hidden">MODERN MODE REQUIRED FOR 3D / DYNAMIC LIGHTING</div>
         </section>
-      </div>
     </aside>
   </div>
 

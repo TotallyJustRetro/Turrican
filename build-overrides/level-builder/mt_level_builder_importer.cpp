@@ -34,6 +34,7 @@ struct ImportedModel {
     char normal[512] = {};
     char emissive[512] = {};
     std::string diffuse_path;
+    std::string source_folder;
     float diffuse_color[4] = {0.72f,0.72f,0.72f,1.0f};
     uint32_t triangles = 0;
     uint32_t bones = 0;
@@ -113,6 +114,64 @@ static bool save_embedded_texture(const aiTexture *texture,const fs::path &desti
     return saved;
 }
 
+static std::string maker_lower(std::string value)
+{
+    std::transform(value.begin(),value.end(),value.begin(),
+        [](unsigned char c){return (char)std::tolower(c);});
+    return value;
+}
+
+static bool maker_texture_extension(const fs::path &path)
+{
+    const std::string ext=maker_lower(path.extension().string());
+    return ext==".png"||ext==".jpg"||ext==".jpeg"||ext==".tga"||
+           ext==".bmp"||ext==".dds"||ext==".webp"||ext==".tif";
+}
+
+// Search the model's original folder and nearby material/texture subfolders.
+// Exact references win; otherwise prefer a same-model diffuse/albedo image.
+static fs::path find_nearby_model_file(const fs::path &root,const fs::path &requested,
+                                       bool textures_only,const std::string &model_stem="")
+{
+    std::error_code ec;
+    if(root.empty()||!fs::is_directory(root,ec)||ec)return {};
+    const std::string wanted_name=maker_lower(requested.filename().string());
+    const std::string wanted_stem=maker_lower(requested.stem().string());
+    const std::string model_name=maker_lower(model_stem);
+    fs::path best;
+    int best_score=0;
+    unsigned visited=0;
+    for(fs::recursive_directory_iterator it(root,fs::directory_options::skip_permission_denied,ec),end;
+        it!=end&&!ec;it.increment(ec)){
+        if(ec){ec.clear();continue;}
+        if(it.depth()>=5&&it->is_directory(ec)){
+            it.disable_recursion_pending();
+            ec.clear();
+            continue;
+        }
+        if(!it->is_regular_file(ec)){ec.clear();continue;}
+        if(++visited>12000)break;
+        const fs::path candidate=it->path();
+        if(textures_only&&!maker_texture_extension(candidate))continue;
+        const std::string filename=maker_lower(candidate.filename().string());
+        if(!wanted_name.empty()&&filename==wanted_name)return candidate;
+        if(!textures_only)continue;
+        const std::string stem=maker_lower(candidate.stem().string());
+        int score=0;
+        if(!wanted_stem.empty()&&stem==wanted_stem)score=90;
+        if(!model_name.empty()){
+            if(stem==model_name)score=100;
+            else if(stem.rfind(model_name+"_",0)==0||stem.rfind(model_name+"-",0)==0)score=95;
+            else if(stem.find(model_name)!=std::string::npos)score=75;
+        }
+        if(score==0&&(stem.find("diffuse")!=std::string::npos||
+           stem.find("albedo")!=std::string::npos||stem.find("basecolor")!=std::string::npos||
+           stem.find("base_color")!=std::string::npos))score=20;
+        if(score>best_score){best_score=score;best=candidate;}
+    }
+    return best_score>=20?best:fs::path{};
+}
+
 static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int index,
                               fs::path &copied_model,std::string &copied_diffuse_path)
 {
@@ -163,10 +222,14 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
                 g_import_error="The glTF references a file outside its source folder; move its dependencies beside the model before importing.";
                 return false;
             }
-            const fs::path from=source.parent_path()/relative;
+            fs::path from=source.parent_path()/relative;
             if(!fs::is_regular_file(from,ec)||ec){
                 ec.clear();
-                g_import_error="A glTF dependency could not be found: "+from.string();
+                from=find_nearby_model_file(source.parent_path(),relative,false,source.stem().string());
+            }
+            if(from.empty()||!fs::is_regular_file(from,ec)||ec){
+                ec.clear();
+                g_import_error="A glTF dependency could not be found beside the model: "+relative.string();
                 return false;
             }
             const fs::path to=folder/relative;
@@ -197,8 +260,12 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
                         pos=end+1;
                         continue;
                     }
-                    const fs::path from=source.parent_path()/relative;
-                    if(fs::is_regular_file(from,ec)&&!ec){
+                    fs::path from=source.parent_path()/relative;
+                    if(!fs::is_regular_file(from,ec)||ec){
+                        ec.clear();
+                        from=find_nearby_model_file(source.parent_path(),relative,false,source.stem().string());
+                    }
+                    if(!from.empty()&&fs::is_regular_file(from,ec)&&!ec){
                         const fs::path target=folder/relative;
                         fs::create_directories(target.parent_path(),ec);
                         if(ec){g_import_error="Could not create OBJ material folder: "+ec.message();return false;}
@@ -237,7 +304,11 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
                 }else{
                     fs::path relative(rel);
                     fs::path from=relative.is_absolute()?relative:(source.parent_path()/relative);
-                    if(!fs::exists(from,ec)||ec){ec.clear();continue;}
+                    if(!fs::is_regular_file(from,ec)||ec){
+                        ec.clear();
+                        from=find_nearby_model_file(source.parent_path(),relative.filename(),true,source.stem().string());
+                    }
+                    if(from.empty()||!fs::is_regular_file(from,ec)||ec){ec.clear();continue;}
                     if(relative.is_absolute()||relative.has_root_name())relative=fs::path("textures")/from.filename();
                     relative=relative.lexically_normal();
                     bool unsafe=false;
@@ -252,6 +323,21 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
                 if(copied_diffuse_path.empty()&&(type==aiTextureType_BASE_COLOR||type==aiTextureType_DIFFUSE))
                     copied_diffuse_path=target.string();
             }
+        }
+    }
+
+    // Some model files omit diffuse material references. Search nearby for a
+    // same-name/base-colour/diffuse/albedo map and preserve it in the bundle.
+    if(copied_diffuse_path.empty()){
+        const fs::path nearby=find_nearby_model_file(source.parent_path(),fs::path{},true,source.stem().string());
+        if(!nearby.empty()){
+            const fs::path target=folder/"textures"/nearby.filename();
+            fs::create_directories(target.parent_path(),ec);
+            if(!ec){
+                fs::copy_file(nearby,target,fs::copy_options::overwrite_existing,ec);
+                if(!ec)copied_diffuse_path=target.string();
+            }
+            if(ec)ec.clear();
         }
     }
     return true;
@@ -282,6 +368,8 @@ static std::string resolve_diffuse_texture(const aiScene *scene,const fs::path &
             if(fs::is_regular_file(resolved,ec)&&!ec)return resolved.string();
         }
     }
+    const fs::path nearby=find_nearby_model_file(model_path.parent_path(),fs::path{},true,model_path.stem().string());
+    if(!nearby.empty())return nearby.string();
     return {};
 }
 
@@ -377,8 +465,8 @@ static void save_model_metadata(const ImportedModel &asset)
     if(!file)return;
     fs::path relative;
     if(!asset.diffuse_path.empty())relative=fs::path(asset.diffuse_path).lexically_relative(folder);
-    std::fprintf(file,"MT_MODEL 1\nclassification=%d\ndiffuse=%s\n",
-        asset.classification,relative.generic_string().c_str());
+    std::fprintf(file,"MT_MODEL 1\nclassification=%d\ndiffuse=%s\nsource_folder=%s\n",
+        asset.classification,relative.generic_string().c_str(),asset.source_folder.c_str());
     std::fclose(file);
 }
 
@@ -402,6 +490,8 @@ static void load_model_metadata(ImportedModel &asset)
                 std::error_code ec;
                 if(fs::is_regular_file(diffuse,ec)&&!ec)asset.diffuse_path=diffuse.string();
             }
+        }else if(std::strncmp(line,"source_folder=",14)==0){
+            asset.source_folder=line+14;
         }
     }
     std::fclose(file);
@@ -431,6 +521,7 @@ static int import_model_internal(const char *path, bool copy_into_library)
     safe_copy(asset.name,sizeof(asset.name),source.filename().string());
     safe_copy(asset.path,sizeof(asset.path),source.string());
     safe_copy(asset.format,sizeof(asset.format),ext);
+    asset.source_folder=source.parent_path().string();
     aiVector3D lo(1e30f,1e30f,1e30f),hi(-1e30f,-1e30f,-1e30f);
     bool have_vertices=false;
     for(unsigned m=0;m<scene->mNumMeshes;m++){
@@ -481,7 +572,18 @@ static int import_model_internal(const char *path, bool copy_into_library)
 
 extern "C" int mtlb_import_model(const char *path)
 {
-    return import_model_internal(path,true);
+    try{
+        return import_model_internal(path,true);
+    }catch(const std::bad_alloc&){
+        g_import_error="The model or its textures are too large for available memory.";
+        return -1;
+    }catch(const std::exception &error){
+        g_import_error=std::string("Model import failed safely: ")+error.what();
+        return -1;
+    }catch(...){
+        g_import_error="Model import failed with an unknown error.";
+        return -1;
+    }
 }
 
 extern "C" int mtlb_imported_model_scan(void)
@@ -565,6 +667,13 @@ extern "C" int mtlb_imported_model_preview(int index,float *xyz,float *uv,int ma
             std::memcpy(uv,asset.preview_uv.data(),(size_t)count*2u*sizeof(float));
     }
     return count;
+}
+extern "C" int mtlb_imported_model_source_folder(int index,char *path,int capacity)
+{
+    if(index<0||index>=g_model_count)return 0;
+    const std::string &value=g_models[(size_t)index].source_folder;
+    if(path&&capacity>0)safe_copy(path,(size_t)capacity,value);
+    return value.empty()?0:1;
 }
 extern "C" int mtlb_imported_model_diffuse_path(int index,char *path,int capacity)
 {
