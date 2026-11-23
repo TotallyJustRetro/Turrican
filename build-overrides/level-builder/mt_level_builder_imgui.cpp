@@ -55,6 +55,11 @@ static int g_live_tile_count = 0;
 /* ROM block confirmed by native object handler f_C8A6: ROM $03AF80 -> VRAM $1600, length $0A00. */
 static uint8_t g_rom_art_block[0x0A00] = {};
 static bool g_rom_art_valid = false;
+/* Original 8 x 64-byte HUD animation uploads, confirmed at ROM $26D20/$26D40. */
+static uint8_t g_rom_hud_art_a[0x0200] = {};
+static uint8_t g_rom_hud_art_b[0x0200] = {};
+static bool g_rom_hud_art_a_valid = false;
+static bool g_rom_hud_art_b_valid = false;
 static int g_rom_tile_start_index = -1;
 static int g_rom_tile_count = 0;
 static uint8_t g_live_regs[32] = {};
@@ -283,17 +288,35 @@ static int vdp_pixel(int tile,int x,int y)
 
 static int rom_vdp_pixel(int tile,int x,int y)
 {
-    if(!g_rom_art_valid||tile<0||tile>=80)return 0;
-    const uint8_t packed=g_rom_art_block[tile*32+y*4+(x>>1)];
+    if(tile<0||tile>=112)return 0;
+    const uint8_t *block=nullptr;
+    int localTile=tile;
+    if(tile<80 && g_rom_art_valid) {
+        block=g_rom_art_block;
+    } else if(tile>=80 && tile<96 && g_rom_hud_art_a_valid) {
+        block=g_rom_hud_art_a;
+        localTile=tile-80;
+    } else if(tile>=96 && tile<112 && g_rom_hud_art_b_valid) {
+        block=g_rom_hud_art_b;
+        localTile=tile-96;
+    }
+    if(!block)return 0;
+    const uint8_t packed=block[localTile*32+y*4+(x>>1)];
     return (x&1)?(packed&15):(packed>>4);
 }
 
 static void append_rom_art_tiles()
 {
-    if(!g_rom_art_valid || g_rom_tile_count)return;
+    if(g_rom_tile_count)return;
     g_rom_tile_start_index=g_live_tile_count;
-    for(int tile=0;tile<80 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
-        g_live_tile_ids[g_live_tile_count++]=tile;
+    const int bankCounts[3]={g_rom_art_valid?80:0,g_rom_hud_art_a_valid?16:0,g_rom_hud_art_b_valid?16:0};
+    int tileBase=0;
+    for(int bank=0;bank<3;bank++) {
+        for(int tile=0;tile<bankCounts[bank] &&
+            g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+            g_live_tile_ids[g_live_tile_count++]=tileBase+tile;
+        tileBase+=bank==0?80:16;
+    }
     g_rom_tile_count=g_live_tile_count-g_rom_tile_start_index;
 }
 static void draw_vdp_tile(ImDrawList *draw,ImVec2 pos,float size,int entry)
@@ -825,7 +848,7 @@ static void draw_asset_shelf()
         ImGui::SameLine(0,2);
         if(ImGui::SmallButton(">"))g_tile_shelf_offset=std::min(std::max(0,g_live_tile_count-8),g_tile_shelf_offset+8);
         if(g_live_tile_count==0){ImGui::SameLine();ImGui::TextDisabled("NO ROM OR LIVE ART AVAILABLE");}
-        else if(g_rom_tile_count>0){ImGui::SameLine();ImGui::TextDisabled("80 ROM TILES  |  $03AF80");}
+        else if(g_rom_tile_count>0){ImGui::SameLine();ImGui::TextDisabled("%d ROM TILES  |  BUILT-IN BANKS",g_rom_tile_count);}
         ImGui::SameLine();
         ImGui::TextDisabled("PAL");
         for(int pal=0;pal<4;pal++){
@@ -1096,6 +1119,8 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_y=std::max(0,mtlb_map_cursor_y());
     g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
     g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
+    g_rom_hud_art_a_valid=md_rom_copy_region(0x26D20u,g_rom_hud_art_a,(uint32_t)sizeof(g_rom_hud_art_a))!=0;
+    g_rom_hud_art_b_valid=md_rom_copy_region(0x26D40u,g_rom_hud_art_b,(uint32_t)sizeof(g_rom_hud_art_b))!=0;
     maker_build_rom_sprite_catalog();
     g_live_art_hash=0;
     g_live_tile_count=0;
