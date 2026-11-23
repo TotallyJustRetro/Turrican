@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the Dear ImGui Level Builder as a high-resolution PC overlay."""
+"""Install RmlUi Maker frontend, preserving Dear ImGui as a fallback."""
 from __future__ import annotations
 
 import shutil
@@ -24,7 +24,8 @@ def main() -> None:
         raise RuntimeError(f"Native SDL entry point not found: {sdl_path}")
 
     source_dir = Path(__file__).resolve().parent / "level-builder"
-    for name in ("mt_level_builder_imgui.cpp", "mt_level_builder_imgui.h"):
+    for name in ("mt_level_builder_imgui.cpp", "mt_level_builder_imgui.h",
+                 "mt_level_builder_rmlui.cpp", "mt_level_builder_rmlui.h"):
         source = source_dir / name
         if not source.is_file():
             raise RuntimeError(f"Dear ImGui Level Builder source is missing: {source}")
@@ -37,6 +38,11 @@ def main() -> None:
         anchor = "#include <SDL.h>\n"
         s = once(s, anchor, anchor + include + "\n", "ImGui framebuffer bridge include")
 
+    rml_include = '#include "mt_level_builder_rmlui.h"'
+    if rml_include not in s:
+        s = once(s, include + "\n", include + "\n" + rml_include + "\n",
+                 "RmlUi Maker frontend include")
+
     # ImGui receives the same SDL input events as the native pause screen.
     route_anchor = (
         "    if(e->type==SDL_WINDOWEVENT&&e->window.event==SDL_WINDOWEVENT_RESIZED)"
@@ -44,7 +50,7 @@ def main() -> None:
     )
     route_patch = route_anchor + (
         "    /* ImGui owns pointer/keyboard interaction while the editor is open. */\n"
-        "    if(native_menu_state==11){mtlb_process_event(e);return;}\n"
+        "    if(native_menu_state==11){mtlb_process_event(e);mtlbr_process_event(e);return;}\n"
     )
     if "ImGui owns pointer/keyboard interaction" not in s:
         s = once(s, route_anchor, route_patch, "Level Builder SDL event routing")
@@ -74,9 +80,10 @@ def main() -> None:
             "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
             "    int native_maker_closed=0;\n"
             "    if(native_menu_state==11)\n"
-            "        native_maker_closed=mtlb_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h);\n"
+            "        native_maker_closed=mtlbr_is_active()?mtlbr_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h):mtlb_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h);\n"
             "    SDL_RenderPresent(ren);\n"
             "    if(native_maker_closed) {\n"
+            "        mtlbr_shutdown();\n"
             "        mtlb_shutdown();\n"
             "        if(native_level_builder_from_pause) {\n"
             "            native_level_builder_from_pause=0;\n"
@@ -96,7 +103,8 @@ def main() -> None:
         "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn\","
         "\"Could not initialize the Level Builder renderer.\",NULL);\n"
         "        native_custom_enter_parent();\n"
-        "    }"
+        "    }\n"
+        "    if(native_menu_state==11) mtlbr_init(SDL_RenderGetWindow(ren),ren);"
     )
     if "initialize Dear ImGui PC-resolution renderer" not in s:
         s = once(s, init_anchor,
@@ -104,7 +112,7 @@ def main() -> None:
             "initialize Dear ImGui PC-resolution renderer")
 
     sdl_path.write_text(s, encoding="utf-8")
-    print("Installed Dear ImGui at PC output resolution above the processed game frame.")
+    print("Installed RmlUi Maker frontend over SDL_Renderer; Dear ImGui remains the fallback.")
 
 
 if __name__ == "__main__":
