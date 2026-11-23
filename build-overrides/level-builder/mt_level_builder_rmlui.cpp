@@ -1,5 +1,6 @@
 #include "mt_level_builder_rmlui.h"
 #include "mt_level_builder_model.h"
+#include "mt_level_builder_importer.h"
 
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_SDL.h"
@@ -8,6 +9,7 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/EventListener.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/Log.h>
 
 #include <algorithm>
@@ -17,6 +19,10 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#include <commdlg.h>
+#endif
 
 namespace {
 class MakerSystemInterface;
@@ -64,6 +70,26 @@ static bool g_settings_open = false;
 static int g_asset_shelf_offset = 0;
 static int g_asset_shelf_count = -1;
 static uint32_t g_asset_shelf_hash = 0;
+static int g_asset_filter = 0;
+static int g_selected_asset_id = -1;
+static Rml::String g_selected_asset_type;
+static int g_selected_model_asset = -1;
+static int g_pending_model_asset = -1;
+static int g_selected_texture_asset = -1;
+static bool g_asset_drag_active = false;
+static int g_drag_asset_id = -1;
+static Rml::String g_drag_asset_type;
+static int g_placed_model_count = 0;
+struct PlacedMakerModel { int asset_id; float x, y; };
+static PlacedMakerModel g_placed_models[64] = {};
+struct MakerLight { float x,y,radius,intensity; uint32_t color; int type; };
+static MakerLight g_lights[32] = {};
+static int g_light_count = 0;
+static int g_light_type = 0;
+static uint32_t g_light_color = 0xFFE619E6u;
+static float g_light_radius = 96.0f;
+static float g_light_intensity = 0.65f;
+static bool g_fx_bloom = false, g_fx_rim = false, g_fx_cel = false, g_fx_fog = false, g_fx_crt = false;
 static char g_custom_music_path[260] = "";
 static char g_background_name[96] = "NONE";
 static int g_background_layer = 0;
@@ -111,6 +137,106 @@ static const std::string &maker_portable_root()
     return g_portable_root;
 }
 
+static void set_status(const char *message);
+
+static std::string maker_choose_file(bool texture)
+{
+#ifdef _WIN32
+    char path[32768] = {};
+    static const char model_filter[] = "3D Models (GLB, GLTF, OBJ, FBX)\0*.glb;*.gltf;*.obj;*.fbx\0All Files\0*.*\0";
+    static const char texture_filter[] = "Textures (PNG, TGA)\0*.png;*.tga\0All Files\0*.*\0";
+    OPENFILENAMEA dialog = {};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = nullptr;
+    dialog.lpstrFilter = texture ? texture_filter : model_filter;
+    dialog.nFilterIndex = 1;
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = sizeof(path);
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    dialog.lpstrTitle = texture ? "Import PNG / TGA texture" : "Import GLB / GLTF / OBJ / FBX model";
+    if (GetOpenFileNameA(&dialog)) return path;
+#endif
+    return std::string();
+}
+
+static void maker_set_modal(const char *id, bool visible)
+{
+    if (g_document) {
+        if (Rml::Element *modal = g_document->GetElementById(id))
+            modal->SetClass("hidden", !visible);
+    }
+}
+
+static void maker_update_imported_model_panel(int index)
+{
+    if (!g_document || index < 0) return;
+    char name[128]={}, path[1024]={};
+    uint32_t triangles=0, bones=0;
+    float bounds[3]={0,0,0};
+    int diffuse=0, normal=0, emissive=0, classification=0;
+    if (!mtlb_imported_model_info(index,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
+        &diffuse,&normal,&emissive,&classification)) return;
+
+    if (Rml::Element *element=g_document->GetElementById("model-preview"))
+        element->SetInnerRML("<div class='model-wireframe-label'>SELECTED: "+Rml::StringUtilities::EncodeRml(name)+"</div>");
+    if (Rml::Element *element=g_document->GetElementById("model-triangle-count")) {
+        char value[64]; std::snprintf(value,sizeof(value),"%u / 256 TRIS",triangles); element->SetInnerRML(value);
+    }
+    if (Rml::Element *element=g_document->GetElementById("model-bone-count")) {
+        char value[48]; std::snprintf(value,sizeof(value),"%u",bones); element->SetInnerRML(value);
+    }
+    if (Rml::Element *element=g_document->GetElementById("model-texture-state")) {
+        char value[96]; std::snprintf(value,sizeof(value),"%s%s%s",
+            diffuse?"ALBEDO ":"",normal?"NORMAL ":"",emissive?"EMISSIVE":"");
+        element->SetInnerRML(value[0]?value:"NONE");
+    }
+    if (Rml::Element *element=g_document->GetElementById("model-classification")) {
+        char value[8]; std::snprintf(value,sizeof(value),"%d",std::max(0,std::min(4,classification)));
+        element->SetAttribute("value",value);
+    }
+    if (Rml::Element *element=g_document->GetElementById("modal-asset-info")) {
+        char value[512];
+        std::snprintf(value,sizeof(value),"%s / %u TRIS / %u BONES / BOUNDS %.2f x %.2f x %.2f",
+            name,triangles,bones,bounds[0],bounds[1],bounds[2]);
+        element->SetInnerRML(Rml::StringUtilities::EncodeRml(value));
+    }
+}
+
+static void maker_open_model_importer()
+{
+    const std::string path=maker_choose_file(false);
+    if(path.empty())return;
+    const int index=mtlb_import_model(path.c_str());
+    if(index<0){
+        set_status(mtlb_importer_last_error());
+        maker_log("Model import failed: %s",mtlb_importer_last_error());
+        return;
+    }
+    g_pending_model_asset=index;
+    g_selected_model_asset=index;
+    maker_update_imported_model_panel(index);
+    maker_set_modal("model-import-modal",true);
+    maker_refresh_asset_shelf();
+    set_status("Model inspected. Choose its role to register the asset.");
+    maker_log("Imported model asset %d: %s",index,path.c_str());
+}
+
+static void maker_open_texture_importer()
+{
+    const std::string path=maker_choose_file(true);
+    if(path.empty())return;
+    const int index=mtlb_import_texture(path.c_str());
+    if(index<0){
+        set_status(mtlb_importer_last_error());
+        maker_log("Texture import failed: %s",mtlb_importer_last_error());
+        return;
+    }
+    g_selected_texture_asset=index;
+    char name[128]={}, stored[1024]={}; int width=0, height=0;
+    mtlb_imported_texture_info(index,name,sizeof(name),stored,sizeof(stored),&width,&height);
+    char message[256]; std::snprintf(message,sizeof(message),"Imported texture %s (%d x %d).",name,width,height);
+    set_status(message);
+}
 static void maker_prepare_log()
 {
     if (!g_log_path.empty()) return;
