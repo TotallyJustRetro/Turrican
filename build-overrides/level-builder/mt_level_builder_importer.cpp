@@ -126,6 +126,88 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
     if(ec){g_import_error="Could not copy the model into Assets/Imported: "+ec.message();return false;}
     if(!scene)return true;
 
+    // glTF sidecar buffers and images use relative URI paths. Preserve those
+    // files beside the copied document so the portable library can reopen it.
+    if(source.extension()==".gltf"){
+        std::ifstream input(source,std::ios::binary);
+        std::string json,line;
+        if(input)while(std::getline(input,line)){json+=line;json.push_back('\n');}
+        size_t cursor=0;
+        while((cursor=json.find("\"uri\"",cursor))!=std::string::npos){
+            const size_t colon=json.find(':',cursor+5);
+            if(colon==std::string::npos)break;
+            const size_t quote=json.find('"',colon+1);
+            if(quote==std::string::npos)break;
+            size_t end=quote+1;
+            bool escaped=false;
+            for(;end<json.size();end++){
+                const char ch=json[end];
+                if(!escaped&&ch=='"')break;
+                if(!escaped&&ch=='\\')escaped=true;
+                else escaped=false;
+            }
+            if(end>=json.size())break;
+            const std::string uri=json.substr(quote+1,end-quote-1);
+            cursor=end+1;
+            if(uri.empty()||uri.rfind("data:",0)==0||uri.find("://")!=std::string::npos)continue;
+            fs::path relative(uri);
+            if(relative.is_absolute()||relative.has_root_name())continue;
+            relative=relative.lexically_normal();
+            bool unsafe=false;
+            for(const auto &part:relative)if(part=="..")unsafe=true;
+            if(unsafe){
+                g_import_error="The glTF references a file outside its source folder; move its dependencies beside the model before importing.";
+                return false;
+            }
+            const fs::path from=source.parent_path()/relative;
+            if(!fs::is_regular_file(from,ec)||ec){
+                ec.clear();
+                g_import_error="A glTF dependency could not be found: "+from.string();
+                return false;
+            }
+            const fs::path to=folder/relative;
+            fs::create_directories(to.parent_path(),ec);
+            if(ec){g_import_error="Could not create a glTF dependency folder: "+ec.message();return false;}
+            fs::copy_file(from,to,fs::copy_options::overwrite_existing,ec);
+            if(ec){g_import_error="Could not copy a glTF dependency: "+ec.message();return false;}
+        }
+    }
+
+    // OBJ material libraries are external sidecars. The texture files
+    // themselves are copied below from Assimp's material references.
+    if(source.extension()==".obj"){
+        std::ifstream input(source);
+        std::string line;
+        while(std::getline(input,line)){
+            if(line.rfind("mtllib ",0)!=0)continue;
+            const std::string libraries=line.substr(7);
+            size_t pos=0;
+            while(pos<libraries.size()){
+                while(pos<libraries.size()&&std::isspace((unsigned char)libraries[pos]))++pos;
+                const size_t end=libraries.find_first_of(" \t\r",pos);
+                const std::string library=libraries.substr(pos,end==std::string::npos?std::string::npos:end-pos);
+                if(!library.empty()){
+                    const fs::path relative(library);
+                    if(relative.is_absolute()||relative.has_root_name())continue;
+                    const fs::path from=source.parent_path()/relative;
+                    if(fs::is_regular_file(from,ec)&&!ec){
+                        const fs::path target=folder/relative;
+                        fs::create_directories(target.parent_path(),ec);
+                        if(ec){g_import_error="Could not create OBJ material folder: "+ec.message();return false;}
+                        fs::copy_file(from,target,fs::copy_options::overwrite_existing,ec);
+                        if(ec){g_import_error="Could not copy OBJ material library: "+ec.message();return false;}
+                    }else{
+                        ec.clear();
+                        g_import_error="An OBJ material library could not be found: "+from.string();
+                        return false;
+                    }
+                }
+                if(end==std::string::npos)break;
+                pos=end+1;
+            }
+        }
+    }
+
     const aiTextureType types[]={aiTextureType_BASE_COLOR,aiTextureType_DIFFUSE,aiTextureType_NORMALS,aiTextureType_EMISSIVE};
     for(unsigned m=0;m<scene->mNumMaterials;m++){
         const aiMaterial *material=scene->mMaterials[m];
