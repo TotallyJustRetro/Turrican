@@ -50,10 +50,10 @@ static float ui(float value) { return value * g_ui_scale; }
 static uint8_t g_live_vram[65536] = {};
 static uint16_t g_live_cram[64] = {};
 static uint32_t g_live_art_hash = 0;
-static int g_live_tile_ids[336] = {};
+static int g_live_tile_ids[512] = {};
 static int g_live_tile_count = 0;
-/* ROM block confirmed by native object handler f_C8A6: ROM $03AF80 -> VRAM $1600, length $0A00. */
-static uint8_t g_rom_art_block[0x0A00] = {};
+/* f_C8A6: ROM $03AF80 -> VRAM $1600; D0=$0A00 words becomes $1400 bytes in f_6E6. */
+static uint8_t g_rom_art_block[0x1400] = {};
 static bool g_rom_art_valid = false;
 /* Original 8 x 64-byte HUD animation uploads, confirmed at ROM $26D20/$26D40. */
 static uint8_t g_rom_hud_art_a[0x0200] = {};
@@ -291,16 +291,16 @@ static int rom_vdp_pixel(int tile,int x,int y)
     if(tile<0||tile>=2048)return 0;
     const uint8_t *block=nullptr;
     int localTile=tile;
-    // Local catalogue indices used by the tile shelf.
-    if(tile<80 && g_rom_art_valid) {
+    // Backward-compatible local indices from earlier Maker documents.
+    if(tile<160 && g_rom_art_valid) {
         block=g_rom_art_block;
-    } else if(tile>=80 && tile<96 && g_rom_hud_art_a_valid) {
-        block=g_rom_hud_art_a; localTile=tile-80;
-    } else if(tile>=96 && tile<112 && g_rom_hud_art_b_valid) {
-        block=g_rom_hud_art_b; localTile=tile-96;
+    } else if(tile>=160 && tile<176 && g_rom_hud_art_a_valid) {
+        block=g_rom_hud_art_a; localTile=tile-160;
+    } else if(tile>=176 && tile<192 && g_rom_hud_art_b_valid) {
+        block=g_rom_hud_art_b; localTile=tile-176;
     }
-    // Original VDP tile indices read from the game's sprite-frame descriptors.
-    else if(tile>=0xB0 && tile<0x100 && g_rom_art_valid) {
+    // Actual VDP tile ranges used by the original Mega Turrican routines.
+    else if(tile>=0xB0 && tile<0xB0+160 && g_rom_art_valid) {
         block=g_rom_art_block; localTile=tile-0xB0;
     } else if(tile>=0x1E9 && tile<=0x1F8 && g_rom_hud_art_a_valid) {
         block=g_rom_hud_art_a; localTile=tile-0x1E9;
@@ -315,13 +315,24 @@ static void append_rom_art_tiles()
 {
     if(g_rom_tile_count)return;
     g_rom_tile_start_index=g_live_tile_count;
-    const int bankCounts[3]={g_rom_art_valid?80:0,g_rom_hud_art_a_valid?16:0,g_rom_hud_art_b_valid?16:0};
-    int tileBase=0;
-    for(int bank=0;bank<3;bank++) {
-        for(int tile=0;tile<bankCounts[bank] &&
-            g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
-            g_live_tile_ids[g_live_tile_count++]=tileBase+tile;
-        tileBase+=bank==0?80:16;
+    if(g_rom_art_valid) {
+        for(int tile=0;tile<160 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+            g_live_tile_ids[g_live_tile_count++]=0xB0+tile;
+    }
+    if(g_rom_hud_art_a_valid) {
+        for(int tile=0;tile<16 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+            g_live_tile_ids[g_live_tile_count++]=0x1E9+tile;
+    }
+    if(g_rom_hud_art_b_valid) {
+        // The two original uploads overlap by fifteen tiles. Keep only the
+        // final tile contributed by the second, one-tile-shifted upload.
+        if(g_rom_hud_art_a_valid) {
+            if(g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0])))
+                g_live_tile_ids[g_live_tile_count++]=0x1F9;
+        } else {
+            for(int tile=0;tile<16 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+                g_live_tile_ids[g_live_tile_count++]=0x1EA+tile;
+        }
     }
     g_rom_tile_count=g_live_tile_count-g_rom_tile_start_index;
 }
@@ -470,9 +481,11 @@ static void maker_build_rom_sprite_catalog()
 
 static bool maker_sprite_tile_supported(int tile)
 {
-    return (tile>=0xB0 && tile<0x100 && g_rom_art_valid) ||
-           (tile>=0x1E9 && tile<=0x1F9 &&
-            (g_rom_hud_art_a_valid||g_rom_hud_art_b_valid));
+    if(tile>=0xB0 && tile<0xB0+160)return g_rom_art_valid;
+    if(tile>=0x1E9 && tile<=0x1F8)return g_rom_hud_art_a_valid ||
+        (g_rom_hud_art_b_valid && tile>=0x1EA);
+    if(tile==0x1F9)return g_rom_hud_art_b_valid;
+    return false;
 }
 static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
                                     float boxHeight,const MakerRomSpriteAsset &asset)
