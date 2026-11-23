@@ -286,7 +286,7 @@ body { margin:0; padding:0; font-family:Lato,sans-serif; color:#e7edf4; backgrou
         </div>
       </div>
       <div class="panel shelf">
-        <div class="panel-heading">CARTRIDGE ASSET BROWSER <span id="asset-count" class="panel-kicker">WAITING FOR VDP ASSETS</span></div>
+        <div class="panel-heading">CARTRIDGE ASSET BROWSER <span id="asset-count" class="panel-kicker">WAITING FOR VDP ASSETS</span><div class="option-button" data-action="asset-page" data-dir="-1">PREV</div><div class="option-button" data-action="asset-page" data-dir="1">NEXT</div></div>
         <div id="asset-shelf-items" class="asset-shelf-items"></div>
       </div>
     </div>
@@ -603,9 +603,9 @@ static void maker_refresh_asset_shelf()
 {
     if(!g_document) return;
     const int count=mtlb_editor_tile_count();
-    if(count!=g_asset_shelf_count || mtlb_editor_vdp_art_hash()!=g_asset_shelf_hash){
+    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=(uint32_t)(g_asset_shelf_offset+1)){
         g_asset_shelf_count=count;
-        g_asset_shelf_hash=mtlb_editor_vdp_art_hash();
+        g_asset_shelf_hash=(uint32_t)(g_asset_shelf_offset+1);
         std::string markup;
         const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
         for(int i=0;i<visible;i++){
@@ -671,7 +671,7 @@ public:
             g_maker_tool = 0;
             maker_update_mode_ui();
             maker_save_settings();
-            set_status(std::string("Switched to ")+maker_mode_name(g_maker_mode)+".");
+            set_status((std::string("Switched to ")+maker_mode_name(g_maker_mode)+".").c_str());
             return;
         }
         if (action == "tool") {
@@ -702,7 +702,7 @@ public:
                 element->SetClass("active",*target);
                 element->SetInnerRML(*target?"ON":"OFF");
                 maker_save_settings();
-                set_status(key+" option updated.");
+                set_status((key+" option updated.").c_str());
             }
             return;
         }
@@ -719,6 +719,13 @@ public:
             const int index=element->GetAttribute<int>("data-index",0);
             const int tile=mtlb_editor_tile_entry(index,g_maker_palette);
             if(tile){select_brush(tile);g_maker_tool=1;maker_update_mode_ui();}
+            return;
+        }
+        if (action == "asset-page") {
+            const int dir=element->GetAttribute<int>("data-dir",1);
+            g_asset_shelf_offset=std::max(0,std::min(std::max(0,mtlb_editor_tile_count()-20),g_asset_shelf_offset+dir*20));
+            g_asset_shelf_hash=0;
+            maker_refresh_asset_shelf();
             return;
         }
         if (action == "canvas-size") {
