@@ -4069,3 +4069,25 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
   font-family: Lato;
 }
 .status-led { background-color: #c59a5e; }
+
+
+/* Legacy-only state labels and boss accents use the same industrial finish. */
+.modern-lock {
+  color: #f2ce99;
+  background-color: #403323;
+  border-color: #b98a53;
+  font-family: Lato;
+}
+.asset-tag.tag-3d {
+  color: #f0cd96;
+  background-color: #4c4032;
+  border-color: #8c765b;
+}
+.boss-class {
+  color: #f1ded0;
+  background-color: #493329;
+  border-color: #b97958;
+}
+.asset-card.locked-modern-only {
+  opacity: 0.82;
+}
