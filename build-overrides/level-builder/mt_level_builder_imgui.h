@@ -28,6 +28,15 @@ int mtlb_map_cursor_x(void);
 int mtlb_map_cursor_y(void);
 int mtlb_map_brush(void);
 
+int mtlb_editor_prepare_rom_assets(void);
+int mtlb_editor_tile_count(void);
+int mtlb_editor_tile_entry(int index, int palette);
+void mtlb_editor_tile_rgba(int entry, int x, int y, uint8_t rgba[4]);
+int mtlb_editor_sprite_asset_count(void);
+int mtlb_editor_sprite_asset_info(int index, uint32_t *owner_pc, uint32_t *descriptor_pc, uint16_t *frame_count, uint16_t *part_count);
+int mtlb_editor_sprite_asset_part(int index, int part_index, int *x, int *y, int *width_tiles, int *height_tiles, uint16_t *tile_attr);
+uint32_t mtlb_editor_vdp_art_hash(void);
+
 #ifdef __cplusplus
 }
 #endif

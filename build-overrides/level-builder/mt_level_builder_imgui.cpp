@@ -88,6 +88,7 @@ struct MakerRomSpriteAsset {
 };
 static MakerRomSpriteAsset g_rom_sprite_assets[256] = {};
 static int g_rom_sprite_asset_count = 0;
+static bool g_maker_rom_assets_prepared = false;
 static int g_rom_sprite_offset = 0;
 static int g_selected_rom_sprite = -1;
 static int g_selected_sprite = -1;
@@ -1226,6 +1227,117 @@ extern "C" int mtlb_map_cursor_x(void) { return g_selected_x; }
 extern "C" int mtlb_map_cursor_y(void) { return g_selected_y; }
 extern "C" int mtlb_map_brush(void) { return g_brush_tile; }
 
+extern "C" int mtlb_editor_prepare_rom_assets(void)
+{
+    if (!g_maker_rom_assets_prepared) {
+        g_rom_art_valid = md_rom_copy_region(0x3AF80u, g_rom_art_block, (uint32_t)sizeof(g_rom_art_block)) != 0;
+        g_rom_hud_art_a_valid = md_rom_copy_region(0x26D20u, g_rom_hud_art_a, (uint32_t)sizeof(g_rom_hud_art_a)) != 0;
+        g_rom_hud_art_b_valid = md_rom_copy_region(0x26D40u, g_rom_hud_art_b, (uint32_t)sizeof(g_rom_hud_art_b)) != 0;
+        maker_load_rom_fx_frames();
+        maker_build_rom_sprite_catalog();
+        g_maker_rom_assets_prepared = true;
+    }
+    append_rom_art_tiles();
+    return g_rom_sprite_asset_count;
+}
+
+extern "C" int mtlb_editor_tile_count(void)
+{
+    append_rom_art_tiles();
+    return g_live_tile_count;
+}
+
+extern "C" int mtlb_editor_tile_entry(int index, int palette)
+{
+    append_rom_art_tiles();
+    if (index < 0 || index >= g_live_tile_count) return 0;
+    const bool rom_tile = g_rom_tile_start_index >= 0 &&
+        index >= g_rom_tile_start_index && index < g_rom_tile_start_index + g_rom_tile_count;
+    return (g_live_tile_ids[index] & 0x07FF) | ((palette & 3) << 13) | (rom_tile ? 0x8000 : 0);
+}
+
+extern "C" void mtlb_editor_tile_rgba(int entry, int x, int y, uint8_t rgba[4])
+{
+    if (!rgba) return;
+    rgba[0] = rgba[1] = rgba[2] = 0;
+    rgba[3] = 0;
+    if (x < 0 || x >= 8 || y < 0 || y >= 8) return;
+
+    const int tile = entry & 0x07FF;
+    const int sx = (entry & 0x0800) ? 7 - x : x;
+    const int sy = (entry & 0x1000) ? 7 - y : y;
+    const int pixel = (entry & 0x8000) ? rom_vdp_pixel(tile, sx, sy) : vdp_pixel(tile, sx, sy);
+    if (pixel == 0) return;
+
+    const int palette = (entry >> 13) & 3;
+    const uint16_t raw = g_live_cram[palette * 16 + (pixel & 15)];
+    const int r = (raw >> 1) & 7;
+    const int g = (raw >> 5) & 7;
+    const int b = (raw >> 9) & 7;
+    rgba[0] = (uint8_t)(r * 255 / 7);
+    rgba[1] = (uint8_t)(g * 255 / 7);
+    rgba[2] = (uint8_t)(b * 255 / 7);
+    rgba[3] = 255;
+}
+
+extern "C" int mtlb_editor_sprite_asset_count(void)
+{
+    mtlb_editor_prepare_rom_assets();
+    return g_rom_sprite_asset_count;
+}
+
+extern "C" int mtlb_editor_sprite_asset_info(int index, uint32_t *owner_pc,
+                                               uint32_t *descriptor_pc,
+                                               uint16_t *frame_count,
+                                               uint16_t *part_count)
+{
+    mtlb_editor_prepare_rom_assets();
+    if (index < 0 || index >= g_rom_sprite_asset_count) return 0;
+    const MakerRomSpriteAsset &asset = g_rom_sprite_assets[index];
+    if (owner_pc) *owner_pc = asset.owner_pc;
+    if (descriptor_pc) *descriptor_pc = asset.descriptor_pc;
+    if (frame_count) *frame_count = asset.frame_count;
+    if (part_count) *part_count = asset.first_frame_parts;
+    return 1;
+}
+
+extern "C" int mtlb_editor_sprite_asset_part(int index, int part_index,
+                                               int *x, int *y, int *width_tiles,
+                                               int *height_tiles, uint16_t *tile_attr)
+{
+    mtlb_editor_prepare_rom_assets();
+    if (index < 0 || index >= g_rom_sprite_asset_count || part_index < 0 || part_index >= 64)
+        return 0;
+    const MakerRomSpriteAsset &asset = g_rom_sprite_assets[index];
+    if (part_index >= asset.first_frame_parts) return 0;
+    const uint32_t at = asset.first_frame_pc + (uint32_t)part_index * 8u;
+    uint16_t raw_x = 0, raw_y = 0;
+    uint32_t packed = 0;
+    if (!maker_rom_read_u16(at, raw_x) || !maker_rom_read_u16(at + 2, raw_y) ||
+        !maker_rom_read_u32(at + 4, packed)) return 0;
+    if (part_index > 0 && (raw_x & 0x8000u)) return 0;
+
+    const uint16_t size_link = (uint16_t)(packed >> 16);
+    const uint16_t attr = (uint16_t)(packed & 0x7FFFu);
+    const int w = ((size_link >> 8) & 3) + 1;
+    const int h = ((size_link >> 10) & 3) + 1;
+    const int base_tile = attr & 0x07FF;
+    for (int row = 0; row < h; ++row)
+        for (int col = 0; col < w; ++col)
+            if (!maker_sprite_tile_supported(base_tile + col * h + row)) return 0;
+    if (x) *x = (int)(int16_t)raw_x;
+    if (y) *y = (int)(int16_t)raw_y;
+    if (width_tiles) *width_tiles = w;
+    if (height_tiles) *height_tiles = h;
+    if (tile_attr) *tile_attr = (uint16_t)(attr | 0x8000u);
+    return 1;
+}
+
+extern "C" uint32_t mtlb_editor_vdp_art_hash(void)
+{
+    return g_live_art_hash;
+}
+
 extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
 {
     if(g_initialized)return 1;
@@ -1264,11 +1376,7 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_x=std::max(0,mtlb_map_cursor_x());
     g_selected_y=std::max(0,mtlb_map_cursor_y());
     g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
-    g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
-    g_rom_hud_art_a_valid=md_rom_copy_region(0x26D20u,g_rom_hud_art_a,(uint32_t)sizeof(g_rom_hud_art_a))!=0;
-    g_rom_hud_art_b_valid=md_rom_copy_region(0x26D40u,g_rom_hud_art_b,(uint32_t)sizeof(g_rom_hud_art_b))!=0;
-    maker_load_rom_fx_frames();
-    maker_build_rom_sprite_catalog();
+    mtlb_editor_prepare_rom_assets();
     g_live_art_hash=0;
     g_live_tile_count=0;
     g_rom_tile_start_index=-1;
