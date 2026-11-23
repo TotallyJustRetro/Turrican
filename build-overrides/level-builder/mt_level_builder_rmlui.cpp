@@ -245,6 +245,20 @@ static void maker_set_modal(const char *id, bool visible)
     }
 }
 
+static void maker_clear_model_preview()
+{
+    g_selected_model_asset=-1;
+    if(!g_document)return;
+    if(Rml::Element *preview=g_document->GetElementById("model-preview"))
+        preview->SetInnerRML("<div class='model-preview-placeholder'>NO MODEL SELECTED</div>");
+    if(Rml::Element *triangles=g_document->GetElementById("model-triangle-count"))
+        triangles->SetInnerRML("0 / 256");
+    if(Rml::Element *bones=g_document->GetElementById("model-bone-count"))
+        bones->SetInnerRML("0");
+    if(Rml::Element *textures=g_document->GetElementById("model-texture-state"))
+        textures->SetInnerRML("NONE");
+}
+
 static void maker_update_imported_model_panel(int index)
 {
     if (!g_document || index < 0) return;
@@ -835,12 +849,13 @@ public:
                 label->SetInnerRML(Rml::StringUtilities::EncodeRml(g_selected_asset_type+" / "+std::to_string(g_selected_asset_id)));
             if(g_selected_asset_type=="2d_tile"){
                 g_selected_rom_sprite=-1;
+                maker_clear_model_preview();
                 maker_update_sprite_panel(-1);
                 const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
                 if(tile){select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;}
             }else if(g_selected_asset_type=="rom_sprite"){
                 g_selected_rom_sprite=g_selected_asset_id;
-                g_selected_model_asset=-1;
+                maker_clear_model_preview();
                 maker_update_sprite_panel(g_selected_rom_sprite);
                 const int role=mtlb_editor_sprite_asset_category(g_selected_rom_sprite);
                 if(role==4){g_maker_mode=MAKER_BOSS;g_maker_tool=0;}
@@ -897,10 +912,6 @@ public:
             return;
         }
         if (action == "import-model") {
-            if(!g_maker_modern){
-                set_status("Switch to MODERN REBORN before importing 3D models.");
-                return;
-            }
             maker_open_model_importer();
             return;
         }
@@ -925,7 +936,9 @@ public:
                 maker_refresh_imported_asset_lists();
                 maker_update_imported_model_panel(g_selected_model_asset);
                 maker_set_modal("model-import-modal",false);
-                set_status("3D model inspected, classified and registered in the portable Assets/Imported folder.");
+                set_status(g_maker_modern?
+                    "3D model imported and selected. Use PLACE SELECTED ON STAGE to add it to the playfield.":
+                    "3D model imported and selected. Switch GLOBAL MODE to MODERN REBORN to place it on the stage.");
             }
             return;
         }
