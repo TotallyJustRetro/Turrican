@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -1167,12 +1168,25 @@ extern "C" void mtlb_map_set_brush(int tile)
 }
 static bool mtlb_level_document_path(char *path,size_t capacity)
 {
-    char *base=SDL_GetBasePath();if(!base)return false;
+    char base[4096]={};
+    const char *portable=std::getenv("MEGATURRICAN_CONFIG_DIR");
+    if(portable&&portable[0]){
+        if(std::snprintf(base,sizeof(base),"%s",portable)<0)return false;
+    }else{
+        char *sdl_base=SDL_GetBasePath();
+        if(!sdl_base)return false;
+        const int copied=std::snprintf(base,sizeof(base),"%s",sdl_base);
+        SDL_free(sdl_base);
+        if(copied<0||(size_t)copied>=sizeof(base))return false;
+    }
+    size_t base_len=std::strlen(base);
+    while(base_len>1&&(base[base_len-1]=='/'||base[base_len-1]=='\\')){
+        base[--base_len]='\\0';
+    }
     char folder[4096];
-    const int folderLen=std::snprintf(folder,sizeof(folder),"%slevels",base);
-    const int pathLen=std::snprintf(path,capacity,"%s/untitled.mtlb",folder);
-    SDL_free(base);
-    if(folderLen<0||pathLen<0||(size_t)folderLen>=sizeof(folder)||(size_t)pathLen>=capacity)return false;
+    const int folder_len=std::snprintf(folder,sizeof(folder),"%s/levels",base);
+    const int path_len=std::snprintf(path,capacity,"%s/untitled.mtlb",folder);
+    if(folder_len<0||path_len<0||(size_t)folder_len>=sizeof(folder)||(size_t)path_len>=capacity)return false;
 #ifdef _WIN32
     _mkdir(folder);
 #else
@@ -1490,4 +1504,48 @@ extern "C" int mtlb_render_to_screen(SDL_Renderer *renderer,
     }
     if(g_fade_in_frame<frames)g_fade_in_frame++;
     return 0;
+}
+
+
+extern "C" void mtlb_map_set_cursor(int x,int y)
+{
+    g_selected_x=std::max(0,std::min(kEditorMapCols-1,x));
+    g_selected_y=std::max(0,std::min(kEditorMapRows-1,y));
+}
+extern "C" void mtlb_editor_push_undo(void) { push_level_undo(); }
+extern "C" void mtlb_editor_undo(void) { undo_level_edit(); }
+extern "C" void mtlb_editor_redo(void) { redo_level_edit(); }
+extern "C" int mtlb_editor_entity_count(void) { return g_entity_count; }
+
+extern "C" int mtlb_editor_place_entity(float x,float y,int type,int sprite_asset_index)
+{
+    if(g_entity_count>=64)return -1;
+    EditorEntity entity={};
+    entity.x=std::max(0.0f,std::min(1.0f,x));
+    entity.y=std::max(0.0f,std::min(1.0f,y));
+    entity.type=std::max(0,std::min(5,type));
+    entity.hp=100;
+    if(sprite_asset_index>=0&&sprite_asset_index<mtlb_editor_sprite_asset_count()){
+        int px=0,py=0,w=0,h=0;uint16_t attr=0;
+        if(mtlb_editor_sprite_asset_part(sprite_asset_index,0,&px,&py,&w,&h,&attr)){
+            entity.tile_attr=attr;
+            entity.width_tiles=(uint8_t)w;
+            entity.height_tiles=(uint8_t)h;
+        }
+    }
+    g_entities[g_entity_count]=entity;
+    g_selected_entity=g_entity_count;
+    g_document_dirty=true;
+    return g_entity_count++;
+}
+
+extern "C" int mtlb_editor_entity_info(int index,float *x,float *y,int *type,int *hp,
+                                         uint16_t *tile_attr,int *width_tiles,int *height_tiles)
+{
+    if(index<0||index>=g_entity_count)return 0;
+    const EditorEntity &entity=g_entities[index];
+    if(x)*x=entity.x;if(y)*y=entity.y;if(type)*type=entity.type;if(hp)*hp=entity.hp;
+    if(tile_attr)*tile_attr=entity.tile_attr;
+    if(width_tiles)*width_tiles=entity.width_tiles;if(height_tiles)*height_tiles=entity.height_tiles;
+    return 1;
 }

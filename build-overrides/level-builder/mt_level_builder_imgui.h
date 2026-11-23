@@ -37,6 +37,14 @@ int mtlb_editor_sprite_asset_info(int index, uint32_t *owner_pc, uint32_t *descr
 int mtlb_editor_sprite_asset_part(int index, int part_index, int *x, int *y, int *width_tiles, int *height_tiles, uint16_t *tile_attr);
 uint32_t mtlb_editor_vdp_art_hash(void);
 
+void mtlb_map_set_cursor(int x,int y);
+void mtlb_editor_push_undo(void);
+void mtlb_editor_undo(void);
+void mtlb_editor_redo(void);
+int mtlb_editor_entity_count(void);
+int mtlb_editor_place_entity(float x,float y,int type,int sprite_asset_index);
+int mtlb_editor_entity_info(int index,float *x,float *y,int *type,int *hp,uint16_t *tile_attr,int *width_tiles,int *height_tiles);
+
 #ifdef __cplusplus
 }
 #endif
