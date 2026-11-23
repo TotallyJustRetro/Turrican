@@ -897,10 +897,6 @@ public:
             return;
         }
         if (action == "import-model") {
-            if(!g_maker_modern){
-                set_status("Switch to MODERN REBORN before importing 3D models.");
-                return;
-            }
             maker_open_model_importer();
             return;
         }
@@ -925,7 +921,9 @@ public:
                 maker_refresh_imported_asset_lists();
                 maker_update_imported_model_panel(g_selected_model_asset);
                 maker_set_modal("model-import-modal",false);
-                set_status("3D model inspected, classified and registered in the portable Assets/Imported folder.");
+                set_status(g_maker_modern?
+                    "3D model imported and selected. Use PLACE SELECTED ON STAGE to add it to the playfield.":
+                    "3D model imported and selected. Switch GLOBAL MODE to MODERN REBORN to place it on the stage.");
             }
             return;
         }
