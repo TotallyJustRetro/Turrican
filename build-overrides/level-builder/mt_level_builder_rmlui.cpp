@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <exception>
 #include <limits>
 #include <new>
 #include <cstdio>
@@ -885,6 +886,7 @@ class MakerEventListener final : public Rml::EventListener {
 public:
     void ProcessEvent(Rml::Event &event) override
     {
+        try{
         Rml::Element *element = find_action_element(event.GetTargetElement());
         if (!element) return;
 
@@ -1313,6 +1315,16 @@ public:
             select_brush(std::atoi(raw.c_str()));
             return;
         }
+        }catch(const std::bad_alloc&){
+            maker_log("Maker UI action failed: memory allocation exhausted.");
+            set_status("The operation ran out of memory and was cancelled. See maker-rmlui.log.");
+        }catch(const std::exception &error){
+            maker_log("Maker UI action failed safely: %s",error.what());
+            set_status("The operation failed safely. See maker-rmlui.log for details.");
+        }catch(...){
+            maker_log("Maker UI action failed with an unknown exception.");
+            set_status("The operation failed safely. See maker-rmlui.log for details.");
+        }
     }
 };
 static MakerEventListener g_listener;
@@ -1556,6 +1568,7 @@ static void maker_add_light(int px,int py)
 
 static void maker_place_asset_at(int px,int py)
 {
+    try{
     int x=0,y=0;
     if(!maker_stage_cell_at(px,py,x,y)){set_status("Drop the asset inside the stage viewport.");return;}
     mtlb_map_set_cursor(x,y);
@@ -1621,6 +1634,16 @@ static void maker_place_asset_at(int px,int py)
             set_status(g_entity_brush_active?"3D model brush stroke active.":"3D model stamped on the playfield and saved.");
     }
     maker_save_settings();
+    }catch(const std::bad_alloc&){
+        maker_log("Asset placement failed: memory allocation exhausted.");
+        set_status("Asset placement was cancelled because available memory is exhausted.");
+    }catch(const std::exception &error){
+        maker_log("Asset placement failed safely: %s",error.what());
+        set_status("Asset placement failed. See maker-rmlui.log for details.");
+    }catch(...){
+        maker_log("Asset placement failed with an unknown exception.");
+        set_status("Asset placement failed. See maker-rmlui.log for details.");
+    }
 }
 
 static void maker_begin_asset_drag(int px,int py)
@@ -1654,6 +1677,7 @@ static void maker_end_asset_drag(int px,int py)
 
 extern "C" void mtlbr_process_event(const SDL_Event *event)
 {
+    try{
     if(!g_context||!g_window||!event)return;
     if(event->type==SDL_KEYDOWN&&event->key.keysym.sym==SDLK_ESCAPE)g_exit_requested=true;
 
@@ -2245,6 +2269,16 @@ static void draw_stage_lighting(SDL_Renderer *renderer)
             SDL_RenderDrawLine(renderer,(int)origin.x,y,(int)(origin.x+width),y);
     }
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    }catch(const std::bad_alloc&){
+        maker_log("SDL Maker event failed: memory allocation exhausted.");
+        set_status("The event was cancelled because available memory is exhausted.");
+    }catch(const std::exception &error){
+        maker_log("SDL Maker event failed safely: %s",error.what());
+        set_status("The event failed safely. See maker-rmlui.log for details.");
+    }catch(...){
+        maker_log("SDL Maker event failed with an unknown exception.");
+        set_status("The event failed safely. See maker-rmlui.log for details.");
+    }
 }
 
 extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height)
