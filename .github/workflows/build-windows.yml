@@ -32,7 +32,7 @@ jobs:
             throw 'Missing MegaTurrican_Windows_Build_Kit.zip.enc in the repository root.'
           }
 
-      - name: Install MinGW-w64, SDL2, and OpenSSL
+      - name: Install MinGW-w64, SDL2, RmlUi, Assimp, and OpenSSL
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -43,19 +43,10 @@ jobs:
             mingw-w64-x86_64-sdl3
             mingw-w64-x86_64-SDL2_image
             mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-assimp
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-openssl
-
-      - name: Fetch pinned Dear ImGui 1.93.0 source
-        shell: pwsh
-        run: |
-          $imgui = Join-Path $PWD '_imgui-source'
-          git clone --depth 1 --branch v1.93.0 https://github.com/ocornut/imgui.git $imgui
-          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch Dear ImGui v1.93.0.' }
-          $actual = (git -C $imgui rev-parse HEAD).Trim()
-          if ($actual -ne 'c1aaac65e896a45f81f47a4d68f9959e0f86c859') { throw "Unexpected Dear ImGui source revision: $actual" }
-          "IMGUI_SOURCE=$imgui" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Fetch pinned RmlUi 6.3 source
         shell: pwsh
@@ -177,8 +168,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing native gameplay options and save slots failed.' }
           python (Join-Path $PWD 'build-overrides/patch-custom-game-menus.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing native Extras menus failed.' }
-          python (Join-Path $PWD 'build-overrides/patch-imgui-level-builder.py') $env:MEGATURRICAN_PROJECT
-          if ($LASTEXITCODE -ne 0) { throw 'Installing the ImGui Level Builder failed.' }
+          python (Join-Path $PWD 'build-overrides/patch-rmlui-level-builder.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the RmlUi-only Level Builder failed.' }
 
       - name: Inspect static recomp gameplay hooks
         shell: pwsh
@@ -209,7 +200,7 @@ jobs:
           sdl_version="$(sdl2-config --version)"
           IFS=. read -r sdl_major sdl_minor sdl_patch <<< "$sdl_version"
           if (( sdl_major < 2 || (sdl_major == 2 && (sdl_minor < 0 || (sdl_minor == 0 && sdl_patch < 18))) )); then
-            echo "Dear ImGui and RmlUi SDL renderer backends require SDL 2.0.18 or newer (found $sdl_version)."
+            echo "RmlUi SDL renderer backend requires SDL 2.0.18 or newer (found $sdl_version)."
             exit 1
           fi
           mkdir -p _objects
@@ -221,20 +212,14 @@ jobs:
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/ym2612.c -o _objects/ym2612.o
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/psg.c -o _objects/psg.o
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/sdl_main.c -o _objects/sdl_main.o
-          g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -I"$IMGUI_SOURCE/backends" -Iruntime -c runtime/mt_level_builder_imgui.cpp -o _objects/mt_level_builder_imgui.o
-          for source in imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp; do
-            g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -c "$IMGUI_SOURCE/$source" -o "_objects/${source%.cpp}.o"
-          done
-          for source in imgui_impl_sdl2.cpp imgui_impl_sdlrenderer2.cpp; do
-            g++ -O2 -std=c++11 $(sdl2-config --cflags) -I"$IMGUI_SOURCE" -I"$IMGUI_SOURCE/backends" -c "$IMGUI_SOURCE/backends/$source" -o "_objects/${source%.cpp}.o"
-          done
+          g++ -O2 -std=c++17 $(sdl2-config --cflags) -Iruntime -c runtime/mt_level_builder_model.cpp -o _objects/mt_level_builder_model.o
           rmlui_source="$(cygpath -u "$RMLUI_SOURCE")"
           rmlui_prefix="$(cygpath -u "$RMLUI_PREFIX")"
           rmlui_includes="-I$rmlui_source/Include -I$rmlui_source/Backends -DRMLUI_SDL_VERSION_MAJOR=2 -DRMLUI_STATIC_LIB"
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -Iruntime -c runtime/mt_level_builder_rmlui.cpp -o _objects/mt_level_builder_rmlui.o
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Platform_SDL.cpp" -o _objects/rmlui_platform_sdl.o
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Renderer_SDL.cpp" -o _objects/rmlui_renderer_sdl.o
-          g++ _objects/*.o MegaTurrican-icon.o "$rmlui_prefix/lib/librmlui.a" -lSDL2_image -lfreetype $(sdl2-config --libs) -lm -static-libgcc -static-libstdc++ -mwindows -o MegaTurrican.exe
+          g++ _objects/*.o MegaTurrican-icon.o "$rmlui_prefix/lib/librmlui.a" -lassimp -lSDL2_image -lfreetype -lcomdlg32 $(sdl2-config --libs) -lm -static-libgcc -static-libstdc++ -mwindows -o MegaTurrican.exe
           test -s MegaTurrican.exe
           mkdir -p launcher/native
           cp MegaTurrican.exe launcher/native/MegaTurrican.exe
