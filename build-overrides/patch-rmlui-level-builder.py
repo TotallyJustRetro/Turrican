@@ -92,7 +92,7 @@ def main() -> None:
         "        /* The game is paused in Maker: snapshot VDP art once on entry, not every frame. */\\n"
         "        mtlb_model_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg);\\n"
         "        if(!mtlbr_init(SDL_RenderGetWindow(ren),ren)) {\\n"
-        "            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn - RmlUi\",mtlbr_last_error(),SDL_RenderGetWindow(ren));\\n"
+        '            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Mega Turrican Reborn - RmlUi",mtlbr_last_error(),SDL_RenderGetWindow(ren));\\n'
         "            native_custom_enter_parent();\\n"
         "        }\\n"
         "    }"
