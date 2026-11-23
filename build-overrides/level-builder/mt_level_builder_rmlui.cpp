@@ -1072,8 +1072,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     const std::string font_bold = font_prefix + "assets/fonts/LatoLatin-Bold.ttf";
     const std::string font_pixel_regular = font_prefix + "assets/fonts/Silkscreen-Regular.ttf";
     const std::string font_pixel_bold = font_prefix + "assets/fonts/Silkscreen-Bold.ttf";
-    const std::string font_pixelify_regular = font_prefix + "assets/fonts/PixelifySans-Regular.ttf";
-    const std::string font_pixelify_bold = font_prefix + "assets/fonts/PixelifySans-Bold.ttf";
+    const std::string font_turrican = font_prefix + "assets/fonts/Turrican3-MegaTurrican.otf";
     maker_log("Portable root: %s.", portable_root.c_str());
     maker_log("Diagnostic log path: %s.", g_log_path.c_str());
     maker_log("Loading regular font: %s.", font_regular.c_str());
@@ -1090,14 +1089,11 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
         pixel_regular_loaded ? 1 : 0, pixel_bold_loaded ? 1 : 0);
     if (!pixel_regular_loaded || !pixel_bold_loaded)
         maker_log("Silkscreen font unavailable; the Maker will fall back to Lato for micro-label selectors.");
-    const bool pixelify_regular_loaded = Rml::LoadFontFace(font_pixelify_regular, "Pixelify Sans",
+    const bool turrican_font_loaded = Rml::LoadFontFace(font_turrican, "Turrican",
         Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, false);
-    const bool pixelify_bold_loaded = Rml::LoadFontFace(font_pixelify_bold, "Pixelify Sans",
-        Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false);
-    maker_log("Pixelify Sans display font result: regular=%d bold=%d.",
-        pixelify_regular_loaded ? 1 : 0, pixelify_bold_loaded ? 1 : 0);
-    if (!pixelify_regular_loaded || !pixelify_bold_loaded)
-        maker_log("Pixelify Sans unavailable; large pixel-display text will fall back through the family stack.");
+    maker_log("Original Mega Turrican display font result: %d.", turrican_font_loaded ? 1 : 0);
+    if (!turrican_font_loaded)
+        maker_log("Mega Turrican display font unavailable; the Maker will use its Lato/Silkscreen fallback stack.");
     if (!regular_loaded || !bold_loaded) {
         mtlbr_shutdown();
         return maker_fail("RmlUi could not load the bundled Lato fonts. See maker-rmlui.log.");
