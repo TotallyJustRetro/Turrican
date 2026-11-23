@@ -11,13 +11,15 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdarg>
 #include <cstdlib>
 #include <string>
 
 namespace {
+class MakerSystemInterface;
 static SDL_Window *g_window = nullptr;
 static SDL_Renderer *g_renderer = nullptr;
-static SystemInterface_SDL *g_system = nullptr;
+static MakerSystemInterface *g_system = nullptr;
 static RenderInterface_SDL *g_render = nullptr;
 static Rml::Context *g_context = nullptr;
 static Rml::ElementDocument *g_document = nullptr;
@@ -29,6 +31,52 @@ static bool g_exit_requested = false;
 static int g_brush_tile = 1;
 static int g_map_cols = 64;
 static int g_map_rows = 32;
+
+static std::string g_log_path;
+static char g_last_error[512] = "RmlUi Maker has not been initialized.";
+
+static void maker_prepare_log()
+{
+    if (!g_log_path.empty()) return;
+    char *base = SDL_GetBasePath();
+    if (base) {
+        g_log_path = std::string(base) + "maker-rmlui.log";
+        SDL_free(base);
+    } else {
+        g_log_path = "maker-rmlui.log";
+    }
+}
+
+static void maker_log(const char *format, ...)
+{
+    maker_prepare_log();
+    FILE *file = std::fopen(g_log_path.c_str(), "ab");
+    if (!file) return;
+    va_list args;
+    va_start(args, format);
+    std::vfprintf(file, format, args);
+    va_end(args);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
+
+static int maker_fail(const char *reason)
+{
+    std::snprintf(g_last_error, sizeof(g_last_error), "%s", reason ? reason : "Unknown RmlUi startup failure.");
+    maker_log("INITIALIZATION FAILED: %s", g_last_error);
+    return 0;
+}
+
+class MakerSystemInterface final : public SystemInterface_SDL
+{
+public:
+    explicit MakerSystemInterface(SDL_Window *window) : SystemInterface_SDL(window) {}
+    bool LogMessage(Rml::Log::Type type, const Rml::String &message) override
+    {
+        maker_log("RmlUi log type %d: %s", (int)type, message.c_str());
+        return Rml::SystemInterface::LogMessage(type, message);
+    }
+};
 
 static const char *kDocument = R"RML(
 <rml>
@@ -304,68 +352,93 @@ static MakerEventListener g_listener;
 
 extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
 {
-    if (g_context) return 1;
-    if (!window || !renderer) return 0;
+    maker_prepare_log();
+    maker_log("============================================================");
+    maker_log("RmlUi Maker initialization starting.");
+    std::snprintf(g_last_error, sizeof(g_last_error), "%s", "RmlUi initialization in progress.");
+
+    if (g_context) {
+        maker_log("RmlUi context already exists; reusing it.");
+        return 1;
+    }
+    if (!window || !renderer)
+        return maker_fail("SDL window or renderer pointer is null.");
 
     g_window = window;
     g_renderer = renderer;
     g_map_cols = mtlb_map_cols();
     g_map_rows = mtlb_map_rows();
-    if (g_map_cols <= 0 || g_map_rows <= 0) return 0;
+    maker_log("Map dimensions: %d x %d.", g_map_cols, g_map_rows);
+    if (g_map_cols <= 0 || g_map_rows <= 0)
+        return maker_fail("The shared Maker map model returned invalid dimensions.");
 
-    g_system = new SystemInterface_SDL(window);
+    g_system = new MakerSystemInterface(window);
     g_render = new RenderInterface_SDL(renderer);
     Rml::SetSystemInterface(g_system);
     Rml::SetRenderInterface(g_render);
+    maker_log("RmlUi interfaces registered. Calling Rml::Initialise().");
     if (!Rml::Initialise()) {
+        maker_log("Rml::Initialise() returned false.");
         Rml::SetRenderInterface(nullptr);
         Rml::SetSystemInterface(nullptr);
         delete g_render; g_render = nullptr;
         delete g_system; g_system = nullptr;
         g_window = nullptr; g_renderer = nullptr;
-        return 0;
+        return maker_fail("Rml::Initialise() returned false. Check maker-rmlui.log for the library's error message.");
     }
     g_rml_initialised = true;
+    const Rml::String version = Rml::GetVersion();
+    maker_log("Rml::Initialise() succeeded. RmlUi version: %s.", version.c_str());
 
-    // Bundle fonts with the portable build; do not depend on the user's Windows font folder.
     char *base_path = SDL_GetBasePath();
     if (!base_path) {
-        Rml::Log::Message(Rml::Log::LT_ERROR, "Could not resolve the game folder for bundled Maker fonts.");
+        const char *sdl_error = SDL_GetError();
+        maker_log("SDL_GetBasePath failed: %s.", sdl_error ? sdl_error : "(no SDL error text)");
         mtlbr_shutdown();
-        return 0;
+        return maker_fail("SDL_GetBasePath failed; could not locate the portable game folder.");
     }
     const std::string font_regular = std::string(base_path) + "assets/fonts/LatoLatin-Regular.ttf";
     const std::string font_bold = std::string(base_path) + "assets/fonts/LatoLatin-Bold.ttf";
     SDL_free(base_path);
+    maker_log("Loading regular font: %s.", font_regular.c_str());
     const bool regular_loaded = Rml::LoadFontFace(font_regular, true);
+    maker_log("Regular font result: %d.", regular_loaded ? 1 : 0);
+    maker_log("Loading bold font: %s.", font_bold.c_str());
     const bool bold_loaded = Rml::LoadFontFace(font_bold, false);
+    maker_log("Bold font result: %d.", bold_loaded ? 1 : 0);
     if (!regular_loaded || !bold_loaded) {
-        Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to load bundled Lato fonts from assets/fonts.");
         mtlbr_shutdown();
-        return 0;
+        return maker_fail("RmlUi could not load the bundled Lato fonts. See maker-rmlui.log.");
     }
+
     int width = 0, height = 0;
     SDL_GetWindowSize(window, &width, &height);
+    maker_log("Creating RmlUi context at %d x %d.", width, height);
     g_context = Rml::CreateContext("MegaTurricanMaker", Rml::Vector2i(width, height), g_render);
     if (!g_context) {
         mtlbr_shutdown();
-        return 0;
+        return maker_fail("Rml::CreateContext failed. See maker-rmlui.log.");
     }
+    maker_log("RmlUi context created.");
 
     g_document = g_context->LoadDocumentFromMemory(kDocument);
     if (!g_document) {
         mtlbr_shutdown();
-        return 0;
+        return maker_fail("RmlUi failed to parse or load the embedded Maker document. See maker-rmlui.log.");
     }
+    maker_log("Embedded Maker RML document loaded.");
     g_viewport = g_document->GetElementById("viewport");
     g_stage_grid = g_document->GetElementById("stage-grid");
     g_status = g_document->GetElementById("status-text");
+    maker_log("Document elements: viewport=%d grid=%d status=%d.",
+        g_viewport ? 1 : 0, g_stage_grid ? 1 : 0, g_status ? 1 : 0);
     if (!g_viewport || !g_stage_grid || !g_status) {
         mtlbr_shutdown();
-        return 0;
+        return maker_fail("The embedded Maker document is missing required UI elements. See maker-rmlui.log.");
     }
 
     const std::string cells = make_stage_cells();
+    maker_log("Generated stage grid markup: %u bytes.", (unsigned)cells.size());
     g_stage_grid->SetInnerRML(cells);
     g_document->AddEventListener("click", &g_listener);
     g_document->Show();
@@ -374,7 +447,14 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     if (g_brush_tile < 176 || g_brush_tile > 180) g_brush_tile = 176;
     select_brush(g_brush_tile);
     set_status("RmlUi Maker interface online — existing level document and editor data retained.");
+    std::snprintf(g_last_error, sizeof(g_last_error), "%s", "");
+    maker_log("RmlUi Maker initialized successfully.");
     return 1;
+}
+
+extern "C" const char *mtlbr_last_error(void)
+{
+    return g_last_error;
 }
 
 extern "C" void mtlbr_shutdown(void)
