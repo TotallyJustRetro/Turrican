@@ -462,8 +462,8 @@ static void native_custom_enter_parent(void) {
 }
 
 static void render_native_extras(void) {
-    static const char *items[]={"GAME LEVEL","MODERN OPTIONS","CHEATS","SAVES","LEVEL BUILDER","BACK"};
-    const int n=6,scale=2,pw=244,ph=178;
+    static const char *items[]={"GAME LEVEL","MODERN OPTIONS","CHEATS","SAVES","BACK"};
+    const int n=5,scale=2,pw=244,ph=154;
     int px,py; native_menu_panel(pw,ph,&px,&py);
     native_menu_title(px+(pw-str_w("EXTRAS",2))/2,py+7,"EXTRAS",2);
     for(int i=0;i<n;i++) {
@@ -475,7 +475,7 @@ static void render_native_extras(void) {
     native_menu_title(px+10,py+168,"LEFT/RIGHT CHANGE  ENTER SELECT",1);
 }
 static void proc_native_extras(SDL_Event *e) {
-    const int n=6;
+    const int n=5;
     if(e->type==SDL_KEYDOWN&&!e->key.repeat) {
         switch(e->key.keysym.sym) {
         case SDLK_UP:native_menu_sel=(native_menu_sel+n-1)%n;break;
@@ -503,7 +503,6 @@ confirm:
     case 1:native_menu_state=12;native_menu_sel=0;break;
     case 2:native_menu_state=9;native_menu_sel=0;break;
     case 3:native_menu_state=10;native_menu_sel=0;break;
-    case 4:native_menu_state=11;native_menu_sel=0;break;
     default:native_custom_enter_parent();break;
     }
 }
