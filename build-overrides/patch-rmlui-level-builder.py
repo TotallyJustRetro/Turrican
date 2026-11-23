@@ -111,7 +111,7 @@ def main() -> None:
         "    }"
     )
     if present_marker not in s:
-        s = once(s, present_anchor, present_patch, "RmlUi-only Maker presentation")
+        s = insert_after_token(s, present_anchor, present_patch, "RmlUi-only Maker presentation")
 
     init_marker = "mtlb_model_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg)"
     init_anchor = "if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
