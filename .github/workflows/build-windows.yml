@@ -86,7 +86,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$rmlui_prefix"
           cmake --build "$rmlui_build" --target install --parallel 2
           test -s "$rmlui_prefix/lib/librmlui.a"
-          test -s "$RMLUI_SOURCE/LICENSE.txt"
+          test -s "$rmlui_source/LICENSE.txt"
           echo "RmlUi 6.3 static core installed for the Maker UI."
 
       - name: Decrypt private source bundle
