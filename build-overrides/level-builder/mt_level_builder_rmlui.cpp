@@ -436,9 +436,10 @@ static void maker_refresh_imported_asset_lists()
         std::string classes="asset-card";
         if(i==g_selected_model_asset)classes+=" selected";
         if(!g_maker_modern)classes+=" model-modern-only";
+        const char *badge_text=g_maker_modern?"3D":"MODERN";
         std::snprintf(card,sizeof(card),
-            "<div id='asset-model-%d' class='%s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
-            i,classes.c_str(),i,Rml::StringUtilities::EncodeRml(name).c_str());
+            "<div id='asset-model-%d' class='%s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>%s</div></div>",
+            i,classes.c_str(),i,Rml::StringUtilities::EncodeRml(name).c_str(),badge_text);
         lists[std::max(0,std::min(4,classification))]+=card;
     }
     for(int i=0;i<5;i++){
