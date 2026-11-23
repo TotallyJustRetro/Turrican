@@ -33,18 +33,44 @@ static int g_map_cols = 64;
 static int g_map_rows = 32;
 
 static std::string g_log_path;
+static std::string g_portable_root;
 static char g_last_error[512] = "RmlUi Maker has not been initialized.";
+
+/*
+ * The Electron launcher explicitly sets MEGATURRICAN_CONFIG_DIR to the
+ * portable launcher folder. Prefer it over SDL_GetBasePath(), which follows
+ * the native game EXE and may point at launcher/native or another subfolder.
+ */
+static const std::string &maker_portable_root()
+{
+    if (!g_portable_root.empty()) return g_portable_root;
+
+    const char *portable = std::getenv("MEGATURRICAN_CONFIG_DIR");
+    if (portable && portable[0] != '\\0') {
+        g_portable_root = portable;
+    } else {
+        char *base = SDL_GetBasePath();
+        if (base) {
+            g_portable_root = base;
+            SDL_free(base);
+        } else {
+            g_portable_root = ".";
+        }
+    }
+
+    while (g_portable_root.size() > 1 &&
+           (g_portable_root.back() == '/' || g_portable_root.back() == '\\\\'))
+        g_portable_root.pop_back();
+    return g_portable_root;
+}
 
 static void maker_prepare_log()
 {
     if (!g_log_path.empty()) return;
-    char *base = SDL_GetBasePath();
-    if (base) {
-        g_log_path = std::string(base) + "maker-rmlui.log";
-        SDL_free(base);
-    } else {
-        g_log_path = "maker-rmlui.log";
-    }
+    g_log_path = maker_portable_root();
+    if (g_log_path != "." && g_log_path.back() != '/' && g_log_path.back() != '\\\\')
+        g_log_path += '/';
+    g_log_path += "maker-rmlui.log";
 }
 
 static void maker_log(const char *format, ...)
@@ -390,16 +416,15 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     const Rml::String version = Rml::GetVersion();
     maker_log("Rml::Initialise() succeeded. RmlUi version: %s.", version.c_str());
 
-    char *base_path = SDL_GetBasePath();
-    if (!base_path) {
-        const char *sdl_error = SDL_GetError();
-        maker_log("SDL_GetBasePath failed: %s.", sdl_error ? sdl_error : "(no SDL error text)");
-        mtlbr_shutdown();
-        return maker_fail("SDL_GetBasePath failed; could not locate the portable game folder.");
-    }
-    const std::string font_regular = std::string(base_path) + "assets/fonts/LatoLatin-Regular.ttf";
-    const std::string font_bold = std::string(base_path) + "assets/fonts/LatoLatin-Bold.ttf";
-    SDL_free(base_path);
+    const std::string portable_root = maker_portable_root();
+    const std::string font_prefix =
+        (portable_root == "." || portable_root.back() == '/' || portable_root.back() == '\\\\')
+            ? portable_root
+            : portable_root + "/";
+    const std::string font_regular = font_prefix + "assets/fonts/LatoLatin-Regular.ttf";
+    const std::string font_bold = font_prefix + "assets/fonts/LatoLatin-Bold.ttf";
+    maker_log("Portable root: %s.", portable_root.c_str());
+    maker_log("Diagnostic log path: %s.", g_log_path.c_str());
     maker_log("Loading regular font: %s.", font_regular.c_str());
     const bool regular_loaded = Rml::LoadFontFace(font_regular, true);
     maker_log("Regular font result: %d.", regular_loaded ? 1 : 0);
