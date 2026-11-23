@@ -832,7 +832,7 @@ static void draw_asset_shelf()
         for(int i=g_tile_shelf_offset;i<g_live_tile_count&&i<g_tile_shelf_offset+8;i++){
             ImGui::SameLine(0,2);
             const bool romTile=(g_rom_tile_start_index>=0 && i>=g_rom_tile_start_index && i<g_rom_tile_start_index+g_rom_tile_count);
-            const int tile=romTile?(i-g_rom_tile_start_index):g_live_tile_ids[i];
+            const int tile=g_live_tile_ids[i];
             const int tileEntry=tile|(g_selected_palette<<13)|(romTile?0x8000:0);
             ImGui::PushID(i);
             ImVec2 p=ImGui::GetCursorScreenPos();
