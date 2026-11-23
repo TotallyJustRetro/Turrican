@@ -3321,3 +3321,279 @@ body {
     font-size: 6px;
   }
 }
+
+
+/* =========================================================================
+   PIXELIFY DISPLAY SYSTEM
+   Readable pixel-grid letterforms for the main controls; Silkscreen is
+   retained only for tiny cartridge IDs and technical readouts.
+   ========================================================================= */
+
+body {
+  font-family: "Pixelify Sans";
+  font-size: 12px;
+}
+
+.topbar {
+  border-bottom: 4px solid #2e3655;
+}
+
+.brand-title {
+  color: #ffe08d;
+  font-family: "Pixelify Sans";
+  font-size: 15px;
+  line-height: 18px;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.brand-file {
+  font-family: Lato;
+  font-size: 9px;
+}
+
+.menu-item {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.button {
+  font-family: "Pixelify Sans";
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mode-toggle {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.tool-button {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tool-glyph {
+  font-family: Lato;
+  font-size: 19px;
+}
+
+.rail-mini-button {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.center-tab {
+  font-family: "Pixelify Sans";
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stage-title {
+  font-family: "Pixelify Sans";
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stage-head-right {
+  font-family: Lato;
+  font-size: 10px;
+}
+
+.tiny-button, .filter-button {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.stage-coordinate {
+  font-family: "Pixelify Sans";
+  font-size: 11px;
+}
+
+.spawn-badge {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.stage-hint {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.dock-caption {
+  font-family: "Pixelify Sans";
+  font-size: 11px;
+}
+
+.script-node {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.script-arrow {
+  font-family: Lato;
+}
+
+.dock-title {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dock-subtitle {
+  font-family: Lato;
+  font-size: 9px;
+}
+
+.folder-heading {
+  font-family: "Pixelify Sans";
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.folder-subheading {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.asset-card {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.asset-tag {
+  font-family: "Pixelify Sans";
+  font-size: 8px;
+}
+
+.model-preview-placeholder {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.model-stats {
+  font-family: Lato;
+  font-size: 9px;
+}
+
+.classification-row {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.property-row {
+  font-family: Lato;
+  font-size: 10px;
+}
+
+.property-row label {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.property-row select, .property-row input {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.property-subtitle {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.toggle-row {
+  font-family: Lato;
+  font-size: 10px;
+}
+
+.modern-lock {
+  font-family: "Pixelify Sans";
+  font-size: 8px;
+}
+
+.statusbar {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.status-right {
+  font-family: Lato;
+  font-size: 9px;
+}
+
+.modal-title {
+  font-family: "Pixelify Sans";
+  font-size: 12px;
+}
+
+.modal-copy {
+  font-family: Lato;
+  font-size: 12px;
+}
+
+.modal-asset-info {
+  font-family: "Pixelify Sans";
+  font-size: 9px;
+}
+
+.class-card {
+  font-family: "Pixelify Sans";
+  font-size: 10px;
+}
+
+.class-card span {
+  font-family: Lato;
+  font-size: 9px;
+}
+
+.settings-note {
+  font-family: Lato;
+  font-size: 10px;
+}
+
+/* A restrained Genesis palette stripe differentiates the five editor modes. */
+#mode-0 { border-bottom-color: #4fb8dc; }
+#mode-1 { border-bottom-color: #66d2b6; }
+#mode-2 { border-bottom-color: #d86cce; }
+#mode-3 { border-bottom-color: #efbd69; }
+#mode-4 { border-bottom-color: #ec647e; }
+
+#mode-0.active { background-color: #16445f; }
+#mode-1.active { background-color: #164c48; }
+#mode-2.active { background-color: #4a2755; }
+#mode-3.active { background-color: #554027; }
+#mode-4.active { background-color: #53243e; }
+
+.asset-card.selected {
+  border-color: #ffe08b;
+  background-color: #63365d;
+  decorator: vertical-gradient(#7c426c #3d2748);
+}
+
+.tool-button.active {
+  border-color: #77fff1;
+  background-color: #145466;
+  decorator: vertical-gradient(#277d87 #123747);
+}
+
+.folder-heading:hover {
+  border-left-color: #ffcf82;
+  background-color: #2d486c;
+}
+
+/* Keep the pixel font crisp but readable in the narrow inspector. */
+@media (max-width: 1100px) {
+  body { font-size: 11px; }
+  .brand-title { font-size: 13px; }
+  .menu-item { font-size: 8px; }
+  .center-tab { font-size: 10px; }
+  .stage-title { font-size: 10px; }
+  .dock-caption { font-size: 9px; }
+  .dock-title { font-size: 8px; }
+  .folder-heading { font-size: 9px; }
+  .property-row label { font-size: 7px; }
+  .property-row select, .property-row input { font-size: 8px; }
+}
