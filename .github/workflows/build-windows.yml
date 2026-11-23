@@ -302,6 +302,14 @@ jobs:
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Regular.ttf') $fontDir
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Bold.ttf') $fontDir
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LICENSE.txt') (Join-Path $release 'RmlUi-Sample-Fonts-LICENSE.txt')
+          $silkscreenRevision = '48cdb7d5f6c18e0e14b3c325c942f57afcb370bb'
+          $silkscreenBase = "https://raw.githubusercontent.com/googlefonts/silkscreen/$silkscreenRevision"
+          Invoke-WebRequest -Uri "$silkscreenBase/fonts/ttf/Silkscreen-Regular.ttf" -OutFile (Join-Path $fontDir 'Silkscreen-Regular.ttf')
+          Invoke-WebRequest -Uri "$silkscreenBase/fonts/ttf/Silkscreen-Bold.ttf" -OutFile (Join-Path $fontDir 'Silkscreen-Bold.ttf')
+          Invoke-WebRequest -Uri "$silkscreenBase/OFL.txt" -OutFile (Join-Path $release 'Silkscreen-OFL.txt')
+          if ((Get-Item (Join-Path $fontDir 'Silkscreen-Regular.ttf')).Length -ne 32220) { throw 'Silkscreen regular font download did not match the pinned asset.' }
+          if ((Get-Item (Join-Path $fontDir 'Silkscreen-Bold.ttf')).Length -ne 30632) { throw 'Silkscreen bold font download did not match the pinned asset.' }
+          if ((Get-Item (Join-Path $release 'Silkscreen-OFL.txt')).Length -ne 4394) { throw 'Silkscreen font license download did not match the pinned asset.' }
           $makerDir = Join-Path $release 'assets/maker'
           New-Item -ItemType Directory -Force -Path $makerDir | Out-Null
           Copy-Item (Join-Path $PWD 'build-overrides/level-builder/editor.rml') $makerDir
@@ -326,6 +334,9 @@ jobs:
           if (-not ($entries | Where-Object { $_ -like '*SDL3.dll' })) { throw 'SDL3 runtime required by SDL2-compat is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Regular.ttf' })) { throw 'Bundled RmlUi regular font is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Bold.ttf' })) { throw 'Bundled RmlUi bold font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/Silkscreen-Regular.ttf' })) { throw 'Bundled Silkscreen regular font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/Silkscreen-Bold.ttf' })) { throw 'Bundled Silkscreen bold font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*Silkscreen-OFL.txt' })) { throw 'Silkscreen font license is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rml' })) { throw 'RmlUi Maker document is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rcss' })) { throw 'RmlUi Maker stylesheet is missing from the package.' }
           Write-Host 'Verified EXEs, SDL runtimes, and Maker fonts in Windows package:'
