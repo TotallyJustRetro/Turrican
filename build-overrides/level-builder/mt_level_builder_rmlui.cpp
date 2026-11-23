@@ -11,8 +11,10 @@
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/Log.h>
+#include <SDL_image.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <cstdio>
 #include <cmath>
 #include <cstdarg>
@@ -75,15 +77,19 @@ static int g_asset_filter = 0;
 static int g_selected_asset_id = -1;
 static Rml::String g_selected_asset_type;
 static int g_selected_model_asset = -1;
+static int g_selected_model_animation = -1;
 static int g_pending_model_asset = -1;
 static int g_selected_texture_asset = -1;
 static bool g_asset_drag_active = false;
 static bool g_placement_armed = false;
+static bool g_entity_brush_active = false;
+static int g_entity_brush_last_x = -1, g_entity_brush_last_y = -1;
 static int g_drag_asset_id = -1;
 static Rml::String g_drag_asset_type;
-static int g_placed_model_count = 0;
 struct PlacedMakerModel { int asset_id; float x, y; };
-static PlacedMakerModel g_placed_models[64] = {};
+static std::vector<PlacedMakerModel> g_placed_models;
+struct ModelPreviewTexture { int asset_id; std::string path; SDL_Texture *texture; bool attempted; };
+static std::vector<ModelPreviewTexture> g_model_preview_textures;
 struct MakerLight { float x,y,radius,intensity; uint32_t color; int type; };
 static MakerLight g_lights[32] = {};
 static int g_light_count = 0;
@@ -141,42 +147,55 @@ static const std::string &maker_portable_root()
 
 static bool maker_save_placed_models()
 {
-    const std::string path=maker_portable_root()+"/maker-stage-models.ini";
+    const std::filesystem::path root=maker_portable_root();
+    std::error_code ec;
+    std::filesystem::create_directories(root,ec);
+    if(ec){
+        maker_log("Could not create Maker project directory %s: %s",root.string().c_str(),ec.message().c_str());
+        return false;
+    }
+    const std::string path=(root/"maker-stage-models.ini").string();
     FILE *file=std::fopen(path.c_str(),"wb");
-    if(!file)return false;
-    bool ok=std::fprintf(file,"MT_STAGE_MODELS 1 %d\n",g_placed_model_count)>=0;
-    for(int i=0;ok&&i<g_placed_model_count;i++){
+    if(!file){
+        maker_log("Could not open placed-model document for writing: %s",path.c_str());
+        return false;
+    }
+    bool ok=std::fprintf(file,"MT_STAGE_MODELS 1 %zu\n",g_placed_models.size())>=0;
+    for(size_t i=0;ok&&i<g_placed_models.size();i++){
         const PlacedMakerModel &model=g_placed_models[i];
         if(std::fprintf(file,"%d %.6f %.6f\n",model.asset_id,model.x,model.y)<0)ok=false;
     }
     if(std::fclose(file)!=0)ok=false;
+    if(!ok)maker_log("Writing placed-model document failed: %s",path.c_str());
     return ok;
 }
 
 static void maker_load_placed_models()
 {
-    g_placed_model_count=0;
-    const std::string path=maker_portable_root()+"/maker-stage-models.ini";
-    FILE *file=std::fopen(path.c_str(),"rb");
+    g_placed_models.clear();
+    const std::filesystem::path path=std::filesystem::path(maker_portable_root())/"maker-stage-models.ini";
+    FILE *file=std::fopen(path.string().c_str(),"rb");
     if(!file)return;
-    char magic[32]={};int version=0,count=0;
-    if(std::fscanf(file,"%31s %d %d",magic,&version,&count)!=3||
-       std::strcmp(magic,"MT_STAGE_MODELS")!=0||version!=1||count<0||count>64){
+    char magic[32]={};int version=0;size_t count=0;
+    if(std::fscanf(file,"%31s %d %zu",magic,&version,&count)!=3||
+       std::strcmp(magic,"MT_STAGE_MODELS")!=0||version!=1){
         std::fclose(file);return;
     }
-    for(int i=0;i<count;i++){
+    for(size_t i=0;i<count;i++){
         int asset_id=-1;float x=0.0f,y=0.0f;
         if(std::fscanf(file,"%d %f %f",&asset_id,&x,&y)!=3)break;
         char name[128]={},asset_path[1024]={};uint32_t triangles=0,bones=0;
         float bounds[3]={0,0,0};int diffuse=0,normal=0,emissive=0,classification=0;
         if(!mtlb_imported_model_info(asset_id,name,sizeof(name),asset_path,sizeof(asset_path),
             &triangles,&bones,bounds,&diffuse,&normal,&emissive,&classification))continue;
-        PlacedMakerModel &model=g_placed_models[g_placed_model_count++];
+        PlacedMakerModel model{};
         model.asset_id=asset_id;
         model.x=std::max(0.0f,std::min(1.0f,x));
         model.y=std::max(0.0f,std::min(1.0f,y));
+        g_placed_models.push_back(model);
     }
     std::fclose(file);
+    maker_log("Restored %zu stage model instances.",g_placed_models.size());
 }
 
 
@@ -248,6 +267,7 @@ static void maker_set_modal(const char *id, bool visible)
 static void maker_clear_model_preview()
 {
     g_selected_model_asset=-1;
+    g_selected_model_animation=-1;
     if(!g_document)return;
     if(Rml::Element *preview=g_document->GetElementById("model-preview"))
         preview->SetInnerRML("<div class='model-preview-placeholder'>NO MODEL SELECTED</div>");
@@ -256,7 +276,11 @@ static void maker_clear_model_preview()
     if(Rml::Element *bones=g_document->GetElementById("model-bone-count"))
         bones->SetInnerRML("0");
     if(Rml::Element *textures=g_document->GetElementById("model-texture-state"))
-        textures->SetInnerRML("NONE");
+        textures->SetInnerRML("NO MAP");
+    if(Rml::Element *clips=g_document->GetElementById("model-animation-select"))
+        clips->SetInnerRML("<option value='-1'>NO MODEL SELECTED</option>");
+    if(Rml::Element *status=g_document->GetElementById("model-animation-status"))
+        status->SetInnerRML("STATIC MODEL");
 }
 
 static void maker_update_imported_model_panel(int index)
@@ -276,15 +300,42 @@ static void maker_update_imported_model_panel(int index)
     if (Rml::Element *label=g_document->GetElementById("selected-asset-name"))
         label->SetInnerRML(Rml::StringUtilities::EncodeRml(name));
     if (Rml::Element *element=g_document->GetElementById("model-triangle-count")) {
-        char value[64]; std::snprintf(value,sizeof(value),"%u / 256 TRIS",triangles); element->SetInnerRML(value);
+        char value[64]; std::snprintf(value,sizeof(value),"%u TRIS",triangles); element->SetInnerRML(value);
     }
     if (Rml::Element *element=g_document->GetElementById("model-bone-count")) {
         char value[48]; std::snprintf(value,sizeof(value),"%u",bones); element->SetInnerRML(value);
     }
     if (Rml::Element *element=g_document->GetElementById("model-texture-state")) {
+        char texture_path[2048]={};
+        const bool linked=mtlb_imported_model_diffuse_path(index,texture_path,sizeof(texture_path))!=0;
         char value[96]; std::snprintf(value,sizeof(value),"%s%s%s",
-            diffuse?"ALBEDO ":"",normal?"NORMAL ":"",emissive?"EMISSIVE":"");
-        element->SetInnerRML(value[0]?value:"NONE");
+            linked?"DIFFUSE LINKED ":"",normal?"NORMAL ":"",emissive?"EMISSIVE":"");
+        element->SetInnerRML(value[0]?value:(diffuse?"MATERIAL MAP MISSING":"MATERIAL COLOR"));
+    }
+    if (Rml::Element *list=g_document->GetElementById("model-animation-select")) {
+        const int clips=mtlb_imported_model_animation_count(index);
+        std::string options;
+        for(int clip=0;clip<clips;clip++){
+            char clip_name[128]={};float duration=0.0f;uint32_t channels=0;
+            if(!mtlb_imported_model_animation_info(index,clip,clip_name,sizeof(clip_name),&duration,&channels))continue;
+            char option[512];
+            std::snprintf(option,sizeof(option),"<option value='%d'%s>%s / %.2f SEC / %u TRACKS</option>",
+                clip,clip==g_selected_model_animation?" selected":"",
+                Rml::StringUtilities::EncodeRml(clip_name).c_str(),duration,channels);
+            options+=option;
+        }
+        if(options.empty())options="<option value='-1'>NO ANIMATION CLIPS IN FILE</option>";
+        list->SetInnerRML(options);
+        char selected[16];std::snprintf(selected,sizeof(selected),"%d",g_selected_model_animation);
+        list->SetAttribute("value",selected);
+    }
+    if (Rml::Element *duration=g_document->GetElementById("model-animation-status")) {
+        if(g_selected_model_animation>=0){
+            char clip_name[128]={};float seconds=0.0f;uint32_t channels=0;
+            if(mtlb_imported_model_animation_info(index,g_selected_model_animation,clip_name,sizeof(clip_name),&seconds,&channels)){
+                char value[128];std::snprintf(value,sizeof(value),"SELECTED / %.2f SEC",seconds);duration->SetInnerRML(value);
+            }else duration->SetInnerRML("CLIP METADATA");
+        }else duration->SetInnerRML(mtlb_imported_model_animation_count(index)>0?"CHOOSE A CLIP":"STATIC MODEL");
     }
     if (Rml::Element *element=g_document->GetElementById("model-classification")) {
         char value[8]; std::snprintf(value,sizeof(value),"%d",std::max(0,std::min(4,classification)));
@@ -644,6 +695,7 @@ static const char *maker_tool_list(int mode)
                "<div class='tool-button' data-action='tool' data-tool='2'>PLACE PICKUP</div>"
                "<div class='tool-button' data-action='tool' data-tool='3'>PLAYER START</div>"
                "<div class='tool-button' data-action='tool' data-tool='4'>PATROL PATH</div>"
+               "<div class='tool-button' data-action='tool' data-tool='6'>SPRITE / MODEL BRUSH</div>"
                "<div class='tool-button' data-action='tool' data-tool='7'>DELETE OBJECT</div>";
     case MAKER_EVENTS:
         return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT NODE</div>"
@@ -793,7 +845,10 @@ public:
 
         if (action == "mode") {
             g_maker_mode = std::max(0,std::min(MAKER_MODE_COUNT-1,element->GetAttribute<int>("data-mode",0)));
-            g_maker_tool = 0;
+            g_maker_tool = g_maker_mode==MAKER_TILES?1:0;
+            if(g_maker_mode==MAKER_OBJECTS&&
+               (g_selected_asset_type=="rom_sprite"||g_selected_asset_type=="3d_model"||
+                g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"))g_maker_tool=6;
             maker_update_mode_ui();
             maker_save_settings();
             set_status((std::string("Switched to ")+maker_mode_name(g_maker_mode)+".").c_str());
@@ -861,15 +916,16 @@ public:
                 if(role==4){g_maker_mode=MAKER_BOSS;g_maker_tool=0;}
                 else{
                     g_maker_mode=MAKER_OBJECTS;
-                    g_maker_tool=(role==1)?3:((role==2)?2:((role==3)?1:0));
+                    g_maker_tool=6;
                 }
             }else if(g_selected_asset_type=="3d_model"){
                 g_placement_armed=false;
                 g_selected_rom_sprite=-1;
                 maker_update_sprite_panel(-1);
                 g_selected_model_asset=g_selected_asset_id;
+                g_selected_model_animation=-1;
                 g_maker_mode=MAKER_OBJECTS;
-                g_maker_tool=0;
+                g_maker_tool=6;
                 maker_update_imported_model_panel(g_selected_model_asset);
             }
             maker_update_mode_ui();
@@ -931,6 +987,7 @@ public:
                 g_selected_model_asset=g_pending_model_asset;
                 g_selected_asset_id=g_pending_model_asset;
                 g_selected_asset_type="3d_model";
+                g_selected_model_animation=-1;
                 g_placement_armed=false;
                 g_pending_model_asset=-1;
                 maker_refresh_imported_asset_lists();
@@ -946,6 +1003,24 @@ public:
             g_pending_model_asset=-1;
             maker_set_modal("model-import-modal",false);
             set_status("Import classification closed. The model remains in the imported library.");
+            return;
+        }
+        if (action == "model-animation-select") {
+            const int selected=event.GetParameter<int>("value",element->GetAttribute<int>("value",-1));
+            const int count=mtlb_imported_model_animation_count(g_selected_model_asset);
+            g_selected_model_animation=(selected>=0&&selected<count)?selected:-1;
+            if(g_selected_model_animation>=0){
+                char clip_name[128]={};float seconds=0.0f;uint32_t channels=0;
+                if(mtlb_imported_model_animation_info(g_selected_model_asset,g_selected_model_animation,
+                    clip_name,sizeof(clip_name),&seconds,&channels)){
+                    char status[256];
+                    std::snprintf(status,sizeof(status),
+                        "Selected clip: %s (%.2f sec, %u tracks). Skeletal playback is not implemented yet.",
+                        clip_name,seconds,channels);
+                    set_status(status);
+                }
+            }
+            maker_update_imported_model_panel(g_selected_model_asset);
             return;
         }
         if (action == "model-classification") {
@@ -1204,7 +1279,8 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     maker_load_settings();
     const int restored_models=mtlb_imported_model_scan();
     maker_load_placed_models();
-    maker_log("Restored %d imported 3D models and %d stage props.",restored_models,g_placed_model_count);
+    maker_log("Restored %d imported 3D models and %zu stage props.",restored_models,g_placed_models.size());
+    if(g_maker_mode==MAKER_TILES)g_maker_tool=1;
     g_global_mode = g_maker_modern ? "MODERN REBORN" : "VANILLA 1994";
     maker_log("Map dimensions: %d x %d.", g_map_cols, g_map_rows);
     if (g_map_cols <= 0 || g_map_rows <= 0)
@@ -1333,6 +1409,9 @@ extern "C" const char *mtlbr_last_error(void)
 
 extern "C" void mtlbr_shutdown(void)
 {
+    for(ModelPreviewTexture &entry:g_model_preview_textures)
+        if(entry.texture)SDL_DestroyTexture(entry.texture);
+    g_model_preview_textures.clear();
     if (g_document) {
         g_document->RemoveEventListener("click", &g_listener);
         g_document = nullptr;
@@ -1441,14 +1520,27 @@ static void maker_place_asset_at(int px,int py)
         }else set_status("The level already contains the maximum number of placed entities.");
     }else if(g_drag_asset_type=="3d_model"){
         if(!g_maker_modern){set_status("Modern Mode Required: 3D model placement is locked in Vanilla.");return;}
-        if(g_placed_model_count>=64){set_status("The stage 3D prop limit has been reached.");return;}
-        g_placed_models[g_placed_model_count++]={g_drag_asset_id,(x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows};
+        const float nx=(x+0.5f)/(float)g_map_cols;
+        const float ny=(y+0.5f)/(float)g_map_rows;
+        if(g_entity_brush_active&&g_entity_brush_last_x==x&&g_entity_brush_last_y==y)return;
+        g_entity_brush_last_x=x;g_entity_brush_last_y=y;
+        const bool already_here=std::any_of(g_placed_models.begin(),g_placed_models.end(),
+            [&](const PlacedMakerModel &placed){
+                return placed.asset_id==g_drag_asset_id&&
+                    std::fabs(placed.x-nx)<0.0001f&&std::fabs(placed.y-ny)<0.0001f;
+            });
+        if(!already_here){
+            PlacedMakerModel placed{};
+            placed.asset_id=g_drag_asset_id;placed.x=nx;placed.y=ny;
+            g_placed_models.push_back(placed);
+        }
+        const bool changed_selection=g_selected_model_asset!=g_drag_asset_id;
         g_selected_model_asset=g_drag_asset_id;
-        maker_update_imported_model_panel(g_selected_model_asset);
-        if(!maker_save_placed_models())
-            set_status("3D model placed, but its stage position could not be saved.");
+        if(changed_selection)maker_update_imported_model_panel(g_selected_model_asset);
+        if(!g_entity_brush_active&&!maker_save_placed_models())
+            set_status("3D model stamp is visible, but saving its stage position failed. Check maker-rmlui.log.");
         else
-            set_status("3D model placed on the stage. Its position is saved with the Maker project.");
+            set_status(g_entity_brush_active?"3D model brush stroke active.":"3D model stamped on the playfield and saved.");
     }
     maker_save_settings();
 }
@@ -1509,7 +1601,19 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
                         maker_place_asset_at(event->button.x,event->button.y);
                         g_placement_armed=false;
                         maker_update_mode_ui();
-                    }else if(g_maker_tool==6)maker_add_light(event->button.x,event->button.y);
+                    }else if(g_maker_mode==MAKER_OBJECTS&&g_maker_tool==6&&g_selected_asset_id>=0&&
+                        (g_selected_asset_type=="rom_sprite"||g_selected_asset_type=="enemy"||
+                         g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
+                        if(g_selected_asset_type=="3d_model"&&!g_maker_modern){
+                            set_status("Switch GLOBAL MODE to MODERN REBORN before stamping 3D models.");
+                        }else{
+                            g_entity_brush_active=true;
+                            g_entity_brush_last_x=g_entity_brush_last_y=-1;
+                            g_drag_asset_id=g_selected_asset_id;
+                            g_drag_asset_type=g_selected_asset_type;
+                            maker_place_asset_at(event->button.x,event->button.y);
+                        }
+                    }else if(g_maker_mode==MAKER_BACKGROUNDS&&g_maker_tool==6)maker_add_light(event->button.x,event->button.y);
                     else if(g_maker_tool==5){++g_event_node_count;set_status("Stage trigger marker added to the event flow.");}
                     else if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->button.x,event->button.y,g_brush_tile);
                     else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->button.x,event->button.y,0);
@@ -1531,6 +1635,8 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
                 std::snprintf(top,sizeof(top),"%dpx",event->motion.y+12);
                 ghost->SetProperty("left",left);ghost->SetProperty("top",top);
             }
+        }else if(g_entity_brush_active&&(event->motion.state&SDL_BUTTON_LMASK)){
+            maker_place_asset_at(event->motion.x,event->motion.y);
         }else if(event->motion.state&SDL_BUTTON_LMASK){
             if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->motion.x,event->motion.y,g_brush_tile);
             else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->motion.x,event->motion.y,0);
@@ -1538,6 +1644,12 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
         else g_last_painted_x=g_last_painted_y=-1;
     }else if(event->type==SDL_MOUSEBUTTONUP){
         if(event->button.button==SDL_BUTTON_LEFT&&g_asset_drag_active)maker_end_asset_drag(event->button.x,event->button.y);
+        if(event->button.button==SDL_BUTTON_LEFT&&g_entity_brush_active){
+            g_entity_brush_active=false;
+            g_entity_brush_last_x=g_entity_brush_last_y=-1;
+            if(!maker_save_placed_models())
+                set_status("Brush stroke placed, but stage props could not be saved. Check maker-rmlui.log.");
+        }
         g_last_painted_x=g_last_painted_y=-1;
         g_drag_tile=-1;
         g_undo_pushed_for_stroke=false;
@@ -1710,40 +1822,88 @@ static void draw_stage_entities(SDL_Renderer *renderer)
     SDL_RenderSetClipRect(renderer,nullptr);
 }
 
+static SDL_Texture *maker_model_preview_texture(int asset)
+{
+    if(asset<0)return nullptr;
+    char path[2048]={};
+    if(!mtlb_imported_model_diffuse_path(asset,path,sizeof(path))||!path[0])return nullptr;
+    for(ModelPreviewTexture &entry:g_model_preview_textures){
+        if(entry.asset_id==asset&&entry.path==path){
+            if(!entry.attempted){
+                entry.attempted=true;
+                entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
+                if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
+                else maker_log("Model %d diffuse texture failed to load (%s): %s",asset,entry.path.c_str(),IMG_GetError());
+            }
+            return entry.texture;
+        }
+    }
+    ModelPreviewTexture entry{};
+    entry.asset_id=asset;
+    entry.path=path;
+    entry.attempted=true;
+    entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
+    if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
+    else maker_log("Model %d diffuse texture failed to load (%s): %s",asset,entry.path.c_str(),IMG_GetError());
+    g_model_preview_textures.push_back(entry);
+    return g_model_preview_textures.back().texture;
+}
+
 static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
                             float rotation,bool outline)
 {
     if(!renderer||asset<0||width<4||height<4)return;
-    static float positions[512*3*3];
-    const int count=mtlb_imported_model_preview(asset,positions,512*3);
+    char name[128]={},path[1024]={};
+    uint32_t triangles=0,bones=0;
+    float bounds[3]={0,0,0};
+    int diffuse=0,normal=0,emissive=0,classification=0;
+    if(!mtlb_imported_model_info(asset,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
+        &diffuse,&normal,&emissive,&classification)||triangles==0)return;
+    const size_t max_vertices=(size_t)triangles*3u;
+    std::vector<float> positions(max_vertices*3u),uv(max_vertices*2u);
+    const int count=mtlb_imported_model_preview(asset,positions.data(),uv.data(),
+        max_vertices>(size_t)0x7fffffff?0x7fffffff:(int)max_vertices);
     if(count<3)return;
+    SDL_Texture *texture=maker_model_preview_texture(asset);
+    float material[4]={0.72f,0.72f,0.72f,1.0f};
+    mtlb_imported_model_base_color(asset,material);
+    const auto channel=[](float value)->Uint8{
+        return (Uint8)(std::max(0.0f,std::min(1.0f,value))*255.0f);
+    };
+    const SDL_Color base_color=texture?SDL_Color{255,255,255,255}:
+        SDL_Color{channel(material[0]),channel(material[1]),channel(material[2]),channel(material[3])};
     std::vector<SDL_Vertex> vertices;
     std::vector<int> indices;
-    vertices.reserve((size_t)count);indices.reserve((size_t)count);
+    vertices.reserve((size_t)count);
+    indices.reserve((size_t)count);
     const float cy=std::cos(rotation),sy=std::sin(rotation);
     const float tilt=0.28f,ct=std::cos(tilt),st=std::sin(tilt);
     const float scale=std::min(width,height)*0.58f;
     for(int i=0;i<count;i++){
-        const float px=positions[i*3+0],py=positions[i*3+1],pz=positions[i*3+2];
+        const float px=positions[(size_t)i*3u];
+        const float py=positions[(size_t)i*3u+1u];
+        const float pz=positions[(size_t)i*3u+2u];
         const float rx=px*cy-pz*sy,rz=px*sy+pz*cy;
         const float ry=py*ct-rz*st,dz=py*st+rz*ct;
         const float perspective=2.6f+dz;
-        const float sx=x+width*0.5f+(rx*scale)/perspective;
-        const float sypos=y+height*0.52f-(ry*scale)/perspective;
-        const int tri=i/3;
-        const Uint8 shade=(Uint8)(150+(tri%3)*35);
-        SDL_Vertex v{};v.position=SDL_FPoint{sx,sypos};v.tex_coord=SDL_FPoint{0,0};
-        v.color=outline?SDL_Color{65,224,255,240}:SDL_Color{shade, (Uint8)(80+(tri%5)*22), 220, 220};
-        vertices.push_back(v);indices.push_back(i);
+        SDL_Vertex vertex{};
+        vertex.position=SDL_FPoint{x+width*0.5f+(rx*scale)/perspective,
+            y+height*0.52f-(ry*scale)/perspective};
+        vertex.tex_coord=SDL_FPoint{uv[(size_t)i*2u],1.0f-uv[(size_t)i*2u+1u]};
+        vertex.color=outline?SDL_Color{235,174,97,255}:base_color;
+        vertices.push_back(vertex);
+        indices.push_back(i);
     }
     SDL_Rect clip{(int)x,(int)y,(int)width,(int)height};
     SDL_RenderSetClipRect(renderer,&clip);
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
-    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    SDL_RenderGeometry(renderer,texture,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
     if(outline){
-        SDL_SetRenderDrawColor(renderer,65,224,255,220);
+        SDL_SetRenderDrawColor(renderer,235,174,97,220);
         for(int i=0;i+2<count;i+=3){
-            const SDL_FPoint a=vertices[i].position,b=vertices[i+1].position,c=vertices[i+2].position;
+            const SDL_FPoint a=vertices[(size_t)i].position;
+            const SDL_FPoint b=vertices[(size_t)i+1u].position;
+            const SDL_FPoint c=vertices[(size_t)i+2u].position;
             SDL_RenderDrawLineF(renderer,a.x,a.y,b.x,b.y);
             SDL_RenderDrawLineF(renderer,b.x,b.y,c.x,c.y);
             SDL_RenderDrawLineF(renderer,c.x,c.y,a.x,a.y);
@@ -1760,19 +1920,20 @@ static void draw_model_previews(SDL_Renderer *renderer)
         if(Rml::Element *preview=g_document->GetElementById("model-preview")){
             const Rml::Vector2f p=preview->GetAbsoluteOffset();
             draw_model_mesh(renderer,g_selected_model_asset,p.x,p.y,
-                preview->GetClientWidth(),preview->GetClientHeight(),
-                (float)SDL_GetTicks()/1700.0f,g_fx_cel||g_fx_rim);
+                preview->GetClientWidth(),preview->GetClientHeight(),0.0f,g_fx_cel||g_fx_rim);
         }
     }
-    if(g_maker_modern&&g_stage_grid&&g_placed_model_count>0){
+    if(g_maker_modern&&g_stage_grid&&!g_placed_models.empty()){
         const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
         const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
-        for(int i=0;i<g_placed_model_count;i++){
-            const PlacedMakerModel &m=g_placed_models[i];
+        SDL_Rect clip{(int)origin.x,(int)origin.y,(int)width,(int)height};
+        SDL_RenderSetClipRect(renderer,&clip);
+        for(const PlacedMakerModel &model:g_placed_models){
             const float w=72.0f,h=72.0f;
-            draw_model_mesh(renderer,m.asset_id,origin.x+m.x*width-w*0.5f,
-                origin.y+m.y*height-h*0.5f,w,h,(float)SDL_GetTicks()/1900.0f+(float)i*0.22f,g_fx_cel||g_fx_rim);
+            draw_model_mesh(renderer,model.asset_id,origin.x+model.x*width-w*0.5f,
+                origin.y+model.y*height-h*0.5f,w,h,0.0f,g_fx_cel||g_fx_rim);
         }
+        SDL_RenderSetClipRect(renderer,nullptr);
     }
 }
 
