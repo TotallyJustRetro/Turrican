@@ -5,6 +5,7 @@
 #include "RmlUi_Renderer_SDL.h"
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Log.h>
@@ -28,6 +29,11 @@ static Rml::ElementDocument *g_document = nullptr;
 static Rml::Element *g_viewport = nullptr;
 static Rml::Element *g_stage_grid = nullptr;
 static Rml::Element *g_status = nullptr;
+static Rml::DataModelHandle g_model_handle;
+static Rml::String g_global_mode = "MODERN REBORN";
+static Rml::String g_selected_tool = "brush";
+static Rml::String g_active_tab = "tiles";
+static int g_cursor_x = 24, g_cursor_y = 12, g_ui_selected_entity = -1;
 static bool g_rml_initialised = false;
 static bool g_exit_requested = false;
 static int g_brush_tile = 1;
@@ -145,217 +151,7 @@ public:
     }
 };
 
-static const char *kDocument = R"RML(
-<rml>
-<head>
-<title>Mega Turrican Reborn Maker</title>
-<style>
-* { box-sizing: border-box; }
-body { margin:0; padding:0; font-family:Lato,sans-serif; color:#e7edf4; background-color:#090f17; font-size:13px; }
-.viewport { position:absolute; display:flex; flex-direction:column; overflow:hidden; background-color:#0b111a; }
-.header { height:52px; min-height:52px; display:flex; flex-direction:row; align-items:center; padding:0 14px; background-color:#101a27; border-bottom:1px solid #34485c; }
-.brand-mark { width:30px; height:30px; background-color:#e7a747; border-radius:5px; margin-right:10px; }
-.brand { width:220px; }
-.brand-title { color:#f0b65b; font-size:18px; font-weight:bold; letter-spacing:1.2px; }
-.brand-sub { color:#8fa3b8; font-size:10px; letter-spacing:1.7px; }
-.header-title { flex-grow:1; color:#d7e3ee; font-size:15px; font-weight:bold; }
-.header-meta { color:#8195a8; font-size:11px; margin-right:10px; }
-.button { display:inline-block; padding:8px 12px; margin-left:5px; border-radius:4px; background-color:#243448; border:1px solid #3c536c; color:#dce8f2; font-size:11px; font-weight:bold; text-align:center; }
-.button:hover { background-color:#354b62; border-color:#e0a74e; }
-.button.primary { color:#21190f; background-color:#e5ad57; border-color:#ffd080; }
-.button.danger { color:#e8b8b8; background-color:#39252a; border-color:#704047; }
-.modebar { height:46px; min-height:46px; display:flex; flex-direction:row; align-items:stretch; padding:6px 12px; background-color:#0d1621; border-bottom:1px solid #26394c; }
-.mode-tab { flex:1; margin-right:5px; padding:7px 10px; text-align:center; color:#9eb0c2; background-color:#182637; border:1px solid #30465b; border-radius:4px; font-size:12px; font-weight:bold; letter-spacing:1px; }
-.mode-tab:hover { color:#fff; background-color:#273c52; }
-.mode-tab.active { color:#ffe0a4; background-color:#62401f; border-color:#d69c4c; }
-.workspace { display:flex; flex-direction:row; flex-grow:1; min-height:0; padding:8px; }
-.sidebar { width:190px; min-width:190px; background-color:#111b27; border:1px solid #2b3d50; border-radius:5px; padding:9px 7px; overflow:hidden; }
-.section-label { color:#72879b; font-size:11px; font-weight:bold; letter-spacing:1.4px; margin:5px 4px 8px 4px; }
-.tool-button { display:block; padding:9px 9px; margin-bottom:4px; background-color:#172433; border:1px solid #283d50; border-radius:4px; color:#aebdcb; font-size:12px; font-weight:bold; }
-.tool-button:hover { color:#fff; background-color:#263a4d; border-color:#73889b; }
-.tool-button.active { color:#ffdb9c; background-color:#3d3023; border-color:#c18b43; }
-.sidebar-divider { height:1px; background-color:#2b3d50; margin:12px 3px; }
-.library-item { display:block; padding:7px 8px; margin-bottom:3px; background-color:#0f1924; border:1px solid #263748; color:#8fa4b8; border-radius:3px; font-size:11px; }
-.library-item:hover { color:#e8f0f7; border-color:#58748b; }
-.main { display:flex; flex-direction:column; flex-grow:1; margin-left:8px; margin-right:8px; min-width:0; min-height:0; }
-.layerbar { height:40px; min-height:40px; display:flex; flex-direction:row; align-items:center; padding:5px 8px; background-color:#111c29; border:1px solid #2b3d50; border-radius:5px; margin-bottom:8px; }
-.layer-caption { color:#7f95a9; font-size:10px; font-weight:bold; letter-spacing:1px; margin-right:10px; }
-.layer-chip { padding:6px 12px; margin-right:5px; border:1px solid #30445a; border-radius:4px; background-color:#1a2939; color:#95a9bc; font-size:10px; font-weight:bold; }
-.layer-chip.active { color:#ffe0a4; border-color:#c58b40; background-color:#49331f; }
-.layer-chip:hover { border-color:#8da3b6; }
-.panel { background-color:#111b27; border:1px solid #2b3d50; border-radius:5px; }
-.panel-heading { height:36px; display:flex; align-items:center; padding:0 12px; border-bottom:1px solid #2b3d50; color:#e4edf5; font-size:12px; font-weight:bold; letter-spacing:1px; }
-.panel-kicker { flex-grow:1; color:#748ba1; font-size:10px; font-weight:normal; text-align:right; }
-.stage-panel { display:flex; flex-direction:column; flex-grow:1; min-height:0; padding:8px; }
-.stage-screen { display:flex; flex-direction:column; align-items:stretch; justify-content:stretch; flex-grow:1; min-height:0; background-color:#0a121c; border:1px solid #263a4e; border-radius:3px; padding:8px; }
-.stage-topline { width:100%; padding:0 4px 7px 4px; color:#8198ad; font-size:10px; }
-.stage-grid-wrap { flex-grow:1; min-height:0; width:100%; padding:8px; background-color:#0d1a27; border:1px solid #294158; border-radius:3px; }
-.stage-grid { width:100%; height:100%; min-height:240px; overflow:hidden; background-color:#142638; }
-.stage-hint { width:100%; padding:7px 4px 0 4px; color:#72889d; font-size:10px; }
-.shelf { height:122px; min-height:122px; margin-top:8px; }
-.asset-shelf-items { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; padding:8px; height:84px; overflow:hidden; }
-.asset-tile { width:58px; min-width:58px; height:64px; margin-right:6px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding:3px; background-color:#19293a; border:1px solid #334b62; border-radius:4px; color:#b8c9d7; font-size:10px; }
-.asset-tile:hover { background-color:#30465c; border-color:#e1a84e; }
-.asset-tile.active { background-color:#403426; border-color:#e1a84e; color:#ffcf85; }
-.asset-thumb { width:42px; height:42px; margin-bottom:2px; background-color:#0b121c; }
-.inspector { width:238px; min-width:238px; padding:0 9px 9px 9px; overflow-y:auto; }
-.inspector-section { padding:10px 2px; border-bottom:1px solid #293b4d; }
-.inspector-label { color:#7790a5; font-size:10px; letter-spacing:1px; margin-bottom:7px; font-weight:bold; }
-.inspector-value { color:#e5b15e; font-size:14px; font-weight:bold; }
-.inspector-copy { color:#9aafc1; font-size:11px; line-height:1.5; }
-.option-row { display:flex; flex-direction:row; align-items:center; margin:5px 0; }
-.option-name { flex-grow:1; color:#9fb2c4; font-size:11px; }
-.option-button { padding:6px 8px; margin-right:4px; background-color:#1b2b3c; border:1px solid #344b61; border-radius:3px; color:#b9c9d7; font-size:10px; }
-.option-button.active { background-color:#49351f; border-color:#c58b40; color:#ffe0a4; }
-.option-button:hover { border-color:#8197aa; }
-.statusbar { height:30px; min-height:30px; display:flex; align-items:center; padding:0 12px; background-color:#111b27; border-top:1px solid #2b3d50; color:#8095a8; font-size:10px; }
-.status-left { flex-grow:1; }
-.status-accent { color:#e8b25d; }
-.hidden { display:none; }
-.modal-shade { position:absolute; left:0; top:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background-color:#000000aa; z-index:100; }
-.modal-shade.hidden { display:none; }
-.settings-dialog { width:620px; max-height:88%; background-color:#121e2b; border:1px solid #b47c35; border-radius:6px; padding:14px; }
-.settings-title { color:#f2bd68; font-size:17px; font-weight:bold; padding-bottom:10px; border-bottom:1px solid #34485b; }
-.settings-columns { display:flex; flex-direction:row; }
-.settings-col { flex:1; padding:8px 12px 8px 2px; }
-.setting-card { margin-bottom:12px; padding:10px; background-color:#0e1823; border:1px solid #2d4358; border-radius:4px; }
-.setting-card-title { color:#82cbd2; font-size:11px; font-weight:bold; margin-bottom:8px; }
-</style>
-</head>
-<body>
-<div id="viewport" class="viewport">
-  <div class="header">
-    <div class="brand-mark"></div>
-    <div class="brand"><div class="brand-title">MEGA TURRICAN</div><div class="brand-sub">REBORN / LEVEL CREATION SYSTEM</div></div>
-    <div class="header-title">MAKER <span style="color:#7f94a9">/ UNTITLED LEVEL</span></div>
-    <div class="header-meta">64 × 32 GENESIS GRID</div>
-    <div class="button" data-action="undo">UNDO</div>
-    <div class="button" data-action="redo">REDO</div>
-    <div class="button" data-action="settings">SETTINGS</div>
-    <div class="button" data-action="load">LOAD</div>
-    <div class="button primary" data-action="save">SAVE</div>
-    <div class="button danger" data-action="exit">DONE</div>
-  </div>
-  <div class="modebar">
-    <div id="mode-0" class="mode-tab active" data-action="mode" data-mode="0">TILES</div>
-    <div id="mode-1" class="mode-tab" data-action="mode" data-mode="1">OBJECTS</div>
-    <div id="mode-2" class="mode-tab" data-action="mode" data-mode="2">EVENT SCRIPT</div>
-    <div id="mode-3" class="mode-tab" data-action="mode" data-mode="3">ASSET STUDIO</div>
-    <div id="mode-4" class="mode-tab" data-action="mode" data-mode="4">BOSS FORGE</div>
-    <div id="mode-5" class="mode-tab" data-action="mode" data-mode="5">BACKGROUNDS</div>
-  </div>
-  <div class="workspace">
-    <div class="sidebar">
-      <div id="tool-heading" class="section-label">TILE TOOLS</div>
-      <div id="tool-list">
-        <div class="tool-button active" data-action="tool" data-tool="0">SELECT</div>
-        <div class="tool-button" data-action="tool" data-tool="1">TILE BRUSH</div>
-        <div class="tool-button" data-action="tool" data-tool="7">ERASER</div>
-        <div class="tool-button" data-action="tool" data-tool="2">COLLISION PAINTER</div>
-        <div class="tool-button" data-action="tool" data-tool="3">GRAPPLE ANCHOR</div>
-        <div class="tool-button" data-action="tool" data-tool="4">TRIGGER BOX</div>
-      </div>
-      <div class="sidebar-divider"></div>
-      <div class="section-label">LIBRARY</div>
-      <div id="library-list">
-        <div class="library-item" data-action="library" data-library="ROM TILES">ROM TILE BANK</div>
-        <div class="library-item" data-action="library" data-library="SPRITE SETS">SPRITE SETS</div>
-        <div class="library-item" data-action="library" data-library="CUSTOM ASSETS">CUSTOM ASSETS</div>
-      </div>
-      <div class="sidebar-divider"></div>
-      <div class="section-label">PROJECT</div>
-      <div class="inspector-copy">Portable project settings and level documents are stored beside the launcher.</div>
-      <div class="button" data-action="settings" style="width:100%;margin:8px 0 0 0">PROJECT OPTIONS</div>
-    </div>
-    <div class="main">
-      <div class="layerbar">
-        <div class="layer-caption">LAYERS</div>
-        <div id="layer-0" class="layer-chip active" data-action="layer" data-layer="0">BG</div>
-        <div id="layer-1" class="layer-chip active" data-action="layer" data-layer="1">MID</div>
-        <div id="layer-2" class="layer-chip active" data-action="layer" data-layer="2">GAMEPLAY</div>
-        <div id="layer-3" class="layer-chip active" data-action="layer" data-layer="3">FG</div>
-        <div id="layer-4" class="layer-chip" data-action="layer" data-layer="4">3D DEPTH</div>
-        <div style="flex-grow:1"></div>
-        <div class="option-button active" data-action="toggle" data-key="grid">GRID</div>
-        <div class="option-button active" data-action="toggle" data-key="snap">SNAP</div>
-      </div>
-      <div class="panel stage-panel">
-        <div class="panel-heading">STAGE CANVAS <span id="stage-meta" class="panel-kicker">TILE EDITOR / 64 × 32 / GAMEPLAY LAYER</span></div>
-        <div class="stage-screen">
-          <div id="stage-topline" class="stage-topline">LEVEL 01 / GAMEPLAY LAYER / GRID SNAP ENABLED</div>
-          <div class="stage-grid-wrap"><div id="stage-grid" class="stage-grid"></div></div>
-          <div id="stage-hint" class="stage-hint">Left click paints the selected cartridge tile. Right click erases.</div>
-        </div>
-      </div>
-      <div class="panel shelf">
-        <div class="panel-heading">CARTRIDGE ASSET BROWSER <span id="asset-count" class="panel-kicker">WAITING FOR VDP ASSETS</span><div class="option-button" data-action="asset-page" data-dir="-1">PREV</div><div class="option-button" data-action="asset-page" data-dir="1">NEXT</div></div>
-        <div id="asset-shelf-items" class="asset-shelf-items"></div>
-      </div>
-    </div>
-    <div class="panel inspector">
-      <div class="panel-heading">INSPECTOR <span class="panel-kicker">LIVE</span></div>
-      <div id="mode-inspector">
-        <div class="inspector-section">
-          <div class="inspector-label">SELECTED TILE</div>
-          <div id="brush-value" class="inspector-value">$00B0</div>
-          <div class="inspector-copy">Choose a cartridge tile from the asset browser, then paint the stage.</div>
-        </div>
-        <div class="inspector-section">
-          <div class="inspector-label">TILE OPTIONS</div>
-          <div class="option-row"><div class="option-name">PALETTE</div><div class="option-button active" data-action="palette" data-palette="0">0</div><div class="option-button" data-action="palette" data-palette="1">1</div><div class="option-button" data-action="palette" data-palette="2">2</div><div class="option-button" data-action="palette" data-palette="3">3</div></div>
-          <div class="option-row"><div class="option-name">COLLISION</div><div class="option-button active" data-action="toggle" data-key="collision">ON</div></div>
-        </div>
-        <div class="inspector-section">
-          <div class="inspector-label">SELECTED CELL</div>
-          <div id="selected-cell" class="inspector-value">X:00 / Y:00</div>
-          <div class="inspector-copy">64 × 32 editable cells. Changes are saved in the level document.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="statusbar"><div class="status-left"><span class="status-accent">READY</span> &nbsp; <span id="status-text">RmlUi Maker ready. Choose a mode, tool and cartridge asset.</span></div><div>MEGA TURRICAN REBORN / MAKER</div></div>
-</div>
-<div id="settings-modal" class="modal-shade hidden">
-  <div class="settings-dialog">
-    <div class="settings-title">PROJECT / EDITOR SETTINGS</div>
-    <div class="settings-columns">
-      <div class="settings-col">
-        <div class="setting-card">
-          <div class="setting-card-title">GRAPHICS PROFILE</div>
-          <div class="option-row"><div class="option-name">GENESIS / VANILLA</div><div id="graphics-vanilla" class="option-button active" data-action="graphics" data-value="vanilla">64 COLORS</div></div>
-          <div class="option-row"><div class="option-name">MODERN MODE</div><div id="graphics-modern" class="option-button" data-action="graphics" data-value="modern">FULL RGBA</div></div>
-        </div>
-        <div class="setting-card">
-          <div class="setting-card-title">DRAWING CANVAS</div>
-          <div class="option-row"><div class="option-name">PIXEL GRID</div><div id="canvas-16" class="option-button active" data-action="canvas-size" data-size="16">16 × 16</div><div id="canvas-32" class="option-button" data-action="canvas-size" data-size="32">32 × 32</div></div>
-          <div class="option-row"><div class="option-name">DISPLAY GRID</div><div class="option-button active" data-action="toggle" data-key="grid">ON / OFF</div></div>
-          <div class="option-row"><div class="option-name">SNAP TO GRID</div><div class="option-button active" data-action="toggle" data-key="snap">ON / OFF</div></div>
-        </div>
-      </div>
-      <div class="settings-col">
-        <div class="setting-card">
-          <div class="setting-card-title">STAGE LAYERS</div>
-          <div class="option-row"><div class="option-name">BACKGROUND</div><div class="option-button active" data-action="layer" data-layer="0">VISIBLE</div></div>
-          <div class="option-row"><div class="option-name">MID PARALLAX</div><div class="option-button active" data-action="layer" data-layer="1">VISIBLE</div></div>
-          <div class="option-row"><div class="option-name">GAMEPLAY</div><div class="option-button active" data-action="layer" data-layer="2">VISIBLE</div></div>
-          <div class="option-row"><div class="option-name">FOREGROUND</div><div class="option-button active" data-action="layer" data-layer="3">VISIBLE</div></div>
-          <div class="option-row"><div class="option-name">3D DEPTH</div><div class="option-button" data-action="layer" data-layer="4">VISIBLE</div></div>
-        </div>
-        <div class="setting-card">
-          <div class="setting-card-title">AUDIO / BACKGROUND</div>
-          <div class="inspector-copy">Custom background music and layered image import are being connected to the portable asset pipeline. These options will not pretend to import files until that pipeline is complete.</div>
-        </div>
-      </div>
-    </div>
-    <div style="text-align:right;padding-top:8px;border-top:1px solid #34485b">
-      <div class="button" data-action="settings-close">CLOSE</div>
-      <div class="button primary" data-action="settings-save">APPLY / SAVE OPTIONS</div>
-    </div>
-  </div>
-</div>
-</body>
-</rml>
-)RML";
+
 
 static void set_status(const char *message);
 
@@ -870,6 +666,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_map_rows = mtlb_map_rows();
     mtlb_editor_prepare_rom_assets();
     maker_load_settings();
+    g_global_mode = g_maker_modern ? "MODERN REBORN" : "VANILLA 1994";
     maker_log("Map dimensions: %d x %d.", g_map_cols, g_map_rows);
     if (g_map_cols <= 0 || g_map_rows <= 0)
         return maker_fail("The shared Maker map model returned invalid dimensions.");
@@ -922,12 +719,28 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     }
     maker_log("RmlUi context created.");
 
-    g_document = g_context->LoadDocumentFromMemory(kDocument);
+    Rml::DataModelConstructor data_model = g_context->CreateDataModel("editor");
+    if (!data_model ||
+        !data_model.Bind("global_mode", &g_global_mode) ||
+        !data_model.Bind("selected_tool", &g_selected_tool) ||
+        !data_model.Bind("active_tab", &g_active_tab) ||
+        !data_model.Bind("cursor_x", &g_cursor_x) ||
+        !data_model.Bind("cursor_y", &g_cursor_y) ||
+        !data_model.Bind("selected_entity", &g_ui_selected_entity)) {
+        mtlbr_shutdown();
+        return maker_fail("Could not create the RmlUi editor data model.");
+    }
+    g_model_handle = data_model.GetModelHandle();
+    maker_log("RmlUi editor data model bound: global_mode, selected_tool, active_tab, cursor_x, cursor_y, selected_entity.");
+
+    const std::string document_path = font_prefix + "assets/maker/editor.rml";
+    maker_log("Loading external Maker document: %s.", document_path.c_str());
+    g_document = g_context->LoadDocument(document_path);
     if (!g_document) {
         mtlbr_shutdown();
-        return maker_fail("RmlUi failed to parse or load the embedded Maker document. See maker-rmlui.log.");
+        return maker_fail("RmlUi failed to load assets/maker/editor.rml or its RCSS stylesheet. See maker-rmlui.log.");
     }
-    maker_log("Embedded Maker RML document loaded.");
+    maker_log("External Maker RML document and RCSS loaded.");
     g_viewport = g_document->GetElementById("viewport");
     g_stage_grid = g_document->GetElementById("stage-grid");
     g_status = g_document->GetElementById("status-text");
@@ -942,6 +755,8 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_stage_vertices.reserve((size_t)g_map_cols * (size_t)g_map_rows * 4u);
     g_stage_indices.reserve((size_t)g_map_cols * (size_t)g_map_rows * 6u);
     g_document->AddEventListener("click", &g_listener);
+    g_document->AddEventListener("change", &g_listener);
+    g_document->AddEventListener("input", &g_listener);
     g_document->Show();
     g_exit_requested = false;
     g_brush_tile = mtlb_map_brush();
@@ -949,6 +764,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     select_brush(g_brush_tile);
     maker_update_mode_ui();
     maker_refresh_asset_shelf();
+    g_model_handle.DirtyAllVariables();
     set_status("RmlUi Maker ready. Cartridge asset catalog connected; project options restored.");
     std::snprintf(g_last_error, sizeof(g_last_error), "%s", "");
     maker_log("RmlUi Maker initialized successfully.");
