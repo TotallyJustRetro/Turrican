@@ -3268,3 +3268,56 @@ body {
   .asset-thumb { width: 46px; height: 43px; }
   .brand-block { width: 225px; min-width: 205px; }
 }
+
+
+@media (max-width: 1100px) {
+  .property-row {
+    gap: 4px;
+    padding: 4px 0;
+    font-size: 8px;
+  }
+  .property-row label {
+    width: 62px;
+    min-width: 62px;
+    font-size: 7px;
+  }
+  .property-row select, .property-row input {
+    padding: 4px;
+    font-size: 8px;
+  }
+  .property-subtitle {
+    margin: 7px 0 4px;
+    font-size: 7px;
+  }
+  .toggle-row {
+    padding: 3px 0;
+    font-size: 7px;
+  }
+  .model-stats {
+    font-size: 7px;
+  }
+  .model-stats strong {
+    font-size: 6px;
+  }
+  .classification-row {
+    gap: 4px;
+    padding: 3px 0;
+    font-size: 7px;
+  }
+  .classification-row select {
+    padding: 3px;
+    font-size: 7px;
+  }
+  .import-wide {
+    padding: 4px 3px;
+    font-size: 6px;
+  }
+  .dock-title {
+    padding-bottom: 5px;
+    margin-bottom: 5px;
+    font-size: 7px;
+  }
+  .dock-subtitle {
+    font-size: 6px;
+  }
+}
