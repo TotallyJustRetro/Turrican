@@ -21,6 +21,7 @@ int mtlb_map_cols(void);
 int mtlb_map_rows(void);
 int mtlb_map_get(int x, int y);
 void mtlb_map_set(int x, int y, int tile);
+void mtlb_map_set_brush(int tile);
 int mtlb_map_save(void);
 int mtlb_map_load(void);
 int mtlb_map_cursor_x(void);
