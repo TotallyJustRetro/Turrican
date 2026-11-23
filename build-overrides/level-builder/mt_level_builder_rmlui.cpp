@@ -36,7 +36,7 @@ static const char *kDocument = R"RML(
   <title>Mega Turrican Reborn Maker</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 0; font-family: Arial, sans-serif; color: #e7edf4; background-color: #0b111a; }
+    body { margin: 0; padding: 0; font-family: Lato, sans-serif; color: #e7edf4; background-color: #0b111a; }
     .viewport { position: absolute; display: flex; flex-direction: column; overflow: hidden; background-color: #0b111a; }
     .header { height: 48px; min-height: 48px; display: flex; flex-direction: row; align-items: center; padding: 0 14px; background-color: #111b28; border-bottom: 1px solid #314357; }
     .brand-mark { width: 27px; height: 27px; background-color: #e7a747; border-radius: 5px; margin-right: 9px; }
@@ -69,8 +69,9 @@ static const char *kDocument = R"RML(
     .stage-screen { width: 100%; height: 100%; min-height: 282px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
     .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 9px; }
     .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
-    .stage-grid { width: 448px; height: 224px; overflow: hidden; background-color: #142638; font-size: 0; line-height: 0; }
-    .cell { display: inline-block; vertical-align: top; width: 7px; height: 7px; margin: 0; padding: 0; background-color: #15283a; border-right: 1px solid #29435a; border-bottom: 1px solid #29435a; }
+    .stage-grid { width: 448px; height: 224px; overflow: hidden; display: flex; flex-direction: column; background-color: #142638; }
+    .stage-row { width: 448px; height: 7px; min-height: 7px; display: flex; flex-direction: row; }
+    .cell { display: block; flex: 0 0 7px; width: 7px; height: 7px; min-width: 7px; margin: 0; padding: 0; background-color: #182d41; border-right: 1px solid #2c465f; border-bottom: 1px solid #2c465f; }
     .cell:hover { background-color: #e5ad57; }
     .cell.filled { background-color: #628b77; }
     .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 9px; }
@@ -174,16 +175,18 @@ static const char *kDocument = R"RML(
 static std::string make_stage_cells()
 {
     std::string markup;
-    markup.reserve((size_t)g_map_cols * (size_t)g_map_rows * 105u);
+    markup.reserve((size_t)g_map_cols * (size_t)g_map_rows * 128u);
     for (int y = 0; y < g_map_rows; ++y) {
+        markup += "<div class=\\"stage-row\\">";
         for (int x = 0; x < g_map_cols; ++x) {
             const int tile = mtlb_map_get(x, y);
             char cell[160];
             std::snprintf(cell, sizeof(cell),
-                "<div id=\"cell-%d-%d\" class=\"cell%s\" data-action=\"paint\" data-cell=\"%d\"></div>",
+                "<div id=\\"cell-%d-%d\\" class=\\"cell%s\\" data-action=\\"paint\\" data-cell=\\"%d\\"></div>",
                 x, y, tile != 0 ? " filled" : "", y * g_map_cols + x);
             markup += cell;
         }
+        markup += "</div>";
     }
     return markup;
 }
@@ -324,8 +327,23 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     }
     g_rml_initialised = true;
 
-    Rml::LoadFontFace("C:/Windows/Fonts/arial.ttf", true);
-    Rml::LoadFontFace("C:/Windows/Fonts/segoeui.ttf", true);
+    // Bundle fonts with the portable build; do not depend on the user's Windows font folder.
+    char *base_path = SDL_GetBasePath();
+    if (!base_path) {
+        Rml::Log::Message(Rml::Log::LT_ERROR, "Could not resolve the game folder for bundled Maker fonts.");
+        mtlbr_shutdown();
+        return 0;
+    }
+    const std::string font_regular = std::string(base_path) + "assets/fonts/LatoLatin-Regular.ttf";
+    const std::string font_bold = std::string(base_path) + "assets/fonts/LatoLatin-Bold.ttf";
+    SDL_free(base_path);
+    const bool regular_loaded = Rml::LoadFontFace(font_regular, true);
+    const bool bold_loaded = Rml::LoadFontFace(font_bold, false);
+    if (!regular_loaded || !bold_loaded) {
+        Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to load bundled Lato fonts from assets/fonts.");
+        mtlbr_shutdown();
+        return 0;
+    }
     int width = 0, height = 0;
     SDL_GetWindowSize(window, &width, &height);
     g_context = Rml::CreateContext("MegaTurricanMaker", Rml::Vector2i(width, height), g_render);
