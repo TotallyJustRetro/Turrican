@@ -1156,7 +1156,13 @@ extern "C" void mtlb_map_set(int x,int y,int tile)
     if(x<0||y<0||x>=kEditorMapCols||y>=kEditorMapRows)return;
     const std::uint16_t value=(std::uint16_t)std::max(0,std::min(65535,tile));
     const int index=y*kEditorMapCols+x;
+    g_selected_x=x;
+    g_selected_y=y;
     if(g_level_tiles[index]!=value){g_level_tiles[index]=value;g_document_dirty=true;}
+}
+extern "C" void mtlb_map_set_brush(int tile)
+{
+    g_brush_tile=std::max(0,std::min(2047,tile));
 }
 static bool mtlb_level_document_path(char *path,size_t capacity)
 {
