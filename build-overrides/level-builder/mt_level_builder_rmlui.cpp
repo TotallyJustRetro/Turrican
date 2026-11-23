@@ -403,14 +403,16 @@ static void draw_stage_grid(SDL_Renderer *renderer)
             append_stage_quad(origin.x+x*cell_w+1.0f,origin.y+y*cell_h+1.0f,
                 origin.x+(x+1)*cell_w-1.0f,origin.y+(y+1)*cell_h-1.0f,palette[ci]);
         }
-        const SDL_Color grid={43,65,83,255};
-        for(int x=0;x<=g_map_cols;x++){
-            const float px=origin.x+x*cell_w;
-            append_stage_quad(px,origin.y,px+1.0f,origin.y+height,grid);
-        }
-        for(int y=0;y<=g_map_rows;y++){
-            const float py=origin.y+y*cell_h;
-            append_stage_quad(origin.x,py,origin.x+width,py+1.0f,grid);
+        if(g_maker_show_grid){
+            const SDL_Color grid={43,65,83,255};
+            for(int x=0;x<=g_map_cols;x++){
+                const float px=origin.x+x*cell_w;
+                append_stage_quad(px,origin.y,px+1.0f,origin.y+height,grid);
+            }
+            for(int y=0;y<=g_map_rows;y++){
+                const float py=origin.y+y*cell_h;
+                append_stage_quad(origin.x,py,origin.x+width,py+1.0f,grid);
+            }
         }
         g_stage_batch_x=origin.x;g_stage_batch_y=origin.y;
         g_stage_batch_w=width;g_stage_batch_h=height;
@@ -683,7 +685,13 @@ public:
         if (action == "tool") {
             g_maker_tool = std::max(0,std::min(8,element->GetAttribute<int>("data-tool",0)));
             if(g_maker_mode==MAKER_TILES && g_maker_tool==1) select_brush(g_brush_tile);
-            maker_update_mode_ui();
+            if(Rml::Element *list=g_document->GetElementById("tool-list")){
+                for(int i=0;i<list->GetNumChildren();i++){
+                    Rml::Element *child=list->GetChild(i);
+                    if(child) child->SetClass("active",child==element);
+                }
+            }
+            maker_save_settings();
             set_status("Tool selected.");
             return;
         }
@@ -707,6 +715,7 @@ public:
                 *target=!*target;
                 element->SetClass("active",*target);
                 element->SetInnerRML(*target?"ON":"OFF");
+                if(key=="grid") g_stage_batch_dirty=true;
                 maker_save_settings();
                 set_status((key+" option updated.").c_str());
             }
@@ -769,7 +778,7 @@ public:
         }
         if (action == "library") {
             const Rml::String name=element->GetAttribute<Rml::String>("data-library","ROM TILES");
-            set_status(std::string("Library filter: ")+name+".");
+            set_status((std::string("Library filter: ")+name+".").c_str());
             return;
         }
         if (action == "event-add") {
