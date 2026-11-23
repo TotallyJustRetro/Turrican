@@ -94,7 +94,7 @@ struct MakerLight { float x,y,radius,intensity; uint32_t color; int type; };
 static MakerLight g_lights[32] = {};
 static int g_light_count = 0;
 static int g_light_type = 0;
-static uint32_t g_light_color = 0xFFE619E6u;
+static uint32_t g_light_color = 0xFFD98B45u;
 static float g_light_radius = 96.0f;
 static float g_light_intensity = 0.65f;
 static bool g_fx_bloom = false, g_fx_rim = false, g_fx_cel = false, g_fx_fog = false, g_fx_crt = false;
@@ -539,8 +539,8 @@ static void draw_stage_grid(SDL_Renderer *renderer)
         if(g_stage_indices.capacity()<quads*6u)g_stage_indices.reserve(quads*6u);
 
         static const SDL_Color palette[8]={
-            {104,145,125,255},{112,151,185,255},{196,132,77,255},{135,119,184,255},
-            {167,166,119,255},{77,151,157,255},{181,103,111,255},{103,124,155,255}
+            {122,119,101,255},{109,119,125,255},{177,115,66,255},{129,125,108,255},
+            {148,145,124,255},{91,108,112,255},{154,95,73,255},{112,121,119,255}
         };
         const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
         for(int y=0;y<g_map_rows;y++)for(int x=0;x<g_map_cols;x++){
@@ -564,8 +564,8 @@ static void draw_stage_grid(SDL_Renderer *renderer)
             }
         }
         if(g_maker_show_grid){
-            const SDL_Color minor_grid={43,63,96,255};
-            const SDL_Color major_grid={78,111,158,255};
+            const SDL_Color minor_grid={44,53,58,255};
+            const SDL_Color major_grid={86,96,101,255};
             for(int x=0;x<=g_map_cols;x++){
                 const float px=origin.x+x*cell_w;
                 const bool major=(x%4)==0;
@@ -1494,6 +1494,11 @@ static void maker_place_asset_at(int px,int py)
     if(!maker_stage_cell_at(px,py,x,y)){set_status("Drop the asset inside the stage viewport.");return;}
     mtlb_map_set_cursor(x,y);
     g_cursor_x=x;g_cursor_y=y;
+    if(g_entity_brush_active){
+        if(g_entity_brush_last_x==x&&g_entity_brush_last_y==y)return;
+        g_entity_brush_last_x=x;
+        g_entity_brush_last_y=y;
+    }
     if(g_drag_asset_type=="2d_tile"){
         const int tile=mtlb_editor_tile_entry(g_drag_asset_id,g_maker_palette);
         if(tile){
@@ -1522,8 +1527,6 @@ static void maker_place_asset_at(int px,int py)
         if(!g_maker_modern){set_status("Modern Mode Required: 3D model placement is locked in Vanilla.");return;}
         const float nx=(x+0.5f)/(float)g_map_cols;
         const float ny=(y+0.5f)/(float)g_map_rows;
-        if(g_entity_brush_active&&g_entity_brush_last_x==x&&g_entity_brush_last_y==y)return;
-        g_entity_brush_last_x=x;g_entity_brush_last_y=y;
         const bool already_here=std::any_of(g_placed_models.begin(),g_placed_models.end(),
             [&](const PlacedMakerModel &placed){
                 return placed.asset_id==g_drag_asset_id&&
@@ -1585,8 +1588,7 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
             const std::string path(file);
             const std::string ext=path.substr(path.find_last_of('.')==std::string::npos?path.size():path.find_last_of('.'));
             if(ext==".glb"||ext==".gltf"||ext==".obj"||ext==".fbx"){
-                if(g_maker_modern)maker_import_model_file(path.c_str());
-                else set_status("Modern Mode Required for 3D model imports.");
+                maker_import_model_file(path.c_str());
             }else if(ext==".png"||ext==".tga")maker_import_texture_file(path.c_str());
             SDL_free(event->drop.file);
         }
