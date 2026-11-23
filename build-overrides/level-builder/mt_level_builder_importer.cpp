@@ -613,13 +613,24 @@ extern "C" int mtlb_imported_model_scan(void)
         if(oa!=ob)return oa<ob;
         return a.generic_string()<b.generic_string();
     });
-    for(const fs::path &candidate:candidates)
-        import_model_internal(candidate.string().c_str(),false);
+    for(const fs::path &candidate:candidates){
+        try{
+            import_model_internal(candidate.string().c_str(),false);
+        }catch(const std::bad_alloc&){
+            g_import_error="Stopped restoring imported models because available memory is exhausted.";
+            break;
+        }catch(const std::exception &error){
+            g_import_error=std::string("Could not restore model ")+candidate.filename().string()+": "+error.what();
+        }catch(...){
+            g_import_error=std::string("Could not restore model ")+candidate.filename().string()+".";
+        }
+    }
     return g_model_count;
 }
 
 extern "C" int mtlb_import_texture(const char *path)
 {
+    try{
     g_import_error.clear();
     if(!path||!path[0]){g_import_error="No texture file was selected.";return -1;}
     SDL_Surface *surface=IMG_Load(path);
@@ -639,6 +650,16 @@ extern "C" int mtlb_import_texture(const char *path)
     safe_copy(texture.path,sizeof(texture.path),target.string());
     g_textures.push_back(texture);
     return g_texture_count++;
+    }catch(const std::bad_alloc&){
+        g_import_error="The texture could not be registered because available memory is exhausted.";
+        return -1;
+    }catch(const std::exception &error){
+        g_import_error=std::string("Texture import failed safely: ")+error.what();
+        return -1;
+    }catch(...){
+        g_import_error="Texture import failed with an unknown error.";
+        return -1;
+    }
 }
 extern "C" int mtlb_imported_model_count(void){return g_model_count;}
 extern "C" int mtlb_imported_model_info(int index,char *name,int name_capacity,char *path,int path_capacity,

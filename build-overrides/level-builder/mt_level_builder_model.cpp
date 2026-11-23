@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <new>
 #include <vector>
 #ifdef _WIN32
 #include <direct.h>
@@ -679,7 +680,11 @@ extern "C" int mtlb_editor_place_entity(float x,float y,int type,int sprite_asse
             entity.height_tiles=(uint8_t)h;
         }
     }
-    g_entities.push_back(entity);
+    try{
+        g_entities.push_back(entity);
+    }catch(const std::bad_alloc&){
+        return -1;
+    }
     g_selected_entity=(int)g_entities.size()-1;
     g_document_dirty=true;
     return g_selected_entity;

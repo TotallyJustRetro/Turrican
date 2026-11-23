@@ -204,7 +204,12 @@ static void maker_load_placed_models()
         model.asset_id=asset_id;
         model.x=std::max(0.0f,std::min(1.0f,x));
         model.y=std::max(0.0f,std::min(1.0f,y));
-        g_placed_models.push_back(model);
+        try{
+            g_placed_models.push_back(model);
+        }catch(const std::bad_alloc&){
+            maker_log("Stopped restoring placed 3D props because memory ran out.");
+            break;
+        }
     }
     std::fclose(file);
     maker_log("Restored %zu stage model instances.",g_placed_models.size());
@@ -1599,7 +1604,13 @@ static void maker_place_asset_at(int px,int py)
         if(!already_here){
             PlacedMakerModel placed{};
             placed.asset_id=g_drag_asset_id;placed.x=nx;placed.y=ny;
-            g_placed_models.push_back(placed);
+            try{
+                g_placed_models.push_back(placed);
+            }catch(const std::bad_alloc&){
+                maker_log("Could not allocate a new stage model instance (model %d).",g_drag_asset_id);
+                set_status("The system is out of memory; the selected 3D model was not placed.");
+                return;
+            }
         }
         const bool changed_selection=g_selected_model_asset!=g_drag_asset_id;
         g_selected_model_asset=g_drag_asset_id;
@@ -1902,7 +1913,13 @@ static SDL_Texture *maker_stage_sprite_texture(SDL_Renderer *renderer,uint16_t t
         return nullptr;
     }
     SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_BLEND);
-    g_stage_sprite_textures.push_back({tile_attr,width_tiles,height_tiles,texture});
+    try{
+        g_stage_sprite_textures.push_back({tile_attr,width_tiles,height_tiles,texture});
+    }catch(const std::bad_alloc&){
+        SDL_DestroyTexture(texture);
+        maker_log("Stage sprite texture cache ran out of memory.");
+        return nullptr;
+    }
     return texture;
 }
 
@@ -2124,8 +2141,8 @@ static SDL_Texture *maker_model_preview_texture(SDL_Renderer *renderer,int asset
         g_model_preview_textures.push_back(cache);
         return cache.texture;
     }catch(const std::bad_alloc&){
+        if(cache.texture)SDL_DestroyTexture(cache.texture);
         maker_log("Model %d preview rasterization ran out of memory.",asset);
-        g_model_preview_textures.push_back(cache);
         return nullptr;
     }
 }
