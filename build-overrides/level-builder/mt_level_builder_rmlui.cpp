@@ -207,6 +207,8 @@ static void maker_set_modal(const char *id, bool visible)
 static void maker_update_imported_model_panel(int index)
 {
     if (!g_document || index < 0) return;
+    if (Rml::Element *row=g_document->GetElementById("rom-sprite-classification-row"))
+        row->SetClass("hidden",true);
     char name[128]={}, path[1024]={};
     uint32_t triangles=0, bones=0;
     float bounds[3]={0,0,0};
@@ -236,6 +238,28 @@ static void maker_update_imported_model_panel(int index)
         std::snprintf(value,sizeof(value),"%s / %u TRIS / %u BONES / BOUNDS %.2f x %.2f x %.2f",
             name,triangles,bones,bounds[0],bounds[1],bounds[2]);
         element->SetInnerRML(Rml::StringUtilities::EncodeRml(value));
+    }
+}
+
+static void maker_update_sprite_panel(int index)
+{
+    if(!g_document)return;
+    const bool valid=index>=0&&index<mtlb_editor_sprite_asset_count();
+    if(Rml::Element *row=g_document->GetElementById("rom-sprite-classification-row"))
+        row->SetClass("hidden",!valid);
+    if(!valid)return;
+
+    const int category=mtlb_editor_sprite_asset_category(index);
+    if(Rml::Element *select=g_document->GetElementById("sprite-classification")){
+        char value[8];std::snprintf(value,sizeof(value),"%d",category);
+        select->SetAttribute("value",value);
+    }
+    uint32_t owner=0,descriptor=0;uint16_t frames=0,parts=0;
+    mtlb_editor_sprite_asset_info(index,&owner,&descriptor,&frames,&parts);
+    if(Rml::Element *label=g_document->GetElementById("selected-asset-name")){
+        char value[96];
+        std::snprintf(value,sizeof(value),"ROM SPRITE %03d / $%06X",index+1,descriptor);
+        label->SetInnerRML(value);
     }
 }
 
@@ -287,36 +311,43 @@ static void maker_open_texture_importer()
 static void maker_refresh_sprite_lists()
 {
     if(!g_document)return;
-    std::string enemies,bosses;
+    static const char *folders[]={"review","character","items","enemies","bosses"};
+    static const char *list_ids[]={"asset-list-review","asset-list-character","asset-list-items","asset-list-enemies","asset-list-bosses"};
+    static const char *role_names[]={"NEEDS REVIEW","CHARACTER","ITEM / PICKUP","ENEMY","BOSS"};
+    std::string lists[5];
     const int count=mtlb_editor_sprite_asset_count();
     for(int i=0;i<count;i++){
-        char card[320];
+        uint32_t owner=0,descriptor=0;uint16_t frames=0,parts=0;
+        if(!mtlb_editor_sprite_asset_info(i,&owner,&descriptor,&frames,&parts))continue;
+        const int category=std::max(0,std::min(4,mtlb_editor_sprite_asset_category(i)));
+        char card[512];
         std::snprintf(card,sizeof(card),
-            "<div id='asset-sprite-enemy-%d' class='asset-card' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='enemy'><div class='asset-thumb' id='sprite-thumb-enemy-%d'></div><div>SPRITE SET %02d</div><div class='asset-tag'>2D</div></div>",
-            i,i,i,i+1);
-        enemies+=card;
-        std::snprintf(card,sizeof(card),
-            "<div id='asset-sprite-boss-%d' class='asset-card' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='boss'><div class='asset-thumb' id='sprite-thumb-boss-%d'></div><div>BOSS SET %02d</div><div class='asset-tag'>2D</div></div>",
-            i,i,i,i+1);
-        bosses+=card;
+            "<div id='asset-sprite-%s-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='rom_sprite'><div class='asset-thumb' id='sprite-thumb-%s-%d'></div><div>ROM SPRITE %03d</div><div class='asset-tag'>2D / %uF / %uP</div><div class='asset-tag'>$%06X</div></div>",
+            folders[category],i,i==g_selected_rom_sprite?"selected":"",i,folders[category],i,i+1,
+            (unsigned)frames,(unsigned)parts,(unsigned)descriptor);
+        lists[category]+=card;
     }
-    if(count==0){
-        enemies="<div class='folder-subheading'>No validated ROM sprite descriptors were found.</div>";
-        bosses="<div class='folder-subheading'>No validated ROM boss descriptors were found.</div>";
+    for(int i=0;i<5;i++){
+        if(lists[i].empty()){
+            const char *empty=(i==0)
+                ?"No unclassified ROM sprites."
+                :"No sprites assigned yet. Select a sprite and set its role in Properties.";
+            lists[i]="<div class='folder-subheading'>"+std::string(empty)+"</div>";
+        }
+        if(Rml::Element *list=g_document->GetElementById(list_ids[i]))list->SetInnerRML(lists[i]);
     }
-    if(Rml::Element *list=g_document->GetElementById("asset-list-enemies"))list->SetInnerRML(enemies);
-    if(Rml::Element *list=g_document->GetElementById("asset-list-bosses"))list->SetInnerRML(bosses);
 }
 
 static void maker_refresh_imported_asset_lists()
 {
     if(!g_document)return;
+    static const char *ids[]={"asset-list-3d-review","asset-list-3d-character","asset-list-3d-items","asset-list-3d-enemies","asset-list-3d-bosses"};
     std::string lists[5];
     const int count=mtlb_imported_model_count();
     for(int i=0;i<count;i++){
         char name[128]={},path[1024]={};
         uint32_t triangles=0,bones=0;float bounds[3]={0,0,0};
-        int diffuse=0,normal=0,emissive=0,classification=1;
+        int diffuse=0,normal=0,emissive=0,classification=0;
         if(!mtlb_imported_model_info(i,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
             &diffuse,&normal,&emissive,&classification))continue;
         char card[1024];
@@ -326,7 +357,6 @@ static void maker_refresh_imported_asset_lists()
             i,locked?"locked-modern-only":"",i,Rml::StringUtilities::EncodeRml(name).c_str());
         lists[std::max(0,std::min(4,classification))]+=card;
     }
-    static const char *ids[]={"asset-list-3d-tiles","asset-list-stage","asset-list-items","asset-list-3d-enemies","asset-list-3d-bosses"};
     for(int i=0;i<5;i++){
         if(Rml::Element *list=g_document->GetElementById(ids[i]))list->SetInnerRML(lists[i]);
     }
@@ -336,25 +366,6 @@ static void maker_refresh_imported_asset_lists()
 static void maker_refresh_asset_shelf()
 {
     if(!g_document)return;
-    const int count=mtlb_editor_tile_count();
-    const uint32_t page_key=(uint32_t)(g_asset_shelf_offset+1);
-    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=page_key){
-        g_asset_shelf_count=count;
-        g_asset_shelf_hash=page_key;
-        std::string markup;
-        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
-        for(int i=0;i<visible;i++){
-            const int index=g_asset_shelf_offset+i;
-            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
-            char card[420];
-            std::snprintf(card,sizeof(card),
-                "<div id='asset-tile-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb'></div><div>$%03X</div><div class='asset-tag'>2D</div></div>",
-                index,entry==g_brush_tile?"selected":"",index,entry&0x07FF);
-            markup+=card;
-        }
-        if(count==0)markup="<div class='folder-subheading'>Waiting for cartridge VDP tiles and ROM tile banks.</div>";
-        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items"))shelf->SetInnerRML(markup);
-    }
     maker_refresh_sprite_lists();
     maker_refresh_imported_asset_lists();
 }
@@ -693,8 +704,8 @@ public:
             g_asset_filter=(filter=="2d")?1:((filter=="3d")?2:0);
             static const char *buttons[]={"filter-all","filter-2d","filter-3d"};
             for(int i=0;i<3;i++)if(Rml::Element *b=g_document->GetElementById(buttons[i]))b->SetClass("active",i==g_asset_filter);
-            const char *groups[]={"asset-shelf-items","asset-list-enemies","asset-list-bosses"};
-            const char *models[]={"asset-list-3d-tiles","asset-list-stage","asset-list-items","asset-list-3d-enemies","asset-list-3d-bosses"};
+            const char *groups[]={"asset-list-review","asset-list-character","asset-list-items","asset-list-enemies","asset-list-bosses"};
+            const char *models[]={"asset-list-3d-review","asset-list-3d-character","asset-list-3d-items","asset-list-3d-enemies","asset-list-3d-bosses"};
             for(const char *id:groups)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==2);
             for(const char *id:models)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==1);
             return;
@@ -714,15 +725,23 @@ public:
             if(g_selected_asset_type=="2d_tile"){
                 const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
                 if(tile){select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;}
-            }else if(g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"){
+            }else if(g_selected_asset_type=="rom_sprite"){
                 g_selected_rom_sprite=g_selected_asset_id;
-                g_maker_mode=(g_selected_asset_type=="boss")?MAKER_BOSS:MAKER_OBJECTS;
-                g_maker_tool=1;
+                g_selected_model_asset=-1;
+                maker_update_sprite_panel(g_selected_rom_sprite);
+                const int role=mtlb_editor_sprite_asset_category(g_selected_rom_sprite);
+                if(role==4){g_maker_mode=MAKER_BOSS;g_maker_tool=0;}
+                else{
+                    g_maker_mode=MAKER_OBJECTS;
+                    g_maker_tool=(role==1)?3:((role==2)?2:((role==3)?1:0));
+                }
             }else if(g_selected_asset_type=="3d_model"){
                 if(!g_maker_modern){
                     set_status("Modern Mode Required: this 3D model is locked by the Vanilla 1994 quality gate.");
                     return;
                 }
+                g_selected_rom_sprite=-1;
+                maker_update_sprite_panel(-1);
                 g_selected_model_asset=g_selected_asset_id;
                 maker_update_imported_model_panel(g_selected_model_asset);
             }
@@ -744,10 +763,10 @@ public:
         if (action == "classify" || action == "import-confirm") {
             if(g_pending_model_asset>=0){
                 int classification=element->HasAttribute("data-class")?
-                    element->GetAttribute<int>("data-class",1):1;
+                    element->GetAttribute<int>("data-class",0):0;
                 if(!element->HasAttribute("data-class")){
                     if(Rml::Element *select=g_document->GetElementById("model-classification"))
-                        classification=event.GetParameter<int>("value",select->GetAttribute<int>("value",1));
+                        classification=event.GetParameter<int>("value",select->GetAttribute<int>("value",0));
                 }
                 mtlb_imported_model_classify(g_pending_model_asset,classification);
                 g_selected_model_asset=g_pending_model_asset;
@@ -767,9 +786,22 @@ public:
         }
         if (action == "model-classification") {
             if(g_selected_model_asset>=0){
-                const int classification=event.GetParameter<int>("value",element->GetAttribute<int>("value",1));
+                const int classification=event.GetParameter<int>("value",element->GetAttribute<int>("value",0));
                 mtlb_imported_model_classify(g_selected_model_asset,classification);
                 maker_refresh_imported_asset_lists();
+            }
+            return;
+        }
+        if (action == "sprite-classification") {
+            if(g_selected_rom_sprite>=0){
+                const int category=event.GetParameter<int>("value",element->GetAttribute<int>("value",0));
+                if(mtlb_editor_sprite_asset_set_category(g_selected_rom_sprite,category)){
+                    maker_refresh_sprite_lists();
+                    maker_update_sprite_panel(g_selected_rom_sprite);
+                    set_status("ROM sprite role saved to the portable Maker category file.");
+                }else{
+                    set_status("Could not save the ROM sprite category file.");
+                }
             }
             return;
         }
@@ -1389,19 +1421,49 @@ static void draw_rom_sprite_cards(SDL_Renderer *renderer)
     if(!renderer||!g_document)return;
     static std::vector<SDL_Vertex> vertices;
     static std::vector<int> indices;
+    static const char *folders[]={"review","character","items","enemies","bosses"};
     vertices.clear();indices.clear();
-    const int count=std::min(24,mtlb_editor_sprite_asset_count());
+    const int count=mtlb_editor_sprite_asset_count();
+    Rml::Element *scroll=g_document->GetElementById("folder-scroll");
+    const Rml::Vector2f scroll_origin=scroll?scroll->GetAbsoluteOffset():Rml::Vector2f(0,0);
+    const float scroll_top=scroll_origin.y;
+    const float scroll_bottom=scroll_top+(scroll?scroll->GetClientHeight():0.0f);
     for(int i=0;i<count;i++){
-        int x=0,y=0,w=0,h=0;uint16_t attr=0;
-        if(!mtlb_editor_sprite_asset_part(i,0,&x,&y,&w,&h,&attr))continue;
-        const char *ids[]={"sprite-thumb-enemy-%d","sprite-thumb-boss-%d"};
-        for(const char *pattern:ids){
-            char id[64];std::snprintf(id,sizeof(id),pattern,i);
-            Rml::Element *thumb=g_document->GetElementById(id);
-            if(!thumb)continue;
-            const Rml::Vector2f origin=thumb->GetAbsoluteOffset();
-            append_rom_sprite_part(vertices,indices,origin.x,origin.y,
-                thumb->GetClientWidth(),thumb->GetClientHeight(),w,h,attr);
+        uint32_t owner=0,descriptor=0;uint16_t frames=0,parts=0;
+        if(!mtlb_editor_sprite_asset_info(i,&owner,&descriptor,&frames,&parts)||parts==0)continue;
+        const int category=std::max(0,std::min(4,mtlb_editor_sprite_asset_category(i)));
+        char id[80];std::snprintf(id,sizeof(id),"sprite-thumb-%s-%d",folders[category],i);
+        Rml::Element *thumb=g_document->GetElementById(id);
+        if(!thumb)continue;
+        const Rml::Vector2f origin=thumb->GetAbsoluteOffset();
+        const float thumb_width=thumb->GetClientWidth(),thumb_height=thumb->GetClientHeight();
+        if(thumb_width<4.0f||thumb_height<4.0f)continue;
+        if(scroll&& (origin.y+thumb_height<scroll_top || origin.y>scroll_bottom))continue;
+
+        int part_x[64]={},part_y[64]={},part_w[64]={},part_h[64]={};
+        uint16_t part_attr[64]={};
+        int valid_parts=0,min_x=32767,min_y=32767,max_x=-32768,max_y=-32768;
+        for(int p=0;p<std::min(64,(int)parts);p++){
+            if(!mtlb_editor_sprite_asset_part(i,p,&part_x[p],&part_y[p],&part_w[p],&part_h[p],&part_attr[p]))continue;
+            if(part_w[p]<=0||part_h[p]<=0)continue;
+            min_x=std::min(min_x,part_x[p]);min_y=std::min(min_y,part_y[p]);
+            max_x=std::max(max_x,part_x[p]+part_w[p]*8);max_y=std::max(max_y,part_y[p]+part_h[p]*8);
+            valid_parts++;
+        }
+        if(valid_parts==0||max_x<=min_x||max_y<=min_y)continue;
+        const float sprite_width=(float)(max_x-min_x),sprite_height=(float)(max_y-min_y);
+        const float scale=std::min(thumb_width/(sprite_width+4.0f),thumb_height/(sprite_height+4.0f));
+        if(scale<=0.0f)continue;
+        const float draw_width=sprite_width*scale,draw_height=sprite_height*scale;
+        const float left=origin.x+(thumb_width-draw_width)*0.5f;
+        const float top=origin.y+(thumb_height-draw_height)*0.5f;
+        for(int p=0;p<std::min(64,(int)parts);p++){
+            if(part_w[p]<=0||part_h[p]<=0)continue;
+            const float part_left=left+(part_x[p]-min_x)*scale;
+            const float part_top=top+(part_y[p]-min_y)*scale;
+            append_rom_sprite_part(vertices,indices,part_left,part_top,
+                part_w[p]*8.0f*scale,part_h[p]*8.0f*scale,
+                part_w[p],part_h[p],part_attr[p]);
         }
     }
     if(indices.empty())return;
@@ -1586,7 +1648,6 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     draw_model_previews(renderer);
     draw_stage_lighting(renderer);
     draw_rom_sprite_cards(renderer);
-    draw_asset_shelf_previews(renderer);
     const Uint64 grid_end = SDL_GetPerformanceCounter();
 
     const double ticks_to_ms = 1000.0 / (double)SDL_GetPerformanceFrequency();
