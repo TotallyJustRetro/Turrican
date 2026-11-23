@@ -1758,6 +1758,16 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
 
     SDL_Event copy=*event;
     RmlSDL::InputEventHandler(g_context,g_window,copy);
+    }catch(const std::bad_alloc&){
+        maker_log("SDL Maker event failed: memory allocation exhausted.");
+        set_status("The event was cancelled because available memory is exhausted.");
+    }catch(const std::exception &error){
+        maker_log("SDL Maker event failed safely: %s",error.what());
+        set_status("The event failed safely. See maker-rmlui.log for details.");
+    }catch(...){
+        maker_log("SDL Maker event failed with an unknown exception.");
+        set_status("The event failed safely. See maker-rmlui.log for details.");
+    }
 }
 
 extern "C" int mtlbr_is_active(void)
@@ -2269,16 +2279,6 @@ static void draw_stage_lighting(SDL_Renderer *renderer)
             SDL_RenderDrawLine(renderer,(int)origin.x,y,(int)(origin.x+width),y);
     }
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-    }catch(const std::bad_alloc&){
-        maker_log("SDL Maker event failed: memory allocation exhausted.");
-        set_status("The event was cancelled because available memory is exhausted.");
-    }catch(const std::exception &error){
-        maker_log("SDL Maker event failed safely: %s",error.what());
-        set_status("The event failed safely. See maker-rmlui.log for details.");
-    }catch(...){
-        maker_log("SDL Maker event failed with an unknown exception.");
-        set_status("The event failed safely. See maker-rmlui.log for details.");
-    }
 }
 
 extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height)
