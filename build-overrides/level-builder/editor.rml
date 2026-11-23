@@ -8,7 +8,7 @@
   <header class="topbar">
     <div class="brand-mark">MT</div>
     <div class="brand-block">
-      <div class="brand-title">MEGA TURRICAN</div>
+      <div class="brand-title">MEGA TURRICAN MAKER</div>
       <div class="brand-file"><span class="brand-era">GENESIS / 16-BIT // </span><span id="level-name">UNTITLED_LEVEL.MTL</span></div>
     </div>
     <nav class="menu-strip">
@@ -30,14 +30,14 @@
   <div class="workspace">
     <nav class="tool-rail">
       <div class="rail-caption">TOOLS</div>
-      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">01</span><span>SELECT</span></button>
-      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">02</span><span>BRUSH</span></button>
-      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">03</span><span>FILL</span></button>
-      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">04</span><span>SLOPE</span></button>
-      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">05</span><span>ROPE</span></button>
-      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">06</span><span>TRIGGER</span></button>
-      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">07</span><span>LIGHT</span></button>
-      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">08</span><span>ERASE</span></button>
+      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">↖</span><span>SELECT</span></button>
+      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
+      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">◆</span><span>FILL</span></button>
+      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
+      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">∿</span><span>ROPE</span></button>
+      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
+      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
+      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">×</span><span>ERASE</span></button>
       <div class="rail-spacer"></div>
       <div class="rail-actions">
         <button class="rail-mini-button" data-action="undo">UNDO</button>
