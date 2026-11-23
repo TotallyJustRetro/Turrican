@@ -743,7 +743,8 @@ static void maker_update_mode_ui()
     }
     static const char *tool_names[]={"select","brush","fill","slope","rope","trigger","light","erase","asset-select"};
     const int tool_index=std::max(0,std::min(8,g_maker_tool));
-    g_selected_tool=tool_names[tool_index];
+    if(g_maker_mode==MAKER_OBJECTS&&tool_index==6)g_selected_tool="sprite-model-brush";
+    else g_selected_tool=tool_names[tool_index];
     if(Rml::Element *palette=g_document->GetElementById("tool-palette")){
         palette->SetInnerRML(maker_tool_list(g_maker_mode));
         for(int i=0;i<palette->GetNumChildren();i++){
@@ -782,7 +783,7 @@ static void maker_update_mode_ui()
 
     static const char *hints[MAKER_MODE_COUNT]={
         "ROM TILES / Drag a tile card onto the stage, or use BRUSH to paint. Right-click erases.",
-        "ENTITY PLACEMENT / Drag a 2D sprite or 3D model onto the stage. Snap and collision are in Properties.",
+        "ENTITY PLACEMENT / Select a sprite or model, choose SPRITE / MODEL BRUSH, then drag across the playfield. PLACE SELECTED makes one stamp.",
         "EVENT SCRIPT / Add trigger, condition, action and dialogue nodes to the bottom flow strip.",
         "ASSET STUDIO / Import GLB, GLTF, OBJ, FBX models and PNG/TGA textures into the portable project.",
         "BOSS FORGE / Drag a multipart sprite or articulated 3D model, then configure phases and weakpoints.",
