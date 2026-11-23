@@ -37,6 +37,7 @@ static LiveSpritePart g_live_sprites[80] = {};
 static int g_live_sprite_count = 0;
 struct MakerRomSpriteAsset { uint32_t owner_pc, descriptor_pc, first_frame_pc; uint16_t frame_count, first_frame_parts; };
 static MakerRomSpriteAsset g_rom_sprite_assets[256] = {};
+static uint8_t g_rom_sprite_categories[256] = {}; // 0=review, 1=character, 2=item, 3=enemy, 4=boss
 static int g_rom_sprite_asset_count = 0;
 static bool g_maker_rom_assets_prepared = false;
 static int g_rom_sprite_offset = 0, g_selected_rom_sprite = -1;
@@ -211,6 +212,64 @@ static void maker_load_rom_fx_frames()
         }
     }
 }
+static bool maker_sprite_category_path(char *path,size_t capacity)
+{
+    if(!path||capacity==0)return false;
+    const char *portable=std::getenv("MEGATURRICAN_CONFIG_DIR");
+    char base[4096]={};
+    if(portable&&portable[0]){
+        const int n=std::snprintf(base,sizeof(base),"%s",portable);
+        if(n<0||(size_t)n>=sizeof(base))return false;
+    }else{
+        char *sdl_base=SDL_GetBasePath();
+        if(!sdl_base)return false;
+        const int n=std::snprintf(base,sizeof(base),"%s",sdl_base);
+        SDL_free(sdl_base);
+        if(n<0||(size_t)n>=sizeof(base))return false;
+    }
+    const size_t length=std::strlen(base);
+    const char *separator=(length>0&&base[length-1]!='/'&&base[length-1]!='\\\\')?"/":"";
+    const int n=std::snprintf(path,capacity,"%s%smaker-sprite-categories.ini",base,separator);
+    return n>=0&&(size_t)n<capacity;
+}
+
+static void maker_load_sprite_categories()
+{
+    for(int i=0;i<256;i++)g_rom_sprite_categories[i]=0;
+    char path[4096]={};
+    if(!maker_sprite_category_path(path,sizeof(path)))return;
+    FILE *file=std::fopen(path,"rb");
+    if(!file)return;
+    char line[128];
+    while(std::fgets(line,sizeof(line),file)){
+        unsigned int descriptor=0;
+        int category=0;
+        if(std::sscanf(line,"%x=%d",&descriptor,&category)!=2||category<0||category>4)continue;
+        for(int i=0;i<g_rom_sprite_asset_count;i++)
+            if(g_rom_sprite_assets[i].descriptor_pc==(uint32_t)descriptor){
+                g_rom_sprite_categories[i]=(uint8_t)category;
+                break;
+            }
+    }
+    std::fclose(file);
+}
+
+static bool maker_save_sprite_categories()
+{
+    char path[4096]={};
+    if(!maker_sprite_category_path(path,sizeof(path)))return false;
+    FILE *file=std::fopen(path,"wb");
+    if(!file)return false;
+    bool ok=true;
+    for(int i=0;i<g_rom_sprite_asset_count;i++){
+        if(g_rom_sprite_categories[i]==0)continue;
+        if(std::fprintf(file,"%08X=%u\\n",g_rom_sprite_assets[i].descriptor_pc,
+            (unsigned)g_rom_sprite_categories[i])<0){ok=false;break;}
+    }
+    if(std::fclose(file)!=0)ok=false;
+    return ok;
+}
+
 static void maker_build_rom_sprite_catalog()
 {
     g_rom_sprite_asset_count=0;
@@ -456,6 +515,7 @@ extern "C" int mtlb_editor_prepare_rom_assets(void)
         g_rom_hud_art_b_valid = md_rom_copy_region(0x26D40u, g_rom_hud_art_b, (uint32_t)sizeof(g_rom_hud_art_b)) != 0;
         maker_load_rom_fx_frames();
         maker_build_rom_sprite_catalog();
+        maker_load_sprite_categories();
         g_maker_rom_assets_prepared = true;
     }
     append_rom_art_tiles();
@@ -520,6 +580,21 @@ extern "C" int mtlb_editor_sprite_asset_info(int index, uint32_t *owner_pc,
     if (frame_count) *frame_count = asset.frame_count;
     if (part_count) *part_count = asset.first_frame_parts;
     return 1;
+}
+
+extern "C" int mtlb_editor_sprite_asset_category(int index)
+{
+    mtlb_editor_prepare_rom_assets();
+    if(index<0||index>=g_rom_sprite_asset_count)return 0;
+    return (int)g_rom_sprite_categories[index];
+}
+
+extern "C" int mtlb_editor_sprite_asset_set_category(int index,int category)
+{
+    mtlb_editor_prepare_rom_assets();
+    if(index<0||index>=g_rom_sprite_asset_count||category<0||category>4)return 0;
+    g_rom_sprite_categories[index]=(uint8_t)category;
+    return maker_save_sprite_categories()?1:0;
 }
 
 extern "C" int mtlb_editor_sprite_asset_part(int index, int part_index,
