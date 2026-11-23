@@ -473,6 +473,7 @@ static void maker_load_rom_fx_frames()
            !maker_rom_range(source,0x0100u))continue;
         if(md_rom_copy_region(source,g_rom_fx_frames[i],0x0100u)) {
             g_rom_fx_frame_valid[i]=true;
+            if(g_rom_fx_frame_count==0)g_rom_fx_frame=i;
             g_rom_fx_frame_count++;
         }
     }
