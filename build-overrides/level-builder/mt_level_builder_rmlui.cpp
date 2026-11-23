@@ -469,7 +469,7 @@ static void draw_stage_grid(SDL_Renderer *renderer)
     if (g_stage_batch_dirty) {
         g_stage_vertices.clear();
         g_stage_indices.clear();
-        const size_t quads=(size_t)g_map_cols*(size_t)g_map_rows+(size_t)g_map_cols+(size_t)g_map_rows+2u;
+        const size_t quads=(size_t)g_map_cols*(size_t)g_map_rows*64u+(size_t)g_map_cols+(size_t)g_map_rows+2u;
         if(g_stage_vertices.capacity()<quads*4u)g_stage_vertices.reserve(quads*4u);
         if(g_stage_indices.capacity()<quads*6u)g_stage_indices.reserve(quads*6u);
 
@@ -823,6 +823,14 @@ public:
             g_placement_armed=false;
             g_selected_asset_id=element->GetAttribute<int>("data-asset-id",-1);
             g_selected_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
+            static const char *selection_lists[]={"asset-list-tiles","asset-list-review","asset-list-character","asset-list-items","asset-list-enemies","asset-list-bosses","asset-list-3d-review","asset-list-3d-character","asset-list-3d-items","asset-list-3d-enemies","asset-list-3d-bosses"};
+            for(const char *list_id:selection_lists){
+                if(Rml::Element *list=g_document->GetElementById(list_id)){
+                    for(int child=0;child<list->GetNumChildren();child++)
+                        if(Rml::Element *card=list->GetChild(child))card->SetClass("selected",false);
+                }
+            }
+            element->SetClass("selected",true);
             if(Rml::Element *label=g_document->GetElementById("selected-asset-name"))
                 label->SetInnerRML(Rml::StringUtilities::EncodeRml(g_selected_asset_type+" / "+std::to_string(g_selected_asset_id)));
             if(g_selected_asset_type=="2d_tile"){
