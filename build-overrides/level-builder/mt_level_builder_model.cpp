@@ -228,7 +228,7 @@ static bool maker_sprite_category_path(char *path,size_t capacity)
         if(n<0||(size_t)n>=sizeof(base))return false;
     }
     const size_t length=std::strlen(base);
-    const char *separator=(length>0&&base[length-1]!='/'&&base[length-1]!='\\\\')?"/":"";
+    const char *separator=(length>0&&base[length-1]!='/'&&base[length-1]!='\\')?"/":"";
     const int n=std::snprintf(path,capacity,"%s%smaker-sprite-categories.ini",base,separator);
     return n>=0&&(size_t)n<capacity;
 }
