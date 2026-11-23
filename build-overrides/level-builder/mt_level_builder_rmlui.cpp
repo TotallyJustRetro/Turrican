@@ -113,12 +113,12 @@ static const char *kDocument = R"RML(
     <div class="workspace">
       <div class="sidebar">
         <div class="section-label">CREATE</div>
-        <div id="nav-tiles" class="nav-item active" data-action="section" data-section="TILES">▦ &nbsp; TILE PALETTE</div>
-        <div id="nav-actors" class="nav-item" data-action="section" data-section="ACTORS">♟ &nbsp; ACTORS</div>
-        <div id="nav-objects" class="nav-item" data-action="section" data-section="OBJECTS">◇ &nbsp; OBJECTS</div>
-        <div id="nav-bosses" class="nav-item" data-action="section" data-section="BOSSES">◆ &nbsp; BOSSES</div>
-        <div id="nav-events" class="nav-item" data-action="section" data-section="EVENTS">⌘ &nbsp; EVENTS</div>
-        <div id="nav-backgrounds" class="nav-item" data-action="section" data-section="BACKGROUNDS">▤ &nbsp; BACKGROUNDS</div>
+        <div id="nav-tiles" class="nav-item active" data-action="section" data-section="TILES">01 &nbsp; TILE PALETTE</div>
+        <div id="nav-actors" class="nav-item" data-action="section" data-section="ACTORS">02 &nbsp; ACTORS</div>
+        <div id="nav-objects" class="nav-item" data-action="section" data-section="OBJECTS">03 &nbsp; OBJECTS</div>
+        <div id="nav-bosses" class="nav-item" data-action="section" data-section="BOSSES">04 &nbsp; BOSSES</div>
+        <div id="nav-events" class="nav-item" data-action="section" data-section="EVENTS">05 &nbsp; EVENTS</div>
+        <div id="nav-backgrounds" class="nav-item" data-action="section" data-section="BACKGROUNDS">06 &nbsp; BACKGROUNDS</div>
         <div class="sidebar-note">BUILT-IN CONTENT<br/>Original cartridge art index<br/>No stage capture required</div>
       </div>
       <div class="main">
