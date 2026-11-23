@@ -113,6 +113,13 @@
           <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
         </div>
         <div id="folder-scroll" class="folder-scroll">
+          <div class="folder expanded" id="folder-review">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▾</span> Needs_Review/</div>
+            <div id="folder-content-review" class="folder-content">
+              <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
+              <div id="asset-list-review" class="asset-card-grid"></div>
+              <div id="asset-list-3d-review" class="asset-card-grid"></div>
+            </div>
           <div class="folder collapsed" id="folder-character">
             <div class="folder-heading" data-action="folder-toggle" data-folder="character"><span class="folder-arrow">▸</span> Character/</div>
             <div id="folder-content-character" class="folder-content">
@@ -145,13 +152,6 @@
               <div id="asset-list-3d-bosses" class="asset-card-grid"></div>
             </div>
           </div>
-          <div class="folder expanded" id="folder-review">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▾</span> Needs_Review/</div>
-            <div id="folder-content-review" class="folder-content">
-              <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
-              <div id="asset-list-review" class="asset-card-grid"></div>
-              <div id="asset-list-3d-review" class="asset-card-grid"></div>
-            </div>
           </div>
         </div>
       </section>
