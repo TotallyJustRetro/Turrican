@@ -1,4 +1,5 @@
 #include "mt_level_builder_imgui.h"
+#include "mt_maker_asset_catalog.h"
 
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
@@ -66,6 +67,17 @@ struct LiveSpritePart {
 };
 static LiveSpritePart g_live_sprites[80] = {};
 static int g_live_sprite_count = 0;
+
+struct MakerRomSpriteAsset {
+    uint32_t owner_pc;
+    uint32_t descriptor_pc;
+    uint32_t first_frame_pc;
+    uint16_t frame_count;
+    uint16_t first_frame_parts;
+};
+static MakerRomSpriteAsset g_rom_sprite_assets[256] = {};
+static int g_rom_sprite_asset_count = 0;
+static int g_selected_rom_sprite = -1;
 static int g_selected_sprite = -1;
 static int g_selected_palette = 0;
 static int g_tile_shelf_offset = 0;
@@ -317,6 +329,115 @@ static void draw_vdp_sprite(ImDrawList *draw,ImVec2 pos,float tileSize,
     }
 }
 
+
+static bool maker_rom_read_u16(uint32_t address,uint16_t &value)
+{
+    uint8_t bytes[2];
+    if(!md_rom_copy_region(address,bytes,2))return false;
+    value=(uint16_t)(((uint16_t)bytes[0]<<8)|bytes[1]);
+    return true;
+}
+static bool maker_rom_read_u32(uint32_t address,uint32_t &value)
+{
+    uint8_t bytes[4];
+    if(!md_rom_copy_region(address,bytes,4))return false;
+    value=((uint32_t)bytes[0]<<24)|((uint32_t)bytes[1]<<16)|
+          ((uint32_t)bytes[2]<<8)|(uint32_t)bytes[3];
+    return true;
+}
+static bool maker_rom_range(uint32_t address,uint32_t bytes)
+{
+    return address>=0x200u && address<0x400000u &&
+           bytes<=0x400000u-address;
+}
+static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
+{
+    if(!maker_rom_range(frame,8))return false;
+    uint16_t y=0,x=0;
+    uint32_t packed=0;
+    if(!maker_rom_read_u16(frame,y)||!maker_rom_read_u16(frame+2,x)||
+       !maker_rom_read_u32(frame+4,packed))return false;
+    if(y==0 && x==0 && packed==0)return false;
+
+    uint16_t count=0;
+    for(uint32_t part=0;part<64;part++) {
+        const uint32_t at=frame+part*8u;
+        if(!maker_rom_range(at,8))break;
+        uint16_t py=0,px=0;
+        uint32_t attr=0;
+        if(!maker_rom_read_u16(at,py)||!maker_rom_read_u16(at+2,px)||
+           !maker_rom_read_u32(at+4,attr))break;
+        if(py==0 && px==0 && attr==0)break;
+        count++;
+    }
+    if(count==0)return false;
+    if(partCount)*partCount=count;
+    return true;
+}
+static bool maker_sprite_descriptor_probe(uint32_t owner,uint32_t descriptor,
+                                          MakerRomSpriteAsset &asset)
+{
+    if(!maker_rom_range(descriptor,4))return false;
+    uint32_t firstFrame=0;
+    if(!maker_rom_read_u32(descriptor,firstFrame) ||
+       !maker_sprite_frame_probe(firstFrame,nullptr))return false;
+
+    uint16_t frameCount=0,firstParts=0;
+    for(uint32_t frame=0;frame<32;frame++) {
+        uint32_t framePointer=0;
+        if(!maker_rom_range(descriptor+frame*4u,4) ||
+           !maker_rom_read_u32(descriptor+frame*4u,framePointer) ||
+           !maker_sprite_frame_probe(framePointer,frame==0?&firstParts:nullptr))
+            break;
+        frameCount++;
+    }
+    if(frameCount==0)return false;
+    asset.owner_pc=owner;
+    asset.descriptor_pc=descriptor;
+    asset.first_frame_pc=firstFrame;
+    asset.frame_count=frameCount;
+    asset.first_frame_parts=firstParts;
+    return true;
+}
+static void maker_add_rom_sprite_descriptor(uint32_t owner,uint32_t descriptor)
+{
+    if(g_rom_sprite_asset_count>=(int)(sizeof(g_rom_sprite_assets)/sizeof(g_rom_sprite_assets[0])))
+        return;
+    for(int i=0;i<g_rom_sprite_asset_count;i++)
+        if(g_rom_sprite_assets[i].descriptor_pc==descriptor)return;
+    MakerRomSpriteAsset asset={};
+    if(!maker_sprite_descriptor_probe(owner,descriptor,asset))return;
+    g_rom_sprite_assets[g_rom_sprite_asset_count++]=asset;
+}
+static void maker_build_rom_sprite_catalog()
+{
+    g_rom_sprite_asset_count=0;
+    g_selected_rom_sprite=-1;
+    for(uint32_t i=0;i<kMTMakerStaticSpriteDescriptorCount;i++) {
+        const MTMakerStaticSpriteDescriptor &entry=kMTMakerStaticSpriteDescriptors[i];
+        maker_add_rom_sprite_descriptor(entry.owner_pc,entry.descriptor_pc);
+    }
+    for(uint32_t t=0;t<kMTMakerSpritePointerTableCount;t++) {
+        const MTMakerSpritePointerTable &table=kMTMakerSpritePointerTables[t];
+        uint32_t misses=0;
+        for(uint32_t i=0;i<table.entry_limit;i++) {
+            uint32_t descriptor=0;
+            if(!maker_rom_range(table.table_pc+i*4u,4) ||
+               !maker_rom_read_u32(table.table_pc+i*4u,descriptor) ||
+               !maker_rom_range(descriptor,4)) {
+                if(++misses>=2)break;
+                continue;
+            }
+            const int before=g_rom_sprite_asset_count;
+            maker_add_rom_sprite_descriptor(table.owner_pc,descriptor);
+            if(g_rom_sprite_asset_count==before) {
+                // Keep scanning a short run of invalid table cells, but do not
+                // treat arbitrary following ROM data as a descriptor sequence.
+                if(++misses>=3)break;
+            } else misses=0;
+        }
+    }
+}
 
 static void push_level_undo();
 static void undo_level_edit();
@@ -677,7 +798,7 @@ static void draw_asset_shelf()
 {
     ImGui::BeginChild("##asset_shelf",ImVec2(0,ui(43)),true);
     const char *heading=g_mode==MODE_TILES?"GAME TILES":
-        g_mode==MODE_ENTITY?"LIVE SPRITES":g_mode==MODE_BOSS?"SPRITE PARTS":
+        g_mode==MODE_ENTITY?"ROM OBJECTS":g_mode==MODE_BOSS?"ROM SPRITE SETS":
         g_mode==MODE_ASSETS?"DRAW":"EVENTS";
     ImGui::TextColored(ImVec4(.46f,.83f,.88f,1),"%s",heading);
 
@@ -716,32 +837,29 @@ static void draw_asset_shelf()
         }
     }else if(g_mode==MODE_ENTITY||g_mode==MODE_BOSS){
         ImGui::SameLine();
-        if(g_live_sprite_count==0){
-            ImGui::TextDisabled("ENTER A STAGE TO CAPTURE LIVE SPRITES");
+        if(g_rom_sprite_asset_count==0){
+            ImGui::TextDisabled("NO VALID ROM SPRITE DESCRIPTORS FOUND");
         }else{
-            const int shown=std::min(8,g_live_sprite_count);
+            const int shown=std::min(8,g_rom_sprite_asset_count);
             for(int i=0;i<shown;i++){
                 ImGui::SameLine(0,3);
-                ImGui::PushID(2000+i);
-                const LiveSpritePart &sprite=g_live_sprites[i];
-                ImVec2 p=ImGui::GetCursorScreenPos();
-                ImGui::InvisibleButton("##sprite_pick",ImVec2(ui(44),ui(42)));
-                ImDrawList *d=ImGui::GetWindowDrawList();
-                const bool active=g_selected_sprite==i;
-                d->AddRectFilled(p,ImVec2(p.x+ui(44),p.y+ui(42)),active?IM_COL32(71,49,27,255):IM_COL32(14,22,31,255),2.0f);
-                const float scale=ui(30.0f)/(float)std::max(sprite.width_tiles,sprite.height_tiles);
-                const float sw=scale*sprite.width_tiles,sh=scale*sprite.height_tiles;
-                draw_vdp_sprite(d,ImVec2(p.x+(ui(44.0f)-sw)*.5f,p.y+(ui(42.0f)-sh)*.5f),
-                                scale,sprite.tile_attr,sprite.width_tiles,sprite.height_tiles);
-                d->AddRect(p,ImVec2(p.x+ui(44),p.y+ui(42)),active?IM_COL32(255,190,76,255):IM_COL32(82,105,120,255),2.0f,0,active?2.0f:1.0f);
-                if(ImGui::IsItemClicked()){
-                    g_selected_sprite=i;
-                    g_status[0]=0;
+                ImGui::PushID(4000+i);
+                char label[20];
+                std::snprintf(label,sizeof(label),"SET %02d",i+1);
+                const bool active=g_selected_rom_sprite==i;
+                if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.50f,.27f,.10f,1));
+                if(ImGui::SmallButton(label))g_selected_rom_sprite=i;
+                if(active)ImGui::PopStyleColor();
+                if(ImGui::IsItemHovered()){
+                    const MakerRomSpriteAsset &asset=g_rom_sprite_assets[i];
+                    ImGui::SetTooltip("ROM descriptor $%06X\nOwner routine $%06X\nFrames %u  |  First-frame parts %u",
+                        asset.descriptor_pc,asset.owner_pc,(unsigned)asset.frame_count,
+                        (unsigned)asset.first_frame_parts);
                 }
                 ImGui::PopID();
             }
             ImGui::SameLine();
-            ImGui::TextDisabled("%d LIVE PARTS",g_live_sprite_count);
+            ImGui::TextDisabled("%d ROM SETS",g_rom_sprite_asset_count);
         }
     }else if(g_mode==MODE_ASSETS){
         ImGui::SameLine();if(ImGui::SmallButton("16 x 16"))g_asset_size=16;
@@ -978,6 +1096,7 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_selected_y=std::max(0,mtlb_map_cursor_y());
     g_brush_tile=std::max(0,std::min(2047,mtlb_map_brush()));
     g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
+    maker_build_rom_sprite_catalog();
     g_live_art_hash=0;
     g_live_tile_count=0;
     g_rom_tile_start_index=-1;
