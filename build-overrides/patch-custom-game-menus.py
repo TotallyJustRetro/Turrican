@@ -463,7 +463,7 @@ static void native_custom_enter_parent(void) {
 
 static void render_native_extras(void) {
     static const char *items[]={"GAME LEVEL","MODERN OPTIONS","CHEATS","SAVES","BACK"};
-    const int n=5,scale=2,pw=244,ph=154;
+    const int n=5,scale=2,pw=244,ph=178;
     int px,py; native_menu_panel(pw,ph,&px,&py);
     native_menu_title(px+(pw-str_w("EXTRAS",2))/2,py+7,"EXTRAS",2);
     for(int i=0;i<n;i++) {
