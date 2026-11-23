@@ -8,8 +8,8 @@
   <header class="topbar">
     <div class="brand-mark">MT</div>
     <div class="brand-block">
-      <div class="brand-title">MEGA TURRICAN MAKER</div>
-      <div class="brand-file">/ <span id="level-name">UNTITLED_LEVEL.MTL</span></div>
+      <div class="brand-title">MEGA TURRICAN</div>
+      <div class="brand-file"><span class="brand-era">GENESIS / 16-BIT // </span><span id="level-name">UNTITLED_LEVEL.MTL</span></div>
     </div>
     <nav class="menu-strip">
       <button class="menu-item" data-action="menu" data-menu="file">FILE</button>
@@ -30,14 +30,14 @@
   <div class="workspace">
     <nav class="tool-rail">
       <div class="rail-caption">TOOLS</div>
-      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">⌖</span><span>SELECT</span></button>
-      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">✎</span><span>BRUSH</span></button>
-      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">◩</span><span>FILL</span></button>
-      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">◢</span><span>SLOPE</span></button>
-      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">⌁</span><span>ROPE</span></button>
-      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">T</span><span>TRIGGER</span></button>
-      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
-      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">⌫</span><span>ERASE</span></button>
+      <button class="tool-button active" id="tool-0" data-action="tool" data-tool="0" data-class-active="selected_tool == 'select'"><span class="tool-glyph">01</span><span>SELECT</span></button>
+      <button class="tool-button" id="tool-1" data-action="tool" data-tool="1" data-class-active="selected_tool == 'brush'"><span class="tool-glyph">02</span><span>BRUSH</span></button>
+      <button class="tool-button" id="tool-2" data-action="tool" data-tool="2"><span class="tool-glyph">03</span><span>FILL</span></button>
+      <button class="tool-button" id="tool-3" data-action="tool" data-tool="3"><span class="tool-glyph">04</span><span>SLOPE</span></button>
+      <button class="tool-button" id="tool-4" data-action="tool" data-tool="4"><span class="tool-glyph">05</span><span>ROPE</span></button>
+      <button class="tool-button" id="tool-5" data-action="tool" data-tool="5"><span class="tool-glyph">06</span><span>TRIGGER</span></button>
+      <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">07</span><span>LIGHT</span></button>
+      <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">08</span><span>ERASE</span></button>
       <div class="rail-spacer"></div>
       <div class="rail-actions">
         <button class="rail-mini-button" data-action="undo">UNDO</button>
@@ -45,7 +45,7 @@
         <button class="rail-mini-button rail-save" data-action="save">SAVE</button>
         <button class="rail-mini-button rail-exit" data-action="exit">EXIT</button>
       </div>
-      <div class="rail-foot">MAKER / V1</div>
+      <div class="rail-foot">SYSTEM / 16-BIT</div>
     </nav>
 
     <main class="center-dock">
@@ -57,7 +57,7 @@
         <button class="center-tab" id="mode-4" data-action="mode" data-mode="4">BOSS</button>
       </div>
       <div class="stage-head">
-        <div class="stage-title">OBJECT PREVIEW <span class="accent-cyan">/ CHARACTER · ITEMS · ENEMIES · BOSSES</span></div>
+        <div class="stage-title">PLAYFIELD MONITOR <span class="accent-cyan">/ CHARACTER · ITEMS · ENEMIES · BOSSES</span></div>
         <div class="stage-head-right">
           <span id="stage-resolution">MODERN 16:9</span>
           <span class="separator">|</span>
@@ -105,7 +105,7 @@
 
     <aside class="right-dock">
       <section class="asset-drawer">
-        <div class="dock-title"><span>ASSET FOLDER</span><span class="dock-subtitle">2D / 3D LIBRARY</span></div>
+        <div class="dock-title"><span>CARTRIDGE ASSET BAY</span><span class="dock-subtitle">ROM / IMPORTED</span></div>
         <div class="asset-filter">
           <button class="filter-button active" id="filter-all" data-action="asset-filter" data-filter="all">ALL</button>
           <button class="filter-button" id="filter-2d" data-action="asset-filter" data-filter="2d">2D</button>
@@ -223,9 +223,9 @@
   </div>
 
   <footer class="statusbar">
-    <div class="status-left"><span class="status-led"></span><span id="status-text">READY / RMLUI MAKER</span></div>
+    <div class="status-left"><span class="status-led"></span><span id="status-text">SYSTEM READY / CARTRIDGE LINK OK</span></div>
     <div id="coordinate-status" class="status-right">X: <span id="cursor-x-status">24</span> / Y: <span id="cursor-y-status">12</span></div>
-    <div class="status-right">MEGA TURRICAN REBORN / MAKER</div>
+    <div class="status-right">MEGA TURRICAN / GENESIS LEVEL SYSTEM</div>
   </footer>
 
   <div id="model-import-modal" class="modal-shade hidden">
