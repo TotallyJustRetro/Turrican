@@ -88,6 +88,7 @@ struct MakerRomSpriteAsset {
 };
 static MakerRomSpriteAsset g_rom_sprite_assets[256] = {};
 static int g_rom_sprite_asset_count = 0;
+static int g_rom_sprite_offset = 0;
 static int g_selected_rom_sprite = -1;
 static int g_selected_sprite = -1;
 static int g_selected_palette = 0;
@@ -480,6 +481,7 @@ static void maker_load_rom_fx_frames()
 static void maker_build_rom_sprite_catalog()
 {
     g_rom_sprite_asset_count=0;
+    g_rom_sprite_offset=0;
     g_selected_rom_sprite=-1;
     for(uint32_t i=0;i<kMTMakerStaticSpriteDescriptorCount;i++) {
         const MTMakerStaticSpriteDescriptor &entry=kMTMakerStaticSpriteDescriptors[i];
@@ -978,8 +980,13 @@ static void draw_asset_shelf()
         if(g_rom_sprite_asset_count==0){
             ImGui::TextDisabled("NO VALID ROM SPRITE DESCRIPTORS FOUND");
         }else{
-            const int shown=std::min(8,g_rom_sprite_asset_count);
-            for(int i=0;i<shown;i++){
+            if(g_rom_sprite_asset_count>8){
+                ImGui::SameLine(0,2);
+                if(ImGui::SmallButton("<"))g_rom_sprite_offset=std::max(0,g_rom_sprite_offset-8);
+            }
+            const int shown=std::min(8,g_rom_sprite_asset_count-g_rom_sprite_offset);
+            for(int n=0;n<shown;n++){
+                const int i=g_rom_sprite_offset+n;
                 ImGui::SameLine(0,3);
                 ImGui::PushID(4000+i);
                 const MakerRomSpriteAsset &asset=g_rom_sprite_assets[i];
@@ -1008,8 +1015,14 @@ static void draw_asset_shelf()
                         (unsigned)asset.first_frame_parts);
                 ImGui::PopID();
             }
+            if(g_rom_sprite_offset+shown<g_rom_sprite_asset_count){
+                ImGui::SameLine(0,2);
+                if(ImGui::SmallButton(">"))
+                    g_rom_sprite_offset=std::min(g_rom_sprite_asset_count-8,g_rom_sprite_offset+8);
+            }
             ImGui::SameLine();
-            ImGui::TextDisabled("%d ROM SETS",g_rom_sprite_asset_count);
+            ImGui::TextDisabled("%d-%d / %d ROM SETS",g_rom_sprite_offset+1,
+                g_rom_sprite_offset+shown,g_rom_sprite_asset_count);
         }
     }else if(g_mode==MODE_ASSETS){
         ImGui::SameLine();if(ImGui::SmallButton("16 x 16"))g_asset_size=16;
