@@ -43,16 +43,16 @@ def main() -> None:
         s = once(s, include + "\n", include + "\n" + rml_include + "\n",
                  "RmlUi Maker frontend include")
 
-    # Forward SDL input only to the active Maker frontend.
+    # Forward SDL input only to whichever Maker frontend initialized successfully.
     route_anchor = (
         "    if(e->type==SDL_WINDOWEVENT&&e->window.event==SDL_WINDOWEVENT_RESIZED)"
         "{ws_update();make_texture();}\n"
     )
     route_patch = route_anchor + (
-        "    /* ImGui owns pointer/keyboard interaction while the editor is open. */\n"
+        "    /* Active Maker frontend owns pointer and keyboard interaction. */\n"
         "    if(native_menu_state==11){if(mtlbr_is_active())mtlbr_process_event(e);else mtlb_process_event(e);return;}\n"
     )
-    if "ImGui owns pointer/keyboard interaction" not in s:
+    if "Active Maker frontend owns pointer and keyboard interaction" not in s:
         s = once(s, route_anchor, route_patch, "Level Builder SDL event routing")
 
     # The game keeps its native-resolution video pipeline. Dear ImGui is
@@ -98,12 +98,12 @@ def main() -> None:
     # Prefer RmlUi. Create Dear ImGui only when the RmlUi startup path fails.
     init_anchor = "    if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
     init_patch = init_anchor + (
-        "    if(native_menu_state==11 && !mtlbr_init(SDL_RenderGetWindow(ren),ren)) {\\n"
-        "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\\"Mega Turrican Reborn - RmlUi\\",mtlbr_last_error(),SDL_RenderGetWindow(ren));\\n"
-        "        if(!mtlb_init(SDL_RenderGetWindow(ren),ren)) {\\n"
-        "            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\\"Mega Turrican Reborn\\",\\"Could not initialize the fallback Level Builder renderer.\\",NULL);\\n"
-        "            native_custom_enter_parent();\\n"
-        "        }\\n"
+        "    if(native_menu_state==11 && !mtlbr_init(SDL_RenderGetWindow(ren),ren)) {\n"
+        "        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn - RmlUi\",mtlbr_last_error(),SDL_RenderGetWindow(ren));\n"
+        "        if(!mtlb_init(SDL_RenderGetWindow(ren),ren)) {\n"
+        "            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,\"Mega Turrican Reborn\",\"Could not initialize the fallback Level Builder renderer.\",NULL);\n"
+        "            native_custom_enter_parent();\n"
+        "        }\n"
         "    }"
     )
     if "initialize RmlUi Maker frontend first, with ImGui fallback" not in s:
