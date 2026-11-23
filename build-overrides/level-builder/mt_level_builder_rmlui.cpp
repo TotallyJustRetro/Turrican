@@ -41,43 +41,43 @@ static const char *kDocument = R"RML(
     .header { height: 48px; min-height: 48px; display: flex; flex-direction: row; align-items: center; padding: 0 14px; background-color: #111b28; border-bottom: 1px solid #314357; }
     .brand-mark { width: 27px; height: 27px; background-color: #e7a747; border-radius: 5px; margin-right: 9px; }
     .brand { width: 205px; }
-    .brand-title { color: #f0b65b; font-size: 14px; font-weight: bold; letter-spacing: 1.2px; }
-    .brand-sub { color: #8fa3b8; font-size: 9px; letter-spacing: 1.7px; }
-    .header-title { flex-grow: 1; color: #d7e3ee; font-size: 13px; font-weight: bold; }
-    .header-meta { color: #8195a8; font-size: 10px; margin-right: 10px; }
-    .button { display: inline-block; padding: 7px 12px; margin-left: 5px; border-radius: 4px; background-color: #243448; border: 1px solid #3c536c; color: #dce8f2; font-size: 10px; font-weight: bold; text-align: center; }
+    .brand-title { color: #f0b65b; font-size: 18px; font-weight: bold; letter-spacing: 1.2px; }
+    .brand-sub { color: #8fa3b8; font-size: 11px; letter-spacing: 1.7px; }
+    .header-title { flex-grow: 1; color: #d7e3ee; font-size: 16px; font-weight: bold; }
+    .header-meta { color: #8195a8; font-size: 12px; margin-right: 10px; }
+    .button { display: inline-block; padding: 8px 14px; margin-left: 5px; border-radius: 4px; background-color: #243448; border: 1px solid #3c536c; color: #dce8f2; font-size: 12px; font-weight: bold; text-align: center; }
     .button:hover { background-color: #354b62; border-color: #e0a74e; }
     .button.primary { color: #21190f; background-color: #e5ad57; border-color: #ffd080; }
     .button.primary:hover { background-color: #f6c675; }
     .button.danger { color: #e8b8b8; background-color: #39252a; border-color: #704047; }
     .toolbar { height: 34px; min-height: 34px; display: flex; align-items: center; padding: 0 12px; background-color: #172434; border-bottom: 1px solid #26394c; }
-    .crumb { color: #7f94a9; font-size: 10px; }
+    .crumb { color: #7f94a9; font-size: 12px; }
     .crumb strong { color: #e5b05d; }
-    .toolbar-right { flex-grow: 1; text-align: right; color: #8297aa; font-size: 10px; }
+    .toolbar-right { flex-grow: 1; text-align: right; color: #8297aa; font-size: 11px; }
     .workspace { display: flex; flex-direction: row; flex-grow: 1; padding: 8px; }
     .sidebar { width: 142px; min-width: 142px; background-color: #111b27; border: 1px solid #2b3d50; border-radius: 5px; padding: 9px 7px; }
-    .section-label { color: #72879b; font-size: 9px; font-weight: bold; letter-spacing: 1.4px; margin: 5px 4px 8px 4px; }
-    .nav-item { display: block; padding: 9px 8px; margin-bottom: 4px; background-color: #172433; border: 1px solid transparent; border-radius: 4px; color: #9fb1c3; font-size: 10px; font-weight: bold; }
+    .section-label { color: #72879b; font-size: 11px; font-weight: bold; letter-spacing: 1.4px; margin: 5px 4px 8px 4px; }
+    .nav-item { display: block; padding: 10px 8px; margin-bottom: 4px; background-color: #172433; border: 1px solid transparent; border-radius: 4px; color: #9fb1c3; font-size: 12px; font-weight: bold; }
     .nav-item:hover { color: #ffffff; background-color: #24364a; border-color: #435a70; }
     .nav-item.active { color: #ffd18a; background-color: #3a3025; border-color: #bd8b43; }
-    .sidebar-note { margin: 12px 4px 4px 4px; padding-top: 9px; border-top: 1px solid #2a3a4a; color: #75899d; font-size: 9px; line-height: 1.5; }
+    .sidebar-note { margin: 12px 4px 4px 4px; padding-top: 9px; border-top: 1px solid #2a3a4a; color: #75899d; font-size: 11px; line-height: 1.5; }
     .main { display: flex; flex-direction: column; flex-grow: 1; margin-left: 8px; margin-right: 8px; min-width: 0; }
     .panel { background-color: #111b27; border: 1px solid #2b3d50; border-radius: 5px; }
-    .panel-heading { height: 30px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #2b3d50; color: #e4edf5; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
-    .panel-kicker { flex-grow: 1; color: #748ba1; font-size: 9px; font-weight: normal; text-align: right; }
+    .panel-heading { height: 34px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #2b3d50; color: #e4edf5; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+    .panel-kicker { flex-grow: 1; color: #748ba1; font-size: 11px; font-weight: normal; text-align: right; }
     .stage-panel { flex-grow: 1; padding: 8px; }
     .stage-screen { width: 100%; height: 100%; min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
-    .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 9px; }
+    .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 11px; }
     .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
     .stage-grid { width: 768px; height: 384px; overflow: hidden; display: flex; flex-direction: column; background-color: #142638; }
     .stage-row { width: 768px; height: 12px; min-height: 12px; display: flex; flex-direction: row; }
     .cell { display: block; flex: 0 0 12px; width: 12px; height: 12px; min-width: 12px; margin: 0; padding: 0; background-color: #182d41; border-right: 1px solid #2c465f; border-bottom: 1px solid #2c465f; }
     .cell:hover { background-color: #e5ad57; }
     .cell.filled { background-color: #628b77; }
-    .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 9px; }
+    .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 11px; }
     .shelf { height: 75px; min-height: 75px; margin-top: 8px; }
     .shelf-content { display: flex; flex-direction: row; align-items: center; padding: 9px; }
-    .brush { width: 55px; height: 40px; margin-right: 7px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #19293a; border: 1px solid #334b62; border-radius: 4px; color: #b8c9d7; font-size: 9px; }
+    .brush { width: 62px; height: 48px; margin-right: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #19293a; border: 1px solid #334b62; border-radius: 4px; color: #b8c9d7; font-size: 10px; }
     .brush:hover { background-color: #30465c; border-color: #e1a84e; }
     .brush.active { background-color: #403426; border-color: #e1a84e; color: #ffcf85; }
     .brush-swatch { width: 17px; height: 17px; margin-bottom: 3px; background-color: #668b77; border: 1px solid #94baa0; border-radius: 2px; }
@@ -85,13 +85,13 @@ static const char *kDocument = R"RML(
     .brush-swatch.b3 { background-color: #b77f4c; border-color: #e0ad77; }
     .brush-swatch.b4 { background-color: #766b9d; border-color: #a89acb; }
     .brush-swatch.b5 { background-color: #9b9b78; border-color: #c6c59f; }
-    .shelf-caption { color: #7890a5; font-size: 9px; margin-right: 12px; }
+    .shelf-caption { color: #7890a5; font-size: 11px; margin-right: 12px; }
     .inspector { width: 174px; min-width: 174px; padding: 0 9px 9px 9px; }
     .inspector-section { padding: 10px 2px; border-bottom: 1px solid #293b4d; }
-    .inspector-label { color: #7790a5; font-size: 9px; letter-spacing: 1px; margin-bottom: 6px; }
-    .inspector-value { color: #e5b15e; font-size: 12px; font-weight: bold; }
-    .inspector-copy { color: #9aafc1; font-size: 9px; line-height: 1.5; }
-    .statusbar { height: 25px; min-height: 25px; display: flex; align-items: center; padding: 0 11px; background-color: #111b27; border-top: 1px solid #2b3d50; color: #8095a8; font-size: 9px; }
+    .inspector-label { color: #7790a5; font-size: 11px; letter-spacing: 1px; margin-bottom: 7px; }
+    .inspector-value { color: #e5b15e; font-size: 15px; font-weight: bold; }
+    .inspector-copy { color: #9aafc1; font-size: 11px; line-height: 1.5; }
+    .statusbar { height: 30px; min-height: 30px; display: flex; align-items: center; padding: 0 12px; background-color: #111b27; border-top: 1px solid #2b3d50; color: #8095a8; font-size: 11px; }
     .status-left { flex-grow: 1; }
     .status-accent { color: #e8b25d; }
   </style>
