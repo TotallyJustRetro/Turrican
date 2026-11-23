@@ -170,10 +170,17 @@
             <div class="model-preview-placeholder">NO MODEL SELECTED</div>
           </div>
           <div class="model-metrics">
-            <div class="model-stats"><span>TRIANGLES</span><strong id="model-triangle-count">0 / 256</strong></div>
+            <div class="model-stats"><span>TRIANGLES</span><strong id="model-triangle-count">0 TRIS</strong></div>
             <div class="model-stats"><span>BONES</span><strong id="model-bone-count">0</strong></div>
-            <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NONE</strong></div>
+            <div class="model-stats"><span>TEXTURES</span><strong id="model-texture-state">NO MAP</strong></div>
           </div>
+        </div>
+        <div class="model-animation-row">
+          <label for="model-animation-select">ANIMATION CLIPS</label>
+          <select id="model-animation-select" data-action="model-animation-select">
+            <option value="-1">NO MODEL SELECTED</option>
+          </select>
+          <span id="model-animation-status">STATIC MODEL</span>
         </div>
         <div class="classification-row"><span>ASSET TYPE</span>
           <select id="model-classification" data-action="model-classification">
@@ -189,7 +196,7 @@
           <button class="button place-stage-button" id="place-selected-asset" data-action="place-selected-asset">PLACE SELECTED ON STAGE</button>
         </div>
         <button class="button import-texture-button" data-action="import-texture">IMPORT PNG / TGA TEXTURE</button>
-        <div class="placement-help">Select a model, choose PLACE, then click its position in the playfield. 3D placement requires MODERN REBORN.</div>
+        <div class="placement-help">Select a sprite or model, choose SPRITE / MODEL BRUSH, then drag across the playfield to stamp a row or path. PLACE SELECTED makes a single stamp.</div>
       </section>
 
       <section class="property-inspector">
@@ -221,11 +228,11 @@
             <option>POINT</option><option>SPOTLIGHT</option><option>AMBIENT TINT</option>
           </select>
         </div>
-        <div class="property-row"><label>LIGHT COLOR</label><input id="light-color" type="text" value="#E619E6" data-action="property" data-property="light-color"/></div>
+        <div class="property-row"><label>LIGHT COLOR</label><input id="light-color" type="text" value="#D98B45" data-action="property" data-property="light-color"/></div>
         <div class="property-row"><label>LIGHT RADIUS</label><input id="light-radius" type="range" min="8" max="256" value="96" data-action="property" data-property="light-radius"/></div>
         <div class="property-row"><label>INTENSITY</label><input id="light-intensity" type="range" min="0" max="100" value="65" data-action="property" data-property="light-intensity"/></div>
         <div class="property-subtitle">POST PROCESSING</div>
-        <div class="toggle-row"><label>BLOOM / NEON GLOW</label><input type="checkbox" id="fx-bloom" data-action="property" data-property="bloom"/></div>
+        <div class="toggle-row"><label>DIFFUSE BLOOM</label><input type="checkbox" id="fx-bloom" data-action="property" data-property="bloom"/></div>
         <div class="toggle-row"><label>RIM LIGHTING</label><input type="checkbox" id="fx-rim" data-action="property" data-property="rim"/></div>
         <div class="toggle-row"><label>CEL / TOON OUTLINES</label><input type="checkbox" id="fx-cel" data-action="property" data-property="cel"/></div>
         <div class="toggle-row"><label>PARALLAX DEPTH FOG</label><input type="checkbox" id="fx-fog" data-action="property" data-property="fog"/></div>
