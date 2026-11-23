@@ -56,6 +56,39 @@ jobs:
           if ($actual -ne 'c1aaac65e896a45f81f47a4d68f9959e0f86c859') { throw "Unexpected Dear ImGui source revision: $actual" }
           "IMGUI_SOURCE=$imgui" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Fetch pinned RmlUi 6.3 source
+        shell: pwsh
+        run: |
+          $rmlui = Join-Path $PWD '_rmlui-source'
+          git clone --depth 1 --branch 6.3 https://github.com/mikke89/RmlUi.git $rmlui
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch RmlUi 6.3.' }
+          $actual = (git -C $rmlui rev-parse HEAD).Trim()
+          if ($actual -ne 'ba95ffe8bfb6370efb2cdcca927eaad4710c5413') { throw "Unexpected RmlUi source revision: $actual" }
+          $prefix = Join-Path $PWD '_rmlui-install'
+          $build = Join-Path $PWD '_rmlui-build'
+          "RMLUI_SOURCE=$rmlui" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RMLUI_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RMLUI_BUILD=$build" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build pinned RmlUi core for the existing SDL2 renderer
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          rmlui_source="$(cygpath -u "$RMLUI_SOURCE")"
+          rmlui_build="$(cygpath -u "$RMLUI_BUILD")"
+          rmlui_prefix="$(cygpath -u "$RMLUI_PREFIX")"
+          cmake -S "$rmlui_source" -B "$rmlui_build" -G Ninja \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DRMLUI_SAMPLES=OFF \
+            -DRMLUI_FONT_ENGINE=freetype \
+            -DRMLUI_PRECOMPILED_HEADERS=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$rmlui_prefix"
+          cmake --build "$rmlui_build" --target install --parallel 2
+          test -s "$rmlui_prefix/lib/librmlui.a"
+          test -s "$RMLUI_SOURCE/LICENSE.txt"
+          echo "RmlUi 6.3 static core installed for the Maker UI."
+
       - name: Decrypt private source bundle
         shell: msys2 {0}
         env:
