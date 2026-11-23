@@ -1687,7 +1687,7 @@ body {
 }
 
 .modal-shade {
-  background-color: #050a1bd9;
+  background-color: #070d20;
 }
 
 .modal-card {
