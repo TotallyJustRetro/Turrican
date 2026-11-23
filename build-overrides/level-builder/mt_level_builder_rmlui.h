@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer);
+const char *mtlbr_last_error(void);
 void mtlbr_shutdown(void);
 void mtlbr_process_event(const SDL_Event *event);
 int mtlbr_is_active(void);
