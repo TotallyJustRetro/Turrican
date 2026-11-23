@@ -1309,6 +1309,199 @@ static void draw_asset_shelf_previews(SDL_Renderer *renderer)
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
 }
 
+static void append_rom_sprite_part(std::vector<SDL_Vertex> &vertices,std::vector<int> &indices,
+    float x,float y,float max_width,float max_height,int width_tiles,int height_tiles,uint16_t tile_attr)
+{
+    if(width_tiles<=0||height_tiles<=0)return;
+    const float scale=std::min(max_width/(width_tiles*8.0f),max_height/(height_tiles*8.0f));
+    if(scale<=0.05f)return;
+    const float total_w=width_tiles*8.0f*scale,total_h=height_tiles*8.0f*scale;
+    const float left=x+(max_width-total_w)*0.5f,top=y+(max_height-total_h)*0.5f;
+    const int base_tile=tile_attr&0x07FF;
+    const int flags=tile_attr&0x7800;
+    for(int ty=0;ty<height_tiles;ty++)for(int tx=0;tx<width_tiles;tx++){
+        const int tile=base_tile+tx*height_tiles+ty;
+        const int entry=0x8000|flags|tile;
+        for(int py=0;py<8;py++)for(int px=0;px<8;px++){
+            uint8_t rgba[4];mtlb_editor_tile_rgba(entry,px,py,rgba);
+            if(!rgba[3])continue;
+            const int base=(int)vertices.size();
+            SDL_Vertex v{};v.color=SDL_Color{rgba[0],rgba[1],rgba[2],rgba[3]};v.tex_coord=SDL_FPoint{0,0};
+            const float x0=left+(tx*8+px)*scale,y0=top+(ty*8+py)*scale;
+            v.position=SDL_FPoint{x0,y0};vertices.push_back(v);
+            v.position=SDL_FPoint{x0+scale,y0};vertices.push_back(v);
+            v.position=SDL_FPoint{x0+scale,y0+scale};vertices.push_back(v);
+            v.position=SDL_FPoint{x0,y0+scale};vertices.push_back(v);
+            indices.insert(indices.end(),{base,base+1,base+2,base,base+2,base+3});
+        }
+    }
+}
+
+static void draw_rom_sprite_cards(SDL_Renderer *renderer)
+{
+    if(!renderer||!g_document)return;
+    static std::vector<SDL_Vertex> vertices;
+    static std::vector<int> indices;
+    vertices.clear();indices.clear();
+    const int count=std::min(24,mtlb_editor_sprite_asset_count());
+    for(int i=0;i<count;i++){
+        int x=0,y=0,w=0,h=0;uint16_t attr=0;
+        if(!mtlb_editor_sprite_asset_part(i,0,&x,&y,&w,&h,&attr))continue;
+        const char *ids[]={"sprite-thumb-enemy-%d","sprite-thumb-boss-%d"};
+        for(const char *pattern:ids){
+            char id[64];std::snprintf(id,sizeof(id),pattern,i);
+            Rml::Element *thumb=g_document->GetElementById(id);
+            if(!thumb)continue;
+            const Rml::Vector2f origin=thumb->GetAbsoluteOffset();
+            append_rom_sprite_part(vertices,indices,origin.x,origin.y,
+                thumb->GetClientWidth(),thumb->GetClientHeight(),w,h,attr);
+        }
+    }
+    if(indices.empty())return;
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+}
+
+static void draw_stage_entities(SDL_Renderer *renderer)
+{
+    if(!renderer||!g_stage_grid)return;
+    const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
+    const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
+    const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
+    static std::vector<SDL_Vertex> vertices;
+    static std::vector<int> indices;
+    vertices.clear();indices.clear();
+    for(int i=0;i<mtlb_editor_entity_count();i++){
+        float x=0,y=0;int type=0,hp=0,w=0,h=0;uint16_t attr=0;
+        if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&attr,&w,&h))continue;
+        const float sprite_w=std::max(1,w*8.0f*cell_w/8.0f);
+        const float sprite_h=std::max(1,h*8.0f*cell_h/8.0f);
+        append_rom_sprite_part(vertices,indices,origin.x+x*width-sprite_w*0.5f,
+            origin.y+y*height-sprite_h*0.5f,sprite_w,sprite_h,w,h,attr);
+    }
+    if(indices.empty())return;
+    SDL_Rect clip{(int)origin.x,(int)origin.y,(int)width,(int)height};
+    SDL_RenderSetClipRect(renderer,&clip);
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    SDL_RenderSetClipRect(renderer,nullptr);
+}
+
+static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
+                            float rotation,bool outline)
+{
+    if(!renderer||asset<0||width<4||height<4)return;
+    static float positions[512*3*3];
+    const int count=mtlb_imported_model_preview(asset,positions,512*3);
+    if(count<3)return;
+    std::vector<SDL_Vertex> vertices;
+    std::vector<int> indices;
+    vertices.reserve((size_t)count);indices.reserve((size_t)count);
+    const float cy=std::cos(rotation),sy=std::sin(rotation);
+    const float tilt=0.28f,ct=std::cos(tilt),st=std::sin(tilt);
+    const float scale=std::min(width,height)*0.58f;
+    for(int i=0;i<count;i++){
+        const float px=positions[i*3+0],py=positions[i*3+1],pz=positions[i*3+2];
+        const float rx=px*cy-pz*sy,rz=px*sy+pz*cy;
+        const float ry=py*ct-rz*st,dz=py*st+rz*ct;
+        const float perspective=2.6f+dz;
+        const float sx=x+width*0.5f+(rx*scale)/perspective;
+        const float sypos=y+height*0.52f-(ry*scale)/perspective;
+        const int tri=i/3;
+        const Uint8 shade=(Uint8)(150+(tri%3)*35);
+        SDL_Vertex v{};v.position=SDL_FPoint{sx,sypos};v.tex_coord=SDL_FPoint{0,0};
+        v.color=outline?SDL_Color{65,224,255,240}:SDL_Color{shade, (Uint8)(80+(tri%5)*22), 220, 220};
+        vertices.push_back(v);indices.push_back(i);
+    }
+    SDL_Rect clip{(int)x,(int)y,(int)width,(int)height};
+    SDL_RenderSetClipRect(renderer,&clip);
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer,nullptr,vertices.data(),(int)vertices.size(),indices.data(),(int)indices.size());
+    if(outline){
+        SDL_SetRenderDrawColor(renderer,65,224,255,220);
+        for(int i=0;i+2<count;i+=3){
+            const SDL_FPoint a=vertices[i].position,b=vertices[i+1].position,c=vertices[i+2].position;
+            SDL_RenderDrawLineF(renderer,a.x,a.y,b.x,b.y);
+            SDL_RenderDrawLineF(renderer,b.x,b.y,c.x,c.y);
+            SDL_RenderDrawLineF(renderer,c.x,c.y,a.x,a.y);
+        }
+    }
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    SDL_RenderSetClipRect(renderer,nullptr);
+}
+
+static void draw_model_previews(SDL_Renderer *renderer)
+{
+    if(!renderer||!g_document)return;
+    if(g_selected_model_asset>=0){
+        if(Rml::Element *preview=g_document->GetElementById("model-preview")){
+            const Rml::Vector2f p=preview->GetAbsoluteOffset();
+            draw_model_mesh(renderer,g_selected_model_asset,p.x,p.y,
+                preview->GetClientWidth(),preview->GetClientHeight(),
+                (float)SDL_GetTicks()/1700.0f,g_fx_cel||g_fx_rim);
+        }
+    }
+    if(g_maker_modern&&g_stage_grid&&g_placed_model_count>0){
+        const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
+        const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
+        for(int i=0;i<g_placed_model_count;i++){
+            const PlacedMakerModel &m=g_placed_models[i];
+            const float w=72.0f,h=72.0f;
+            draw_model_mesh(renderer,m.asset_id,origin.x+m.x*width-w*0.5f,
+                origin.y+m.y*height-h*0.5f,w,h,(float)SDL_GetTicks()/1900.0f+(float)i*0.22f,g_fx_cel||g_fx_rim);
+        }
+    }
+}
+
+static void draw_stage_lighting(SDL_Renderer *renderer)
+{
+    if(!renderer||!g_stage_grid||!g_maker_modern)return;
+    const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
+    const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
+    for(int i=0;i<g_light_count;i++){
+        const MakerLight &light=g_lights[i];
+        const float cx=origin.x+light.x*width,cy=origin.y+light.y*height;
+        const Uint8 r=(Uint8)((light.color>>16)&255),g=(Uint8)((light.color>>8)&255),b=(Uint8)(light.color&255);
+        if(light.type==2){
+            SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(renderer,r,g,b,(Uint8)(light.intensity*42.0f));
+            SDL_Rect area{(int)origin.x,(int)origin.y,(int)width,(int)height};
+            SDL_RenderFillRect(renderer,&area);
+            continue;
+        }
+        std::vector<SDL_Vertex> v;
+        std::vector<int> idx;
+        const int segments=24;
+        SDL_Vertex center{};center.position=SDL_FPoint{cx,cy};center.color=SDL_Color{r,g,b,(Uint8)(light.intensity*150.0f)};
+        center.tex_coord=SDL_FPoint{0,0};v.push_back(center);
+        const float radius=light.radius;
+        for(int n=0;n<=segments;n++){
+            const float angle=(float)n/(float)segments*6.2831853f;
+            const float spread=(light.type==1)?(0.35f+0.65f*(float)n/(float)segments):1.0f;
+            SDL_Vertex edge{};edge.position=SDL_FPoint{cx+std::cos(angle)*radius*spread,cy+std::sin(angle)*radius*spread};
+            edge.color=SDL_Color{r,g,b,0};edge.tex_coord=SDL_FPoint{0,0};v.push_back(edge);
+        }
+        for(int n=0;n<segments;n++)idx.insert(idx.end(),{0,n+1,n+2});
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_ADD);
+        SDL_RenderGeometry(renderer,nullptr,v.data(),(int)v.size(),idx.data(),(int)idx.size());
+    }
+    if(g_fx_fog){
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer,50,78,104,26);
+        SDL_Rect area{(int)origin.x,(int)origin.y,(int)width,(int)height};
+        SDL_RenderFillRect(renderer,&area);
+    }
+    if(g_fx_crt){
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer,3,5,12,58);
+        for(int y=(int)origin.y;y<origin.y+(int)height;y+=3)
+            SDL_RenderDrawLine(renderer,(int)origin.x,y,(int)(origin.x+width),y);
+    }
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+}
+
 extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height)
 {
     if (!g_context || !g_document || !renderer || renderer != g_renderer || view_width <= 0 || view_height <= 0)
@@ -1342,6 +1535,10 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     g_context->Render();
     const Uint64 render_end = SDL_GetPerformanceCounter();
     draw_stage_grid(renderer);
+    draw_stage_entities(renderer);
+    draw_model_previews(renderer);
+    draw_stage_lighting(renderer);
+    draw_rom_sprite_cards(renderer);
     draw_asset_shelf_previews(renderer);
     const Uint64 grid_end = SDL_GetPerformanceCounter();
 
