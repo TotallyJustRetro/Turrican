@@ -1755,3 +1755,591 @@ body {
   color: #a2b5d4;
   font-family: Lato;
 }
+
+
+/* -------------------------------------------------------------------------
+   REBORN CABINET SKIN
+   Keep the editor's roomy dock layout; bring the panels closer to a
+   polished 16-bit game instrument: chrome bezels, ink-black wells,
+   electric cyan, reactor magenta, and warm amber.
+   ------------------------------------------------------------------------- */
+
+body {
+  color: #e7e9f7;
+  background-color: #05060d;
+}
+
+.maker-app {
+  background-color: #070912;
+  border-top: 2px solid #f0a05e;
+}
+
+.topbar {
+  background-color: #090c18;
+  border-top: 2px solid #596783;
+  border-bottom: 3px solid #7c88a5;
+}
+
+.brand-mark {
+  color: #a5faff;
+  background-color: #111a30;
+  border-top: 2px solid #e1e8f5;
+  border-left: 2px solid #a9b8d5;
+  border-bottom: 2px solid #22283d;
+  border-right: 2px solid #22283d;
+}
+
+.brand-title {
+  color: #ffd17b;
+  font-size: 11px;
+}
+
+.brand-file {
+  color: #a3c7ed;
+}
+
+.brand-era {
+  color: #66eaf0;
+}
+
+.menu-item {
+  color: #c4cce2;
+  background-color: #111729;
+  border-top: 1px solid #9ba8c3;
+  border-left: 1px solid #64718d;
+  border-bottom: 2px solid #20263a;
+  border-right: 1px solid #20263a;
+}
+
+.menu-item:hover {
+  color: #ffffff;
+  background-color: #24334f;
+  border-color: #67edf2;
+}
+
+.button {
+  color: #edf1ff;
+  background-color: #26334e;
+  border-top: 2px solid #c2cbe0;
+  border-left: 2px solid #8999b9;
+  border-bottom: 2px solid #20263c;
+  border-right: 2px solid #20263c;
+}
+
+.button:hover {
+  color: #ffffff;
+  background-color: #3c5275;
+  border-top-color: #e5edff;
+  border-left-color: #c7dcf7;
+}
+
+.button.primary {
+  color: #25152a;
+  background-color: #ffd078;
+  border-top-color: #fff0bf;
+  border-left-color: #ffe0a0;
+  border-bottom-color: #914b43;
+  border-right-color: #914b43;
+}
+
+.mode-toggle {
+  color: #83f5f2;
+  background-color: #15283d;
+  border: 2px solid #9a3e9e;
+}
+
+.mode-toggle.active {
+  color: #f5dcff;
+  background-color: #382044;
+  border-color: #ed6be7;
+}
+
+.playtest {
+  color: #fff5e8;
+  background-color: #bd354e;
+  border-top-color: #ff9b9d;
+  border-left-color: #e66e80;
+  border-bottom-color: #521b37;
+  border-right-color: #521b37;
+}
+
+.workspace {
+  background-color: #070912;
+}
+
+.tool-rail {
+  background-color: #101727;
+  border-top: 3px solid #c0cbe2;
+  border-left: 3px solid #8f9dbb;
+  border-bottom: 3px solid #22283d;
+  border-right: 2px solid #22283d;
+}
+
+.rail-caption {
+  color: #83f1ef;
+  border-bottom: 1px solid #586783;
+}
+
+.tool-button {
+  color: #e0e6f5;
+  background-color: #1a2338;
+  border-top: 2px solid #9ba9c6;
+  border-left: 2px solid #7383a2;
+  border-bottom: 2px solid #252b40;
+  border-right: 2px solid #252b40;
+}
+
+.tool-button:hover {
+  color: #ffffff;
+  background-color: #293a59;
+  border-top-color: #d7e5fb;
+  border-left-color: #a6c9ec;
+}
+
+.tool-button.active {
+  color: #efffff;
+  background-color: #123b49;
+  border: 2px solid #62f1ed;
+}
+
+.tool-glyph {
+  color: #80f3f2;
+  font-family: Lato;
+  font-size: 17px;
+  line-height: 19px;
+  font-weight: 700;
+}
+
+.tool-button.active .tool-glyph {
+  color: #ffd27a;
+}
+
+.rail-mini-button {
+  color: #e3e8f7;
+  background-color: #1d2940;
+  border-top: 1px solid #9ba9c6;
+  border-left: 1px solid #71819f;
+  border-bottom: 2px solid #22283b;
+  border-right: 2px solid #22283b;
+}
+
+.rail-mini-button.rail-save {
+  color: #ffe0a2;
+  border-color: #e7ad61;
+}
+
+.rail-mini-button.rail-exit {
+  color: #ff9da9;
+  border-color: #d56883;
+}
+
+.center-tabs {
+  height: 38px;
+  min-height: 38px;
+  gap: 4px;
+}
+
+.center-tab {
+  color: #c3cbe1;
+  background-color: #111626;
+  border-top: 2px solid #aebad2;
+  border-left: 2px solid #7f8da9;
+  border-bottom: 2px solid #20263b;
+  border-right: 2px solid #20263b;
+  font-size: 8px;
+}
+
+.center-tab.active {
+  color: #cfffff;
+  background-color: #123b49;
+  border: 2px solid #64f3ef;
+}
+
+.center-tab:hover {
+  color: #ffffff;
+  background-color: #263b5a;
+  border-color: #da92df;
+}
+
+.stage-head {
+  color: #ffffff;
+  background-color: #151d34;
+  border-top: 2px solid #b4c0d9;
+  border-left: 2px solid #8998b8;
+  border-bottom: 2px solid #242a41;
+  border-right: 2px solid #242a41;
+}
+
+.stage-title {
+  color: #ffd184;
+}
+
+.accent-cyan {
+  color: #70f0ed;
+}
+
+.stage-head-right {
+  color: #b8c7e3;
+}
+
+.separator {
+  color: #e078c9;
+}
+
+.tiny-button, .filter-button {
+  color: #e1e8f8;
+  background-color: #1c2943;
+  border-top: 1px solid #a9b8d2;
+  border-left: 1px solid #7384a3;
+  border-bottom: 2px solid #242a3f;
+  border-right: 2px solid #242a3f;
+}
+
+.tiny-button.active, .filter-button.active {
+  color: #eaffff;
+  background-color: #124550;
+  border: 1px solid #65f0ec;
+}
+
+.stage-viewport {
+  background-color: #03040a;
+  border-top: 4px solid #c4cce0;
+  border-left: 4px solid #8996b6;
+  border-bottom: 4px solid #25283e;
+  border-right: 4px solid #25283e;
+}
+
+.stage-coordinate {
+  color: #ffffff;
+  background-color: #101a2b;
+  border: 2px solid #65eee9;
+}
+
+.stage-coordinate span {
+  color: #7ef7f2;
+}
+
+.spawn-badge {
+  color: #ffe4ad;
+  background-color: #38213d;
+  border: 2px solid #f0a45e;
+}
+
+.stage-hint {
+  color: #d2dcf1;
+  background-color: #11182a;
+  border: 1px solid #8495b6;
+}
+
+.drop-ghost {
+  color: #ffffff;
+  background-color: #164c61;
+  border: 2px dashed #78f7ef;
+}
+
+.bottom-workspace {
+  gap: 5px;
+}
+
+.script-flow, .animation-sequencer {
+  padding: 8px;
+  background-color: #0a0d17;
+  border-top: 3px solid #c0c9dd;
+  border-left: 3px solid #8f9dbb;
+  border-bottom: 3px solid #252a40;
+  border-right: 3px solid #252a40;
+}
+
+.dock-caption {
+  color: #79f0eb;
+}
+
+.script-node {
+  color: #eff4ff;
+  background-color: #1c2945;
+  border: 2px solid #7e9bc0;
+}
+
+.trigger-node {
+  color: #ffe39e;
+  border-color: #f4d65f;
+  background-color: #35283b;
+}
+
+.dialogue-node {
+  color: #d7ffff;
+  border-color: #4ddde7;
+  background-color: #123b4b;
+}
+
+.boss-node {
+  color: #ffd0af;
+  border-color: #ed6b79;
+  background-color: #482436;
+}
+
+.script-arrow {
+  color: #63eff0;
+  font-size: 15px;
+}
+
+.timeline-ruler {
+  border: 2px solid #8292b1;
+  background-color: #050710;
+}
+
+.timeline-track {
+  background-color: #536b92;
+}
+
+.timeline-key {
+  background-color: #ffbd63;
+  border: 1px solid #fff0b7;
+}
+
+.timeline-key:nth-child(3) {
+  background-color: #ed6be7;
+  border-color: #ffc0fa;
+}
+
+.right-dock {
+  gap: 5px;
+}
+
+.asset-drawer {
+  background-color: #101626;
+  border-top: 3px solid #c0c9de;
+  border-left: 3px solid #8997b4;
+  border-bottom: 3px solid #252a40;
+  border-right: 2px solid #252a40;
+}
+
+.model-import-card, .property-inspector {
+  background-color: #101626;
+  border-top: 3px solid #c0c9de;
+  border-left: 3px solid #8997b4;
+  border-bottom: 3px solid #252a40;
+  border-right: 3px solid #252a40;
+}
+
+.dock-title {
+  color: #83f0ed;
+  border-bottom: 2px solid #667694;
+}
+
+.dock-subtitle {
+  color: #efa4e9;
+}
+
+.asset-filter .import-button {
+  color: #ffe0a6;
+  border-color: #efa75e;
+}
+
+.folder-heading {
+  color: #dfe7f7;
+  background-color: #1b2740;
+  border-top: 1px solid #9aa9c6;
+  border-left: 2px solid #7586a4;
+  border-bottom: 2px solid #282e43;
+  border-right: 2px solid #282e43;
+}
+
+.folder-heading:hover {
+  color: #ffffff;
+  background-color: #2b3d5d;
+  border-color: #6ef0ed;
+}
+
+.folder-arrow {
+  color: #75efec;
+}
+
+.folder.collapsed .folder-arrow {
+  color: #9b8bb5;
+}
+
+.folder-subheading {
+  color: #9fb8d7;
+}
+
+.asset-card {
+  color: #e1e9f9;
+  background-color: #10192d;
+  border: 1px solid #7889a9;
+}
+
+.asset-card:hover {
+  color: #ffffff;
+  border: 1px solid #6cf4f0;
+  background-color: #183a4e;
+}
+
+.asset-card.selected {
+  color: #fff0cb;
+  border: 2px solid #f3ad61;
+  background-color: #492b48;
+}
+
+.asset-thumb {
+  background-color: #03050d;
+  border: 1px solid #526990;
+}
+
+.asset-tag {
+  color: #e6ffff;
+  background-color: #176c7b;
+}
+
+.asset-tag.tag-3d {
+  color: #ffe0fa;
+  background-color: #813c7c;
+}
+
+#folder-review .folder-heading {
+  color: #ffd18d;
+  border-left-color: #e8a65e;
+}
+
+#folder-character .folder-heading {
+  border-left-color: #62dbe8;
+}
+
+#folder-items .folder-heading {
+  border-left-color: #7de0b5;
+}
+
+#folder-enemies .folder-heading {
+  border-left-color: #ed7180;
+}
+
+#folder-bosses .folder-heading {
+  border-left-color: #f0a45e;
+}
+
+.model-preview {
+  color: #8ceef1;
+  background-color: #05070f;
+  border: 2px solid #7187a8;
+}
+
+.model-preview-placeholder {
+  color: #91a6c7;
+}
+
+.model-stats {
+  color: #b1c1dd;
+}
+
+.model-stats strong {
+  color: #7af0ed;
+}
+
+.classification-row {
+  color: #e0e8f8;
+}
+
+.property-inspector .dock-title {
+  color: #86f2ed;
+}
+
+.property-row {
+  color: #e1e8f7;
+}
+
+.property-row label {
+  color: #9ce7e9;
+}
+
+.property-row select, .property-row input {
+  color: #f2f5ff;
+  background-color: #151f37;
+  border: 1px solid #7386aa;
+}
+
+.property-row select:hover, .property-row input:hover {
+  border-color: #71eeec;
+}
+
+.property-subtitle {
+  color: #79efeb;
+}
+
+.inspector-divider {
+  background-color: #677894;
+}
+
+.toggle-row {
+  color: #e0e7f7;
+}
+
+.modern-lock {
+  color: #ffd0d0;
+  background-color: #4a2138;
+  border: 1px solid #ef7185;
+}
+
+.statusbar {
+  color: #c2cde4;
+  background-color: #0b1020;
+  border-top: 2px solid #8491ad;
+}
+
+.status-led {
+  background-color: #73f4df;
+  border-color: #dcfff7;
+}
+
+.status-right {
+  color: #a7b6d3;
+}
+
+.modal-shade {
+  background-color: #070912;
+}
+
+.modal-card {
+  color: #eef2ff;
+  background-color: #121b32;
+  border-top: 3px solid #d4dced;
+  border-left: 3px solid #9aa9c7;
+  border-bottom: 3px solid #282e46;
+  border-right: 3px solid #282e46;
+}
+
+.modal-title {
+  color: #ffd080;
+  border-bottom: 2px solid #647594;
+}
+
+.modal-asset-info {
+  color: #84f0ec;
+  background-color: #060a14;
+  border: 1px solid #7185a7;
+}
+
+.class-card {
+  color: #eff4ff;
+  background-color: #1c2a47;
+  border: 1px solid #899abb;
+}
+
+.class-card:hover {
+  border-color: #70f2ed;
+  background-color: #164152;
+}
+
+.boss-class {
+  color: #ffe0db;
+  background-color: #47243b;
+  border-color: #ec7586;
+}
+
+.modal-actions {
+  border-top: 2px solid #647594;
+}
+
+.settings-card {
+  background-color: #0c1427;
+  border: 1px solid #7184a5;
+}
