@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 #include <cstdarg>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 namespace {
 class MakerSystemInterface;
@@ -31,6 +33,13 @@ static bool g_exit_requested = false;
 static int g_brush_tile = 1;
 static int g_map_cols = 64;
 static int g_map_rows = 32;
+static int g_cached_window_width = -1, g_cached_window_height = -1;
+static int g_cached_view_x = -1, g_cached_view_y = -1, g_cached_view_width = -1, g_cached_view_height = -1;
+static int g_last_painted_x = -1, g_last_painted_y = -1, g_drag_tile = -1;
+static unsigned g_perf_frames = 0;
+static double g_perf_update_ms = 0.0, g_perf_render_ms = 0.0, g_perf_grid_ms = 0.0;
+static std::vector<SDL_Vertex> g_stage_vertices;
+static std::vector<int> g_stage_indices;
 
 static std::string g_log_path;
 static std::string g_portable_root;
@@ -143,11 +152,7 @@ static const char *kDocument = R"RML(
     .stage-screen { width: 100%; height: 100%; min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
     .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 11px; }
     .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
-    .stage-grid { width: 768px; height: 384px; overflow: hidden; display: flex; flex-direction: column; background-color: #142638; }
-    .stage-row { width: 768px; height: 12px; min-height: 12px; display: flex; flex-direction: row; }
-    .cell { display: block; flex: 0 0 12px; width: 12px; height: 12px; min-width: 12px; margin: 0; padding: 0; background-color: #182d41; border-right: 1px solid #2c465f; border-bottom: 1px solid #2c465f; }
-    .cell:hover { background-color: #e5ad57; }
-    .cell.filled { background-color: #628b77; }
+    .stage-grid { width: 768px; height: 384px; overflow: hidden; background-color: #142638; }
     .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 11px; }
     .shelf { height: 75px; min-height: 75px; margin-top: 8px; }
     .shelf-content { display: flex; flex-direction: row; align-items: center; padding: 9px; }
@@ -246,23 +251,90 @@ static const char *kDocument = R"RML(
 </rml>
 )RML";
 
-static std::string make_stage_cells()
+static void append_stage_quad(float x0, float y0, float x1, float y1, SDL_Color color)
 {
-    std::string markup;
-    markup.reserve((size_t)g_map_cols * (size_t)g_map_rows * 128u);
+    const int base = (int)g_stage_vertices.size();
+    SDL_Vertex v{};
+    v.color = color;
+    v.tex_coord = SDL_FPoint{0.0f, 0.0f};
+    v.position = SDL_FPoint{x0, y0}; g_stage_vertices.push_back(v);
+    v.position = SDL_FPoint{x1, y0}; g_stage_vertices.push_back(v);
+    v.position = SDL_FPoint{x1, y1}; g_stage_vertices.push_back(v);
+    v.position = SDL_FPoint{x0, y1}; g_stage_vertices.push_back(v);
+    g_stage_indices.insert(g_stage_indices.end(), {base, base+1, base+2, base, base+2, base+3});
+}
+
+static void draw_stage_grid(SDL_Renderer *renderer)
+{
+    if (!renderer || !g_stage_grid || g_map_cols <= 0 || g_map_rows <= 0) return;
+    const Rml::Vector2f origin = g_stage_grid->GetAbsoluteOffset();
+    const float width = g_stage_grid->GetClientWidth();
+    const float height = g_stage_grid->GetClientHeight();
+    if (width < 2.0f || height < 2.0f) return;
+
+    g_stage_vertices.clear();
+    g_stage_indices.clear();
+    const size_t quads = (size_t)g_map_cols * (size_t)g_map_rows + (size_t)g_map_cols + (size_t)g_map_rows + 2u;
+    if (g_stage_vertices.capacity() < quads * 4u) g_stage_vertices.reserve(quads * 4u);
+    if (g_stage_indices.capacity() < quads * 6u) g_stage_indices.reserve(quads * 6u);
+
+    static const SDL_Color palette[8] = {
+        {104,145,125,255}, {112,151,185,255}, {196,132,77,255}, {135,119,184,255},
+        {167,166,119,255}, {77,151,157,255}, {181,103,111,255}, {103,124,155,255}
+    };
+    const float cell_w = width / (float)g_map_cols;
+    const float cell_h = height / (float)g_map_rows;
+
+    // Fill existing cells in one geometry batch instead of creating 2,048 DOM elements.
     for (int y = 0; y < g_map_rows; ++y) {
-        markup += "<div class='stage-row'>";
         for (int x = 0; x < g_map_cols; ++x) {
             const int tile = mtlb_map_get(x, y);
-            char cell[160];
-            std::snprintf(cell, sizeof(cell),
-                "<div id='cell-%d-%d' class='cell%s' data-action='paint' data-cell='%d'></div>",
-                x, y, tile != 0 ? " filled" : "", y * g_map_cols + x);
-            markup += cell;
+            if (tile == 0) continue;
+            const int ci = (tile >= 176 && tile <= 183) ? tile - 176 : (tile & 7);
+            append_stage_quad(origin.x + x*cell_w + 1.0f, origin.y + y*cell_h + 1.0f,
+                origin.x + (x+1)*cell_w - 1.0f, origin.y + (y+1)*cell_h - 1.0f, palette[ci]);
         }
-        markup += "</div>";
     }
-    return markup;
+
+    const SDL_Color grid = {43,65,83,255};
+    for (int x = 0; x <= g_map_cols; ++x) {
+        const float px = origin.x + x*cell_w;
+        append_stage_quad(px, origin.y, px + 1.0f, origin.y + height, grid);
+    }
+    for (int y = 0; y <= g_map_rows; ++y) {
+        const float py = origin.y + y*cell_h;
+        append_stage_quad(origin.x, py, origin.x + width, py + 1.0f, grid);
+    }
+
+    SDL_Rect clip{(int)std::floor(origin.x), (int)std::floor(origin.y),
+        (int)std::ceil(width), (int)std::ceil(height)};
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    SDL_RenderSetClipRect(renderer, &clip);
+    SDL_RenderGeometry(renderer, nullptr, g_stage_vertices.data(), (int)g_stage_vertices.size(),
+        g_stage_indices.data(), (int)g_stage_indices.size());
+    SDL_RenderSetClipRect(renderer, nullptr);
+}
+
+static void paint_stage_at(int mouse_x, int mouse_y, int tile)
+{
+    if (!g_stage_grid || g_map_cols <= 0 || g_map_rows <= 0) return;
+    const Rml::Vector2f origin = g_stage_grid->GetAbsoluteOffset();
+    const float width = g_stage_grid->GetClientWidth();
+    const float height = g_stage_grid->GetClientHeight();
+    if (mouse_x < origin.x || mouse_y < origin.y || mouse_x >= origin.x + width ||
+        mouse_y >= origin.y + height || width <= 0.0f || height <= 0.0f) {
+        g_last_painted_x = g_last_painted_y = -1;
+        return;
+    }
+    const int x = std::min(g_map_cols-1, (int)((mouse_x-origin.x)*g_map_cols/width));
+    const int y = std::min(g_map_rows-1, (int)((mouse_y-origin.y)*g_map_rows/height));
+    if (x == g_last_painted_x && y == g_last_painted_y && tile == g_drag_tile) return;
+    g_last_painted_x = x; g_last_painted_y = y; g_drag_tile = tile;
+    mtlb_map_set(x, y, tile);
+    char message[96];
+    std::snprintf(message, sizeof(message), "%s cell %d, %d with tile $%04X.",
+        tile == 0 ? "Erased" : "Painted", x, y, tile);
+    set_status(message);
 }
 
 static void set_status(const char *message)
@@ -279,21 +351,6 @@ static Rml::Element *find_action_element(Rml::Element *element)
     return nullptr;
 }
 
-static void update_cell_visual(int x, int y)
-{
-    if (!g_document || x < 0 || y < 0 || x >= g_map_cols || y >= g_map_rows) return;
-    char id[48];
-    std::snprintf(id, sizeof(id), "cell-%d-%d", x, y);
-    Rml::Element *cell = g_document->GetElementById(id);
-    if (cell) cell->SetClass("filled", mtlb_map_get(x, y) != 0);
-}
-
-static void refresh_stage_visuals()
-{
-    for (int y = 0; y < g_map_rows; ++y)
-        for (int x = 0; x < g_map_cols; ++x)
-            update_cell_visual(x, y);
-}
 
 static void select_brush(int tile)
 {
@@ -331,7 +388,6 @@ public:
         }
         if (action == "load") {
             if (mtlb_map_load()) {
-                refresh_stage_visuals();
                 set_status("Level document loaded.");
             } else {
                 set_status("No saved level document was found.");
@@ -358,18 +414,6 @@ public:
             const Rml::String raw = element->GetAttribute<Rml::String>("data-brush", "1");
             select_brush(std::atoi(raw.c_str()));
             return;
-        }
-        if (action == "paint") {
-            const Rml::String raw = element->GetAttribute<Rml::String>("data-cell", "-1");
-            const int index = std::atoi(raw.c_str());
-            if (index < 0 || index >= g_map_cols * g_map_rows) return;
-            const int x = index % g_map_cols;
-            const int y = index / g_map_cols;
-            mtlb_map_set(x, y, g_brush_tile);
-            update_cell_visual(x, y);
-            char message[96];
-            std::snprintf(message, sizeof(message), "Painted cell %d, %d with tile $%04X.", x, y, g_brush_tile);
-            set_status(message);
         }
     }
 };
@@ -462,9 +506,9 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
         return maker_fail("The embedded Maker document is missing required UI elements. See maker-rmlui.log.");
     }
 
-    const std::string cells = make_stage_cells();
-    maker_log("Generated stage grid markup: %u bytes.", (unsigned)cells.size());
-    g_stage_grid->SetInnerRML(cells);
+    maker_log("Using batched SDL stage-grid rendering for %d x %d cells.", g_map_cols, g_map_rows);
+    g_stage_vertices.reserve((size_t)g_map_cols * (size_t)g_map_rows * 4u);
+    g_stage_indices.reserve((size_t)g_map_cols * (size_t)g_map_rows * 6u);
     g_document->AddEventListener("click", &g_listener);
     g_document->Show();
     g_exit_requested = false;
@@ -509,9 +553,25 @@ extern "C" void mtlbr_shutdown(void)
 extern "C" void mtlbr_process_event(const SDL_Event *event)
 {
     if (!g_context || !g_window || !event) return;
-    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE) {
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE)
         g_exit_requested = true;
+
+    if (event->type == SDL_MOUSEBUTTONDOWN) {
+        const int tile = event->button.button == SDL_BUTTON_RIGHT ? 0 :
+            (event->button.button == SDL_BUTTON_LEFT ? g_brush_tile : -1);
+        if (tile >= 0) paint_stage_at(event->button.x, event->button.y, tile);
+    } else if (event->type == SDL_MOUSEMOTION) {
+        if (event->motion.state & SDL_BUTTON_LMASK)
+            paint_stage_at(event->motion.x, event->motion.y, g_brush_tile);
+        else if (event->motion.state & SDL_BUTTON_RMASK)
+            paint_stage_at(event->motion.x, event->motion.y, 0);
+        else
+            g_last_painted_x = g_last_painted_y = -1;
+    } else if (event->type == SDL_MOUSEBUTTONUP) {
+        g_last_painted_x = g_last_painted_y = -1;
+        g_drag_tile = -1;
     }
+
     SDL_Event copy = *event;
     RmlSDL::InputEventHandler(g_context, g_window, copy);
 }
@@ -530,26 +590,41 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     SDL_GetWindowSize(g_window, &window_width, &window_height);
     if (window_width <= 0 || window_height <= 0) return 0;
 
-    g_context->SetDimensions(Rml::Vector2i(window_width, window_height));
-    if (g_viewport) {
+    if (window_width != g_cached_window_width || window_height != g_cached_window_height) {
+        g_context->SetDimensions(Rml::Vector2i(window_width, window_height));
+        g_cached_window_width = window_width;
+        g_cached_window_height = window_height;
+        g_cached_view_x = g_cached_view_y = -1;
+        g_cached_view_width = g_cached_view_height = -1;
+    }
+    if (g_viewport && (view_x != g_cached_view_x || view_y != g_cached_view_y ||
+        view_width != g_cached_view_width || view_height != g_cached_view_height)) {
         char value[48];
-        std::snprintf(value, sizeof(value), "%dpx", view_x);
-        g_viewport->SetProperty("left", value);
-        std::snprintf(value, sizeof(value), "%dpx", view_y);
-        g_viewport->SetProperty("top", value);
-        std::snprintf(value, sizeof(value), "%dpx", view_width);
-        g_viewport->SetProperty("width", value);
-        std::snprintf(value, sizeof(value), "%dpx", view_height);
-        g_viewport->SetProperty("height", value);
+        std::snprintf(value, sizeof(value), "%dpx", view_x); g_viewport->SetProperty("left", value);
+        std::snprintf(value, sizeof(value), "%dpx", view_y); g_viewport->SetProperty("top", value);
+        std::snprintf(value, sizeof(value), "%dpx", view_width); g_viewport->SetProperty("width", value);
+        std::snprintf(value, sizeof(value), "%dpx", view_height); g_viewport->SetProperty("height", value);
+        g_cached_view_x = view_x; g_cached_view_y = view_y;
+        g_cached_view_width = view_width; g_cached_view_height = view_height;
     }
 
-    const SDL_BlendMode rml_blend = SDL_ComposeCustomBlendMode(
-        SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
-        SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
-    SDL_SetRenderDrawBlendMode(renderer, rml_blend);
+    const Uint64 update_start = SDL_GetPerformanceCounter();
     g_context->Update();
+    const Uint64 update_end = SDL_GetPerformanceCounter();
     g_context->Render();
-    SDL_RenderSetClipRect(renderer, nullptr);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    const Uint64 render_end = SDL_GetPerformanceCounter();
+    draw_stage_grid(renderer);
+    const Uint64 grid_end = SDL_GetPerformanceCounter();
+
+    const double ticks_to_ms = 1000.0 / (double)SDL_GetPerformanceFrequency();
+    g_perf_update_ms += (double)(update_end - update_start) * ticks_to_ms;
+    g_perf_render_ms += (double)(render_end - update_end) * ticks_to_ms;
+    g_perf_grid_ms += (double)(grid_end - render_end) * ticks_to_ms;
+    if (++g_perf_frames >= 120) {
+        maker_log("Maker frame averages over %u frames: RmlUi update %.3f ms, RmlUi render %.3f ms, stage batch %.3f ms.",
+            g_perf_frames, g_perf_update_ms/g_perf_frames, g_perf_render_ms/g_perf_frames, g_perf_grid_ms/g_perf_frames);
+        g_perf_frames = 0;
+        g_perf_update_ms = g_perf_render_ms = g_perf_grid_ms = 0.0;
+    }
     return g_exit_requested ? 1 : 0;
 }
