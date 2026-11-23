@@ -213,6 +213,7 @@ jobs:
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/psg.c -o _objects/psg.o
           gcc -O0 -DMD_SDL -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable $(sdl2-config --cflags) -Iruntime -c runtime/sdl_main.c -o _objects/sdl_main.o
           g++ -O2 -std=c++17 $(sdl2-config --cflags) -Iruntime -c runtime/mt_level_builder_model.cpp -o _objects/mt_level_builder_model.o
+          g++ -O2 -std=c++17 $(sdl2-config --cflags) -Iruntime -c runtime/mt_level_builder_importer.cpp -o _objects/mt_level_builder_importer.o
           rmlui_source="$(cygpath -u "$RMLUI_SOURCE")"
           rmlui_prefix="$(cygpath -u "$RMLUI_PREFIX")"
           rmlui_includes="-I$rmlui_source/Include -I$rmlui_source/Backends -DRMLUI_SDL_VERSION_MAJOR=2 -DRMLUI_STATIC_LIB"
@@ -301,6 +302,10 @@ jobs:
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Regular.ttf') $fontDir
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Bold.ttf') $fontDir
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LICENSE.txt') (Join-Path $release 'RmlUi-Sample-Fonts-LICENSE.txt')
+          $makerDir = Join-Path $release 'assets/maker'
+          New-Item -ItemType Directory -Force -Path $makerDir | Out-Null
+          Copy-Item (Join-Path $PWD 'build-overrides/level-builder/editor.rml') $makerDir
+          Copy-Item (Join-Path $PWD 'build-overrides/level-builder/editor.rcss') $makerDir
           @'
           START HERE: run the MegaTurricanLauncher portable executable.
           In the launcher, browse to your own Mega Drive ROM and press LAUNCH MEGA TURRICAN.
@@ -321,6 +326,8 @@ jobs:
           if (-not ($entries | Where-Object { $_ -like '*SDL3.dll' })) { throw 'SDL3 runtime required by SDL2-compat is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Regular.ttf' })) { throw 'Bundled RmlUi regular font is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Bold.ttf' })) { throw 'Bundled RmlUi bold font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rml' })) { throw 'RmlUi Maker document is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/maker/editor.rcss' })) { throw 'RmlUi Maker stylesheet is missing from the package.' }
           Write-Host 'Verified EXEs, SDL runtimes, and Maker fonts in Windows package:'
           $entries | Where-Object { $_ -like '*.exe' -or $_ -like '*.dll' } | ForEach-Object { Write-Host "  $_" }
 
