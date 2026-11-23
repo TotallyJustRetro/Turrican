@@ -90,6 +90,8 @@ struct PlacedMakerModel { int asset_id; float x, y; };
 static std::vector<PlacedMakerModel> g_placed_models;
 struct ModelPreviewTexture { int asset_id; std::string path; SDL_Texture *texture; bool attempted; };
 static std::vector<ModelPreviewTexture> g_model_preview_textures;
+struct ModelPreviewGeometry { int asset_id; std::vector<float> xyz; std::vector<float> uv; };
+static std::vector<ModelPreviewGeometry> g_model_preview_geometry;
 struct MakerLight { float x,y,radius,intensity; uint32_t color; int type; };
 static MakerLight g_lights[32] = {};
 static int g_light_count = 0;
@@ -1412,6 +1414,7 @@ extern "C" void mtlbr_shutdown(void)
     for(ModelPreviewTexture &entry:g_model_preview_textures)
         if(entry.texture)SDL_DestroyTexture(entry.texture);
     g_model_preview_textures.clear();
+    g_model_preview_geometry.clear();
     if (g_document) {
         g_document->RemoveEventListener("click", &g_listener);
         g_document = nullptr;
@@ -1514,7 +1517,7 @@ static void maker_place_asset_at(int px,int py)
             g_ui_selected_entity=index;
             if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
             set_status("ROM sprite placed on the stage. Its role is stored in the Asset Bay.");
-        }else set_status("The level already contains the maximum number of placed entities.");
+        }else set_status("Could not add the selected sprite to the level.");
     }else if(g_drag_asset_type=="enemy"||g_drag_asset_type=="boss"){
         const int type=(g_drag_asset_type=="boss")?4:3;
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
@@ -1522,7 +1525,7 @@ static void maker_place_asset_at(int px,int py)
             g_ui_selected_entity=index;
             if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
             set_status(g_drag_asset_type=="boss"?"2D boss sprite set placed on the stage.":"2D enemy sprite set placed on the stage.");
-        }else set_status("The level already contains the maximum number of placed entities.");
+        }else set_status("Could not add the selected sprite to the level.");
     }else if(g_drag_asset_type=="3d_model"){
         if(!g_maker_modern){set_status("Modern Mode Required: 3D model placement is locked in Vanilla.");return;}
         const float nx=(x+0.5f)/(float)g_map_cols;
@@ -1851,20 +1854,67 @@ static SDL_Texture *maker_model_preview_texture(int asset)
     return g_model_preview_textures.back().texture;
 }
 
-static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
-                            float rotation,bool outline)
+static const ModelPreviewGeometry *maker_model_preview_geometry(int asset)
 {
-    if(!renderer||asset<0||width<4||height<4)return;
+    for(const ModelPreviewGeometry &cached:g_model_preview_geometry)
+        if(cached.asset_id==asset)return &cached;
+
     char name[128]={},path[1024]={};
     uint32_t triangles=0,bones=0;
     float bounds[3]={0,0,0};
     int diffuse=0,normal=0,emissive=0,classification=0;
     if(!mtlb_imported_model_info(asset,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
-        &diffuse,&normal,&emissive,&classification)||triangles==0)return;
-    const size_t max_vertices=(size_t)triangles*3u;
-    std::vector<float> positions(max_vertices*3u),uv(max_vertices*2u);
-    const int count=mtlb_imported_model_preview(asset,positions.data(),uv.data(),
-        max_vertices>(size_t)0x7fffffff?0x7fffffff:(int)max_vertices);
+        &diffuse,&normal,&emissive,&classification)||triangles==0)return nullptr;
+    const size_t wanted=(size_t)triangles*3u;
+    const int max_vertices=wanted>(size_t)0x7fffffff?0x7fffffff:(int)wanted;
+    ModelPreviewGeometry geometry{};
+    geometry.asset_id=asset;
+    geometry.xyz.resize((size_t)max_vertices*3u);
+    geometry.uv.resize((size_t)max_vertices*2u);
+    const int count=mtlb_imported_model_preview(asset,geometry.xyz.data(),geometry.uv.data(),max_vertices);
+    if(count<3)return nullptr;
+    geometry.xyz.resize((size_t)count*3u);
+    geometry.uv.resize((size_t)count*2u);
+    g_model_preview_geometry.push_back(std::move(geometry));
+    return &g_model_preview_geometry.back();
+}
+
+static SDL_Texture *maker_model_preview_texture(int asset)
+{
+    if(asset<0)return nullptr;
+    char path[2048]={};
+    if(!mtlb_imported_model_diffuse_path(asset,path,sizeof(path))||!path[0])return nullptr;
+    for(ModelPreviewTexture &entry:g_model_preview_textures){
+        if(entry.asset_id==asset&&entry.path==path){
+            if(!entry.attempted){
+                entry.attempted=true;
+                entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
+                if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
+                else maker_log("Model %d diffuse texture failed to load (%s): %s",
+                    asset,entry.path.c_str(),IMG_GetError());
+            }
+            return entry.texture;
+        }
+    }
+    ModelPreviewTexture entry{};
+    entry.asset_id=asset;
+    entry.path=path;
+    entry.attempted=true;
+    entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
+    if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
+    else maker_log("Model %d diffuse texture failed to load (%s): %s",
+        asset,entry.path.c_str(),IMG_GetError());
+    g_model_preview_textures.push_back(entry);
+    return g_model_preview_textures.back().texture;
+}
+
+static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
+                            float rotation,bool outline)
+{
+    if(!renderer||asset<0||width<4||height<4)return;
+    const ModelPreviewGeometry *geometry=maker_model_preview_geometry(asset);
+    if(!geometry)return;
+    const int count=(int)(geometry->xyz.size()/3u);
     if(count<3)return;
     SDL_Texture *texture=maker_model_preview_texture(asset);
     float material[4]={0.72f,0.72f,0.72f,1.0f};
@@ -1874,24 +1924,27 @@ static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,flo
     };
     const SDL_Color base_color=texture?SDL_Color{255,255,255,255}:
         SDL_Color{channel(material[0]),channel(material[1]),channel(material[2]),channel(material[3])};
-    std::vector<SDL_Vertex> vertices;
-    std::vector<int> indices;
+    static std::vector<SDL_Vertex> vertices;
+    static std::vector<int> indices;
+    vertices.clear();
+    indices.clear();
     vertices.reserve((size_t)count);
     indices.reserve((size_t)count);
     const float cy=std::cos(rotation),sy=std::sin(rotation);
     const float tilt=0.28f,ct=std::cos(tilt),st=std::sin(tilt);
     const float scale=std::min(width,height)*0.58f;
     for(int i=0;i<count;i++){
-        const float px=positions[(size_t)i*3u];
-        const float py=positions[(size_t)i*3u+1u];
-        const float pz=positions[(size_t)i*3u+2u];
+        const float px=geometry->xyz[(size_t)i*3u];
+        const float py=geometry->xyz[(size_t)i*3u+1u];
+        const float pz=geometry->xyz[(size_t)i*3u+2u];
         const float rx=px*cy-pz*sy,rz=px*sy+pz*cy;
         const float ry=py*ct-rz*st,dz=py*st+rz*ct;
         const float perspective=2.6f+dz;
         SDL_Vertex vertex{};
         vertex.position=SDL_FPoint{x+width*0.5f+(rx*scale)/perspective,
             y+height*0.52f-(ry*scale)/perspective};
-        vertex.tex_coord=SDL_FPoint{uv[(size_t)i*2u],1.0f-uv[(size_t)i*2u+1u]};
+        vertex.tex_coord=SDL_FPoint{geometry->uv[(size_t)i*2u],
+            1.0f-geometry->uv[(size_t)i*2u+1u]};
         vertex.color=outline?SDL_Color{235,174,97,255}:base_color;
         vertices.push_back(vertex);
         indices.push_back(i);
