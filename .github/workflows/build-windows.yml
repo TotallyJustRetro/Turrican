@@ -311,6 +311,11 @@ jobs:
           Copy-Item (Join-Path $project 'config.ini') $release
           Copy-Item (Join-Path $project 'README.txt') $release
           Copy-Item (Join-Path $env:RMLUI_SOURCE 'LICENSE.txt') (Join-Path $release 'RmlUi-LICENSE.txt')
+          $fontDir = Join-Path $release 'assets/fonts'
+          New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
+          Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Regular.ttf') $fontDir
+          Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LatoLatin-Bold.ttf') $fontDir
+          Copy-Item (Join-Path $env:RMLUI_SOURCE 'Samples/assets/LICENSE.txt') (Join-Path $release 'RmlUi-Sample-Fonts-LICENSE.txt')
           @'
           START HERE: run the MegaTurricanLauncher portable executable.
           In the launcher, browse to your own Mega Drive ROM and press LAUNCH MEGA TURRICAN.
@@ -329,7 +334,9 @@ jobs:
           if (-not ($entries | Where-Object { $_ -like '*MegaTurrican.exe' })) { throw 'Native game EXE is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*SDL2.dll' })) { throw 'SDL2 compatibility runtime is missing from the package.' }
           if (-not ($entries | Where-Object { $_ -like '*SDL3.dll' })) { throw 'SDL3 runtime required by SDL2-compat is missing from the package.' }
-          Write-Host 'Verified EXEs and SDL runtimes in Windows package:'
+          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Regular.ttf' })) { throw 'Bundled RmlUi regular font is missing from the package.' }
+          if (-not ($entries | Where-Object { $_ -like '*assets/fonts/LatoLatin-Bold.ttf' })) { throw 'Bundled RmlUi bold font is missing from the package.' }
+          Write-Host 'Verified EXEs, SDL runtimes, and Maker fonts in Windows package:'
           $entries | Where-Object { $_ -like '*.exe' -or $_ -like '*.dll' } | ForEach-Object { Write-Host "  $_" }
 
       - name: Upload ready-to-run Windows build
