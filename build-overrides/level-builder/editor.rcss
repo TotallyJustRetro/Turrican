@@ -724,16 +724,6 @@ body {
   background-color: #71527e;
 }
 
-.asset-card.locked-modern-only {
-  opacity: 0.46;
-}
-
-.asset-card.locked-modern-only:after {
-  content: "MODERN MODE";
-  color: #e7a1a1;
-  font-size: 6px;
-}
-
 .model-preview {
   height: 72px;
   display: flex;
