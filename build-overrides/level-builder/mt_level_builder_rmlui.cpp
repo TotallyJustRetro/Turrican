@@ -356,7 +356,7 @@ static void maker_refresh_tile_shelf()
 {
     if(!g_document)return;
     const int total=mtlb_editor_tile_count();
-    const int max_offset=std::max(0,total-20);
+    const int max_offset=std::max(0,((total+19)/20-1)*20);
     g_asset_shelf_offset=std::max(0,std::min(max_offset,g_asset_shelf_offset));
     const int visible=std::min(20,std::max(0,total-g_asset_shelf_offset));
     std::string cards;
@@ -790,6 +790,7 @@ public:
             if(requested=="modern")g_maker_modern=true;
             else if(requested=="vanilla")g_maker_modern=false;
             else g_maker_modern=!g_maker_modern;
+            if(!g_maker_modern)g_placement_armed=false;
             maker_update_mode_ui();
             maker_refresh_asset_shelf();
             maker_update_mode_ui();
@@ -819,6 +820,7 @@ public:
             return;
         }
         if (action == "asset-select") {
+            g_placement_armed=false;
             g_selected_asset_id=element->GetAttribute<int>("data-asset-id",-1);
             g_selected_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
             if(Rml::Element *label=g_document->GetElementById("selected-asset-name"))
@@ -1029,7 +1031,9 @@ public:
         }
         if (action == "asset-page") {
             const int dir=element->GetAttribute<int>("data-dir",1);
-            g_asset_shelf_offset=std::max(0,std::min(std::max(0,mtlb_editor_tile_count()-20),g_asset_shelf_offset+dir*20));
+            const int tile_count=mtlb_editor_tile_count();
+            const int last_page_offset=std::max(0,((tile_count+19)/20-1)*20);
+            g_asset_shelf_offset=std::max(0,std::min(last_page_offset,g_asset_shelf_offset+dir*20));
             g_asset_shelf_hash=0;
             maker_refresh_asset_shelf();
             return;
@@ -1479,16 +1483,16 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
             if(!g_asset_drag_active){
                 int x=0,y=0;
                 if(maker_stage_cell_at(event->button.x,event->button.y,x,y)){
-                    if(g_maker_tool==6)maker_add_light(event->button.x,event->button.y);
-                    else if(g_maker_tool==5){++g_event_node_count;set_status("Stage trigger marker added to the event flow.");}
-                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->button.x,event->button.y,g_brush_tile);
-                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->button.x,event->button.y,0);
-                    else if(g_placement_armed&&g_selected_asset_id>=0){
+                    if(g_placement_armed&&g_selected_asset_id>=0){
                         g_drag_asset_id=g_selected_asset_id;g_drag_asset_type=g_selected_asset_type;
                         maker_place_asset_at(event->button.x,event->button.y);
                         g_placement_armed=false;
                         maker_update_mode_ui();
-                    }else if(g_selected_asset_id>=0&&(g_selected_asset_type=="rom_sprite"||g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
+                    }else if(g_maker_tool==6)maker_add_light(event->button.x,event->button.y);
+                    else if(g_maker_tool==5){++g_event_node_count;set_status("Stage trigger marker added to the event flow.");}
+                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==1)paint_stage_at(event->button.x,event->button.y,g_brush_tile);
+                    else if(g_maker_mode==MAKER_TILES&&g_maker_tool==7)paint_stage_at(event->button.x,event->button.y,0);
+                    else if(g_selected_asset_id>=0&&(g_selected_asset_type=="rom_sprite"||g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"||g_selected_asset_type=="3d_model")){
                         g_drag_asset_id=g_selected_asset_id;g_drag_asset_type=g_selected_asset_type;g_asset_drag_active=true;
                         maker_place_asset_at(event->button.x,event->button.y);g_asset_drag_active=false;
                     }else{g_cursor_x=x;g_cursor_y=y;mtlb_map_set_cursor(x,y);if(g_model_handle){g_model_handle.DirtyVariable("cursor_x");g_model_handle.DirtyVariable("cursor_y");}}
