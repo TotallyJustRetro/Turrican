@@ -406,16 +406,14 @@ static bool maker_rom_range(uint32_t address,uint32_t bytes)
 static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
 {
     if(!maker_rom_range(frame,8))return false;
-    uint16_t x=0,y=0;
-    uint32_t packed=0;
-    if(!maker_rom_read_u16(frame,x)||!maker_rom_read_u16(frame+2,y)||
-       !maker_rom_read_u32(frame+4,packed))return false;
-    // f_54A6 tests the next X word with the 68k PL condition and stops
-    // when its sign bit is set; negative X is the original frame terminator.
-    if(x&0x8000u)return false;
-
-    uint16_t count=0;
-    for(uint32_t part=0;part<64;part++) {
+    // The renderer consumes the first piece, then tests the next piece's X
+    // word for the negative terminator before processing each later piece.
+    uint16_t firstX=0,firstY=0;
+    uint32_t firstAttr=0;
+    if(!maker_rom_read_u16(frame,firstX)||!maker_rom_read_u16(frame+2,firstY)||
+       !maker_rom_read_u32(frame+4,firstAttr))return false;
+    uint16_t count=1;
+    for(uint32_t part=1;part<64;part++) {
         const uint32_t at=frame+part*8u;
         if(!maker_rom_range(at,8))break;
         uint16_t px=0,py=0;
@@ -425,7 +423,6 @@ static bool maker_sprite_frame_probe(uint32_t frame,uint16_t *partCount)
         if(!maker_rom_read_u16(at+2,py)||!maker_rom_read_u32(at+4,attr))break;
         count++;
     }
-    if(count==0)return false;
     if(partCount)*partCount=count;
     return true;
 }
@@ -532,7 +529,7 @@ static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
         uint32_t packed=0;
         if(!maker_rom_read_u16(at,rawX)||!maker_rom_read_u16(at+2,rawY)||
            !maker_rom_read_u32(at+4,packed))break;
-        if(rawX&0x8000u)break;
+        if(i>0 && (rawX&0x8000u))break;
         const uint16_t sizeLink=(uint16_t)(packed>>16);
         const uint16_t attr=(uint16_t)(packed&0x7FFFu);
         const int w=((sizeLink>>8)&3)+1;
