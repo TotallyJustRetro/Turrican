@@ -237,47 +237,80 @@ static void maker_open_texture_importer()
     char message[256]; std::snprintf(message,sizeof(message),"Imported texture %s (%d x %d).",name,width,height);
     set_status(message);
 }
-static void maker_prepare_log()
+static void maker_log(const char *format, ...);
+static void maker_refresh_sprite_lists()
 {
-    if (!g_log_path.empty()) return;
-    g_log_path = maker_portable_root();
-    if (g_log_path != "." && g_log_path.back() != '/' && g_log_path.back() != '\\')
-        g_log_path += '/';
-    g_log_path += "maker-rmlui.log";
-}
-
-static void maker_log(const char *format, ...)
-{
-    maker_prepare_log();
-    FILE *file = std::fopen(g_log_path.c_str(), "ab");
-    if (!file) return;
-    va_list args;
-    va_start(args, format);
-    std::vfprintf(file, format, args);
-    va_end(args);
-    std::fputc('\n', file);
-    std::fclose(file);
-}
-
-static int maker_fail(const char *reason)
-{
-    std::snprintf(g_last_error, sizeof(g_last_error), "%s", reason ? reason : "Unknown RmlUi startup failure.");
-    maker_log("INITIALIZATION FAILED: %s", g_last_error);
-    return 0;
-}
-
-class MakerSystemInterface final : public SystemInterface_SDL
-{
-public:
-    explicit MakerSystemInterface(SDL_Window *window) : SystemInterface_SDL(window) {}
-    bool LogMessage(Rml::Log::Type type, const Rml::String &message) override
-    {
-        maker_log("RmlUi log type %d: %s", (int)type, message.c_str());
-        return Rml::SystemInterface::LogMessage(type, message);
+    if(!g_document)return;
+    std::string enemies,bosses;
+    const int count=mtlb_editor_sprite_asset_count();
+    for(int i=0;i<count;i++){
+        char card[320];
+        std::snprintf(card,sizeof(card),
+            "<div id='asset-sprite-enemy-%d' class='asset-card' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='enemy'><div class='asset-thumb' id='sprite-thumb-enemy-%d'></div><div>SPRITE SET %02d</div><div class='asset-tag'>2D</div></div>",
+            i,i,i,i+1);
+        enemies+=card;
+        std::snprintf(card,sizeof(card),
+            "<div id='asset-sprite-boss-%d' class='asset-card' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='boss'><div class='asset-thumb' id='sprite-thumb-boss-%d'></div><div>BOSS SET %02d</div><div class='asset-tag'>2D</div></div>",
+            i,i,i,i+1);
+        bosses+=card;
     }
-};
+    if(count==0){
+        enemies="<div class='folder-subheading'>No validated ROM sprite descriptors were found.</div>";
+        bosses="<div class='folder-subheading'>No validated ROM boss descriptors were found.</div>";
+    }
+    if(Rml::Element *list=g_document->GetElementById("asset-list-enemies"))list->SetInnerRML(enemies);
+    if(Rml::Element *list=g_document->GetElementById("asset-list-bosses"))list->SetInnerRML(bosses);
+}
 
+static void maker_refresh_imported_asset_lists()
+{
+    if(!g_document)return;
+    std::string lists[5];
+    const int count=mtlb_imported_model_count();
+    for(int i=0;i<count;i++){
+        char name[128]={},path[1024]={};
+        uint32_t triangles=0,bones=0;float bounds[3]={0,0,0};
+        int diffuse=0,normal=0,emissive=0,classification=1;
+        if(!mtlb_imported_model_info(i,name,sizeof(name),path,sizeof(path),&triangles,&bones,bounds,
+            &diffuse,&normal,&emissive,&classification))continue;
+        char card[1024];
+        const bool locked=!g_maker_modern;
+        std::snprintf(card,sizeof(card),
+            "<div id='asset-model-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
+            i,locked?"locked-modern-only":"",i,Rml::StringUtilities::EncodeRml(name).c_str());
+        lists[std::max(0,std::min(4,classification))]+=card;
+    }
+    static const char *ids[]={"asset-list-3d-tiles","asset-list-stage","asset-list-items","asset-list-3d-enemies","asset-list-3d-bosses"};
+    for(int i=0;i<5;i++){
+        if(Rml::Element *list=g_document->GetElementById(ids[i]))list->SetInnerRML(lists[i]);
+    }
+}
 
+static void maker_refresh_asset_shelf()
+{
+    if(!g_document)return;
+    const int count=mtlb_editor_tile_count();
+    const uint32_t page_key=(uint32_t)(g_asset_shelf_offset+1);
+    if(count!=g_asset_shelf_count || g_asset_shelf_hash!=page_key){
+        g_asset_shelf_count=count;
+        g_asset_shelf_hash=page_key;
+        std::string markup;
+        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
+        for(int i=0;i<visible;i++){
+            const int index=g_asset_shelf_offset+i;
+            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
+            char card[420];
+            std::snprintf(card,sizeof(card),
+                "<div id='asset-tile-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb'></div><div>$%03X</div><div class='asset-tag'>2D</div></div>",
+                index,entry==g_brush_tile?"selected":"",index,entry&0x07FF);
+            markup+=card;
+        }
+        if(count==0)markup="<div class='folder-subheading'>Waiting for cartridge VDP tiles and ROM tile banks.</div>";
+        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items"))shelf->SetInnerRML(markup);
+    }
+    maker_refresh_sprite_lists();
+    maker_refresh_imported_asset_lists();
+}
 
 static void set_status(const char *message);
 
