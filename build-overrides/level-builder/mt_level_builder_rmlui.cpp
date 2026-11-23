@@ -46,7 +46,7 @@ static const std::string &maker_portable_root()
     if (!g_portable_root.empty()) return g_portable_root;
 
     const char *portable = std::getenv("MEGATURRICAN_CONFIG_DIR");
-    if (portable && portable[0] != '\\0') {
+    if (portable && portable[0] != '\0') {
         g_portable_root = portable;
     } else {
         char *base = SDL_GetBasePath();
@@ -59,7 +59,7 @@ static const std::string &maker_portable_root()
     }
 
     while (g_portable_root.size() > 1 &&
-           (g_portable_root.back() == '/' || g_portable_root.back() == '\\\\'))
+           (g_portable_root.back() == '/' || g_portable_root.back() == '\\'))
         g_portable_root.pop_back();
     return g_portable_root;
 }
@@ -68,7 +68,7 @@ static void maker_prepare_log()
 {
     if (!g_log_path.empty()) return;
     g_log_path = maker_portable_root();
-    if (g_log_path != "." && g_log_path.back() != '/' && g_log_path.back() != '\\\\')
+    if (g_log_path != "." && g_log_path.back() != '/' && g_log_path.back() != '\\')
         g_log_path += '/';
     g_log_path += "maker-rmlui.log";
 }
@@ -418,7 +418,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
 
     const std::string portable_root = maker_portable_root();
     const std::string font_prefix =
-        (portable_root == "." || portable_root.back() == '/' || portable_root.back() == '\\\\')
+        (portable_root == "." || portable_root.back() == '/' || portable_root.back() == '\\')
             ? portable_root
             : portable_root + "/";
     const std::string font_regular = font_prefix + "assets/fonts/LatoLatin-Regular.ttf";
