@@ -3324,13 +3324,13 @@ body {
 
 
 /* =========================================================================
-   PIXELIFY DISPLAY SYSTEM
+   MEGA TURRICAN ORIGINAL DISPLAY TYPEFACE
    Readable pixel-grid letterforms for the main controls; Silkscreen is
    retained only for tiny cartridge IDs and technical readouts.
    ========================================================================= */
 
 body {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 12px;
 }
 
@@ -3340,7 +3340,7 @@ body {
 
 .brand-title {
   color: #ffe08d;
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 15px;
   line-height: 18px;
   letter-spacing: 1px;
@@ -3353,23 +3353,23 @@ body {
 }
 
 .menu-item {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
 .button {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 11px;
   font-weight: 700;
 }
 
 .mode-toggle {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
 .tool-button {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
   font-weight: 700;
 }
@@ -3380,18 +3380,18 @@ body {
 }
 
 .rail-mini-button {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
 .center-tab {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 12px;
   font-weight: 700;
 }
 
 .stage-title {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 12px;
   font-weight: 700;
 }
@@ -3402,33 +3402,33 @@ body {
 }
 
 .tiny-button, .filter-button {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
   font-weight: 700;
 }
 
 .stage-coordinate {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 11px;
 }
 
 .spawn-badge {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
 .stage-hint {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
 .dock-caption {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 11px;
 }
 
 .script-node {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
@@ -3437,7 +3437,7 @@ body {
 }
 
 .dock-title {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
   font-weight: 700;
 }
@@ -3448,28 +3448,28 @@ body {
 }
 
 .folder-heading {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 11px;
   font-weight: 700;
 }
 
 .folder-subheading {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
 .asset-card {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
 .asset-tag {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 8px;
 }
 
 .model-preview-placeholder {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
@@ -3479,7 +3479,7 @@ body {
 }
 
 .classification-row {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
@@ -3489,18 +3489,18 @@ body {
 }
 
 .property-row label {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
   font-weight: 700;
 }
 
 .property-row select, .property-row input {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
 .property-subtitle {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
@@ -3510,12 +3510,12 @@ body {
 }
 
 .modern-lock {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 8px;
 }
 
 .statusbar {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
@@ -3525,7 +3525,7 @@ body {
 }
 
 .modal-title {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 12px;
 }
 
@@ -3535,12 +3535,12 @@ body {
 }
 
 .modal-asset-info {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 9px;
 }
 
 .class-card {
-  font-family: "Pixelify Sans";
+  font-family: "Turrican";
   font-size: 10px;
 }
 
