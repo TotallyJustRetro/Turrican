@@ -60,6 +60,12 @@ static uint8_t g_rom_hud_art_a[0x0200] = {};
 static uint8_t g_rom_hud_art_b[0x0200] = {};
 static bool g_rom_hud_art_a_valid = false;
 static bool g_rom_hud_art_b_valid = false;
+/* f_4C70: twenty ROM-selected animation frames, each DMA-uploaded as 0x100 bytes to VRAM $3280. */
+static uint8_t g_rom_fx_frames[20][0x0100] = {};
+static bool g_rom_fx_frame_valid[20] = {};
+static int g_rom_fx_frame = 0;
+static int g_rom_fx_frame_count = 0;
+static int g_rom_fx_tile_start_index = -1;
 static int g_rom_tile_start_index = -1;
 static int g_rom_tile_count = 0;
 static uint8_t g_live_regs[32] = {};
@@ -292,20 +298,23 @@ static int rom_vdp_pixel(int tile,int x,int y)
     const uint8_t *block=nullptr;
     int localTile=tile;
     // Backward-compatible local indices from earlier Maker documents.
-    if(tile<160 && g_rom_art_valid) {
+    if(tile<80 && g_rom_art_valid) {
         block=g_rom_art_block;
-    } else if(tile>=160 && tile<176 && g_rom_hud_art_a_valid) {
-        block=g_rom_hud_art_a; localTile=tile-160;
-    } else if(tile>=176 && tile<192 && g_rom_hud_art_b_valid) {
-        block=g_rom_hud_art_b; localTile=tile-176;
+    } else if(tile>=80 && tile<96 && g_rom_hud_art_a_valid) {
+        block=g_rom_hud_art_a; localTile=tile-80;
+    } else if(tile>=96 && tile<112 && g_rom_hud_art_b_valid) {
+        block=g_rom_hud_art_b; localTile=tile-96;
     }
-    // Actual VDP tile ranges used by the original Mega Turrican routines.
+    // Original VDP tile ranges used by object and animation descriptors.
     else if(tile>=0xB0 && tile<0xB0+160 && g_rom_art_valid) {
         block=g_rom_art_block; localTile=tile-0xB0;
     } else if(tile>=0x1E9 && tile<=0x1F8 && g_rom_hud_art_a_valid) {
         block=g_rom_hud_art_a; localTile=tile-0x1E9;
     } else if(tile>=0x1EA && tile<=0x1F9 && g_rom_hud_art_b_valid) {
         block=g_rom_hud_art_b; localTile=tile-0x1EA;
+    } else if(tile>=0x194 && tile<0x19C && g_rom_fx_frame_count>0 &&
+              g_rom_fx_frame_valid[g_rom_fx_frame]) {
+        block=g_rom_fx_frames[g_rom_fx_frame]; localTile=tile-0x194;
     }
     if(!block)return 0;
     const uint8_t packed=block[localTile*32+y*4+(x>>1)];
@@ -324,8 +333,6 @@ static void append_rom_art_tiles()
             g_live_tile_ids[g_live_tile_count++]=0x1E9+tile;
     }
     if(g_rom_hud_art_b_valid) {
-        // The two original uploads overlap by fifteen tiles. Keep only the
-        // final tile contributed by the second, one-tile-shifted upload.
         if(g_rom_hud_art_a_valid) {
             if(g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0])))
                 g_live_tile_ids[g_live_tile_count++]=0x1F9;
@@ -333,6 +340,12 @@ static void append_rom_art_tiles()
             for(int tile=0;tile<16 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
                 g_live_tile_ids[g_live_tile_count++]=0x1EA+tile;
         }
+    }
+    g_rom_fx_tile_start_index=-1;
+    if(g_rom_fx_frame_count>0 && g_rom_fx_frame_valid[g_rom_fx_frame]) {
+        g_rom_fx_tile_start_index=g_live_tile_count;
+        for(int tile=0;tile<8 && g_live_tile_count<(int)(sizeof(g_live_tile_ids)/sizeof(g_live_tile_ids[0]));tile++)
+            g_live_tile_ids[g_live_tile_count++]=0x194+tile;
     }
     g_rom_tile_count=g_live_tile_count-g_rom_tile_start_index;
 }
@@ -449,6 +462,21 @@ static void maker_add_rom_sprite_descriptor(uint32_t owner,uint32_t descriptor)
     if(!maker_sprite_descriptor_probe(owner,descriptor,asset))return;
     g_rom_sprite_assets[g_rom_sprite_asset_count++]=asset;
 }
+static void maker_load_rom_fx_frames()
+{
+    g_rom_fx_frame=0;
+    g_rom_fx_frame_count=0;
+    for(int i=0;i<20;i++) {
+        g_rom_fx_frame_valid[i]=false;
+        uint32_t source=0;
+        if(!maker_rom_read_u32(0x4D94u+(uint32_t)i*4u,source) ||
+           !maker_rom_range(source,0x0100u))continue;
+        if(md_rom_copy_region(source,g_rom_fx_frames[i],0x0100u)) {
+            g_rom_fx_frame_valid[i]=true;
+            g_rom_fx_frame_count++;
+        }
+    }
+}
 static void maker_build_rom_sprite_catalog()
 {
     g_rom_sprite_asset_count=0;
@@ -485,6 +513,8 @@ static bool maker_sprite_tile_supported(int tile)
     if(tile>=0x1E9 && tile<=0x1F8)return g_rom_hud_art_a_valid ||
         (g_rom_hud_art_b_valid && tile>=0x1EA);
     if(tile==0x1F9)return g_rom_hud_art_b_valid;
+    if(tile>=0x194 && tile<0x19C)
+        return g_rom_fx_frame_count>0 && g_rom_fx_frame_valid[g_rom_fx_frame];
     return false;
 }
 static bool draw_rom_sprite_preview(ImDrawList *draw,ImVec2 box,float boxWidth,
@@ -1205,6 +1235,7 @@ extern "C" int mtlb_init(SDL_Window *window, SDL_Renderer *renderer)
     g_rom_art_valid=md_rom_copy_region(0x3AF80u,g_rom_art_block,(uint32_t)sizeof(g_rom_art_block))!=0;
     g_rom_hud_art_a_valid=md_rom_copy_region(0x26D20u,g_rom_hud_art_a,(uint32_t)sizeof(g_rom_hud_art_a))!=0;
     g_rom_hud_art_b_valid=md_rom_copy_region(0x26D40u,g_rom_hud_art_b,(uint32_t)sizeof(g_rom_hud_art_b))!=0;
+    maker_load_rom_fx_frames();
     maker_build_rom_sprite_catalog();
     g_live_art_hash=0;
     g_live_tile_count=0;
