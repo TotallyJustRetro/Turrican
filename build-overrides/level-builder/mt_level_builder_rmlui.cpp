@@ -148,6 +148,8 @@ static const std::string &maker_portable_root()
     return g_portable_root;
 }
 
+static void maker_log(const char *format, ...);
+
 static bool maker_save_placed_models()
 {
     const std::filesystem::path root=maker_portable_root();
@@ -1879,35 +1881,6 @@ static const ModelPreviewGeometry *maker_model_preview_geometry(int asset)
     geometry.uv.resize((size_t)count*2u);
     g_model_preview_geometry.push_back(std::move(geometry));
     return &g_model_preview_geometry.back();
-}
-
-static SDL_Texture *maker_model_preview_texture(int asset)
-{
-    if(asset<0)return nullptr;
-    char path[2048]={};
-    if(!mtlb_imported_model_diffuse_path(asset,path,sizeof(path))||!path[0])return nullptr;
-    for(ModelPreviewTexture &entry:g_model_preview_textures){
-        if(entry.asset_id==asset&&entry.path==path){
-            if(!entry.attempted){
-                entry.attempted=true;
-                entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
-                if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
-                else maker_log("Model %d diffuse texture failed to load (%s): %s",
-                    asset,entry.path.c_str(),IMG_GetError());
-            }
-            return entry.texture;
-        }
-    }
-    ModelPreviewTexture entry{};
-    entry.asset_id=asset;
-    entry.path=path;
-    entry.attempted=true;
-    entry.texture=IMG_LoadTexture(g_renderer,entry.path.c_str());
-    if(entry.texture)SDL_SetTextureBlendMode(entry.texture,SDL_BLENDMODE_BLEND);
-    else maker_log("Model %d diffuse texture failed to load (%s): %s",
-        asset,entry.path.c_str(),IMG_GetError());
-    g_model_preview_textures.push_back(entry);
-    return g_model_preview_textures.back().texture;
 }
 
 static void draw_model_mesh(SDL_Renderer *renderer,int asset,float x,float y,float width,float height,
