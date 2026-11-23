@@ -799,6 +799,12 @@ public:
                 if(mtlb_editor_sprite_asset_set_category(g_selected_rom_sprite,category)){
                     maker_refresh_sprite_lists();
                     maker_update_sprite_panel(g_selected_rom_sprite);
+                    if(category==4){g_maker_mode=MAKER_BOSS;g_maker_tool=0;}
+                    else{
+                        g_maker_mode=MAKER_OBJECTS;
+                        g_maker_tool=(category==1)?3:((category==2)?2:((category==3)?1:0));
+                    }
+                    maker_update_mode_ui();
                     set_status("ROM sprite role saved to the portable Maker category file.");
                 }else{
                     set_status("Could not save the ROM sprite category file.");
