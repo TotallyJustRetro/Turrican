@@ -39,7 +39,13 @@
       <button class="tool-button" id="tool-6" data-action="tool" data-tool="6"><span class="tool-glyph">✦</span><span>LIGHT</span></button>
       <button class="tool-button" id="tool-7" data-action="tool" data-tool="7"><span class="tool-glyph">⌫</span><span>ERASE</span></button>
       <div class="rail-spacer"></div>
-      <div class="rail-foot">MKR<br/>V1</div>
+      <div class="rail-actions">
+        <button class="rail-mini-button" data-action="undo">UNDO</button>
+        <button class="rail-mini-button" data-action="redo">REDO</button>
+        <button class="rail-mini-button rail-save" data-action="save">SAVE</button>
+        <button class="rail-mini-button rail-exit" data-action="exit">EXIT</button>
+      </div>
+      <div class="rail-foot">MAKER / V1</div>
     </nav>
 
     <main class="center-dock">
@@ -62,19 +68,26 @@
         </div>
       </div>
       <div id="stage-viewport" class="stage-viewport" data-action="stage-drop">
+        <div class="scene-backdrop">
+          <div class="scene-wall scene-wall-left"></div>
+          <div class="scene-wall scene-wall-right"></div>
+          <div class="scene-overhead"></div>
+          <div class="scene-core"></div>
+          <div class="scene-light scene-light-left"></div>
+          <div class="scene-light scene-light-right"></div>
+          <div class="scene-platform scene-platform-main"></div>
+          <div class="scene-platform scene-platform-lower"></div>
+          <div class="scene-floor"></div>
+          <div class="scene-rail scene-rail-left"></div>
+          <div class="scene-rail scene-rail-right"></div>
+        </div>
         <div id="stage-grid" class="stage-grid"></div>
         <div class="stage-coordinate"><span>X:</span> <span id="cursor-x" data-text="cursor_x">24</span> <span>Y:</span> <span id="cursor-y" data-text="cursor_y">12</span></div>
         <div id="player-spawn-badge" class="spawn-badge">PLAYER SPAWN</div>
         <div id="drop-ghost" class="drop-ghost hidden">DROP ASSET</div>
-        <div id="stage-hint" class="stage-hint">Drag an asset from the folder drawer onto the game plane. Brush paints tiles; right-click erases.</div>
+        <div id="stage-hint" class="stage-hint">EMPTY STAGE / PAINT TILES OR DROP ASSETS TO BUILD THE ROOM</div>
       </div>
       <div class="bottom-workspace">
-        <div class="bottom-actions">
-          <button class="button" data-action="undo">UNDO</button>
-          <button class="button" data-action="redo">REDO</button>
-          <button class="button save-button" data-action="save">SAVE</button>
-          <button class="button" data-action="exit">EXIT</button>
-        </div>
         <div class="script-flow">
           <div class="dock-caption">EVENT / SCRIPT FLOW</div>
           <div id="script-flow-items" class="script-flow-items">
@@ -157,7 +170,8 @@
         </div>
       </section>
 
-      <section class="model-import-card">
+      <div class="inspector-stack">
+        <section class="model-import-card">
         <div class="dock-title"><span>3D MODEL IMPORT</span><span class="dock-subtitle">ASSIMP / MESH</span></div>
         <div id="model-preview" class="model-preview">
           <div class="model-preview-placeholder">NO MODEL SELECTED</div>
@@ -207,7 +221,8 @@
         <div class="toggle-row"><label>PARALLAX DEPTH FOG</label><input type="checkbox" id="fx-fog" data-action="property" data-property="fog"/></div>
         <div class="toggle-row"><label>CRT / NTSC FILTER</label><input type="checkbox" id="fx-crt" data-action="property" data-property="crt"/></div>
         <div id="vanilla-lock-note" class="modern-lock hidden">MODERN MODE REQUIRED FOR 3D / DYNAMIC LIGHTING</div>
-      </section>
+        </section>
+      </div>
     </aside>
   </div>
 
