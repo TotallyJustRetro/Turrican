@@ -1063,6 +1063,8 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
             : portable_root + "/";
     const std::string font_regular = font_prefix + "assets/fonts/LatoLatin-Regular.ttf";
     const std::string font_bold = font_prefix + "assets/fonts/LatoLatin-Bold.ttf";
+    const std::string font_pixel_regular = font_prefix + "assets/fonts/Silkscreen-Regular.ttf";
+    const std::string font_pixel_bold = font_prefix + "assets/fonts/Silkscreen-Bold.ttf";
     maker_log("Portable root: %s.", portable_root.c_str());
     maker_log("Diagnostic log path: %s.", g_log_path.c_str());
     maker_log("Loading regular font: %s.", font_regular.c_str());
@@ -1071,6 +1073,14 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     maker_log("Loading bold font: %s.", font_bold.c_str());
     const bool bold_loaded = Rml::LoadFontFace(font_bold, "Lato", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false);
     maker_log("Bold font result: %d.", bold_loaded ? 1 : 0);
+    const bool pixel_regular_loaded = Rml::LoadFontFace(font_pixel_regular, "Silkscreen",
+        Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, false);
+    const bool pixel_bold_loaded = Rml::LoadFontFace(font_pixel_bold, "Silkscreen",
+        Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false);
+    maker_log("Pixel display font result: regular=%d bold=%d.",
+        pixel_regular_loaded ? 1 : 0, pixel_bold_loaded ? 1 : 0);
+    if (!pixel_regular_loaded || !pixel_bold_loaded)
+        maker_log("Pixel display font unavailable; the Maker will fall back to Lato for those selectors.");
     if (!regular_loaded || !bold_loaded) {
         mtlbr_shutdown();
         return maker_fail("RmlUi could not load the bundled Lato fonts. See maker-rmlui.log.");
