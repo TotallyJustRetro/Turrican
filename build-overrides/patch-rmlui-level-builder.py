@@ -90,34 +90,28 @@ def main() -> None:
         )
 
     present_marker = "native_maker_closed=mtlbr_render_to_screen"
-    present_token = "SDL_RenderCopy(ren,tex,&src,&game_dst);"
+    present_anchor = (
+        "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
+        "    SDL_RenderPresent(ren);"
+    )
+    present_patch = (
+        "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
+        "    int native_maker_closed=0;\n"
+        "    if(native_menu_state==11)\n"
+        "        native_maker_closed=mtlbr_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h);\n"
+        "    SDL_RenderPresent(ren);\n"
+        "    if(native_maker_closed) {\n"
+        "        mtlbr_shutdown();\n"
+        "        if(native_level_builder_from_pause) {\n"
+        "            native_level_builder_from_pause=0;\n"
+        "            native_menu_state=1; native_menu_sel=7;\n"
+        "        } else {\n"
+        "            native_custom_enter_parent();\n"
+        "        }\n"
+        "    }"
+    )
     if present_marker not in s:
-        s = insert_after_token(
-            s,
-            present_token,
-            "\n"
-            "    int native_maker_closed=0;\n"
-            "    if(native_menu_state==11)\n"
-            "        native_maker_closed=mtlbr_render_to_screen(ren,game_dst.x,game_dst.y,game_dst.w,game_dst.h);\n",
-            "RmlUi-only Maker presentation",
-        )
-        present_call = "SDL_RenderPresent(ren);"
-        if s.count(present_call) < 1:
-            raise RuntimeError("SDL_RenderPresent(ren) call is missing after Maker presentation insertion.")
-        s = s.replace(
-            present_call,
-            present_call + "\n"
-            "    if(native_maker_closed) {\n"
-            "        mtlbr_shutdown();\n"
-            "        if(native_level_builder_from_pause) {\n"
-            "            native_level_builder_from_pause=0;\n"
-            "            native_menu_state=1; native_menu_sel=7;\n"
-            "        } else {\n"
-            "            native_custom_enter_parent();\n"
-            "        }\n"
-            "    }",
-            1,
-        )
+        s = once(s, present_anchor, present_patch, "RmlUi-only Maker presentation")
 
     init_marker = "mtlb_model_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg)"
     init_anchor = "if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
