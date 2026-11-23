@@ -66,15 +66,15 @@ static const char *kDocument = R"RML(
     .panel-heading { height: 30px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #2b3d50; color: #e4edf5; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
     .panel-kicker { flex-grow: 1; color: #748ba1; font-size: 9px; font-weight: normal; text-align: right; }
     .stage-panel { flex-grow: 1; padding: 8px; }
-    .stage-screen { width: 100%; height: 100%; min-height: 318px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
+    .stage-screen { width: 100%; height: 100%; min-height: 282px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
     .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 9px; }
     .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
-    .stage-grid { width: 576px; height: 288px; overflow: hidden; background-color: #142638; }
-    .cell { display: inline-block; width: 9px; height: 9px; margin: 0; padding: 0; background-color: #15283a; border-right: 1px solid #29435a; border-bottom: 1px solid #29435a; }
+    .stage-grid { width: 448px; height: 224px; overflow: hidden; background-color: #142638; font-size: 0; line-height: 0; }
+    .cell { display: inline-block; vertical-align: top; width: 7px; height: 7px; margin: 0; padding: 0; background-color: #15283a; border-right: 1px solid #29435a; border-bottom: 1px solid #29435a; }
     .cell:hover { background-color: #e5ad57; }
     .cell.filled { background-color: #628b77; }
     .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 9px; }
-    .shelf { height: 88px; min-height: 88px; margin-top: 8px; }
+    .shelf { height: 75px; min-height: 75px; margin-top: 8px; }
     .shelf-content { display: flex; flex-direction: row; align-items: center; padding: 9px; }
     .brush { width: 55px; height: 40px; margin-right: 7px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #19293a; border: 1px solid #334b62; border-radius: 4px; color: #b8c9d7; font-size: 9px; }
     .brush:hover { background-color: #30465c; border-color: #e1a84e; }
@@ -306,7 +306,6 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
 
     g_window = window;
     g_renderer = renderer;
-    SDL_GetWindowSize(window, &g_map_cols, &g_map_rows);
     g_map_cols = mtlb_map_cols();
     g_map_rows = mtlb_map_rows();
     if (g_map_cols <= 0 || g_map_rows <= 0) return 0;
@@ -354,6 +353,7 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_document->Show();
     g_exit_requested = false;
     g_brush_tile = mtlb_map_brush();
+    if (g_brush_tile < 176 || g_brush_tile > 180) g_brush_tile = 176;
     select_brush(g_brush_tile);
     set_status("RmlUi Maker interface online — existing level document and editor data retained.");
     return 1;
@@ -417,9 +417,13 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
         g_viewport->SetProperty("height", value);
     }
 
+    const SDL_BlendMode rml_blend = SDL_ComposeCustomBlendMode(
+        SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+        SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    SDL_SetRenderDrawBlendMode(renderer, rml_blend);
     g_context->Update();
     g_context->Render();
     SDL_RenderSetClipRect(renderer, nullptr);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     return g_exit_requested ? 1 : 0;
 }
