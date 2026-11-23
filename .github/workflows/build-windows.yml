@@ -207,8 +207,8 @@ jobs:
           cd "$(cygpath -u "$MEGATURRICAN_PROJECT")"
           sdl_version="$(sdl2-config --version)"
           IFS=. read -r sdl_major sdl_minor sdl_patch <<< "$sdl_version"
-          if (( sdl_major < 2 || (sdl_major == 2 && (sdl_minor < 0 || (sdl_minor == 0 && sdl_patch < 17))) )); then
-            echo "Dear ImGui SDL_Renderer2 backend requires SDL 2.0.17 or newer (found $sdl_version)."
+          if (( sdl_major < 2 || (sdl_major == 2 && (sdl_minor < 0 || (sdl_minor == 0 && sdl_patch < 18))) )); then
+            echo "Dear ImGui and RmlUi SDL renderer backends require SDL 2.0.18 or newer (found $sdl_version)."
             exit 1
           fi
           mkdir -p _objects
@@ -229,7 +229,7 @@ jobs:
           done
           rmlui_source="$(cygpath -u "$RMLUI_SOURCE")"
           rmlui_prefix="$(cygpath -u "$RMLUI_PREFIX")"
-          rmlui_includes="-I$rmlui_source/Include -I$rmlui_source/Backends -DRMLUI_SDL_VERSION_MAJOR=2"
+          rmlui_includes="-I$rmlui_source/Include -I$rmlui_source/Backends -DRMLUI_SDL_VERSION_MAJOR=2 -DRMLUI_STATIC_LIB"
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -Iruntime -c runtime/mt_level_builder_rmlui.cpp -o _objects/mt_level_builder_rmlui.o
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Platform_SDL.cpp" -o _objects/rmlui_platform_sdl.o
           g++ -O2 -std=c++17 $(sdl2-config --cflags) $rmlui_includes -c "$rmlui_source/Backends/RmlUi_Renderer_SDL.cpp" -o _objects/rmlui_renderer_sdl.o
