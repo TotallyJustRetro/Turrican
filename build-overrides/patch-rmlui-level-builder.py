@@ -95,10 +95,9 @@ def main() -> None:
         "    SDL_RenderPresent(ren);"
     )
     present_patch = (
-        "    SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
         "    int native_maker_closed=0;\n"
         "    if(native_menu_state==11) {\n"
-        "        /* Maker is a standalone paused menu screen, not a transparent overlay on the title. */\n"
+        "        /* Maker exclusively owns this paused frame; never present the title underneath it. */\n"
         "        SDL_RenderSetClipRect(ren,NULL);\n"
         "        SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_NONE);\n"
         "        SDL_SetRenderDrawColor(ren,11,13,22,255);\n"
@@ -106,6 +105,8 @@ def main() -> None:
         "        int maker_window_width=0,maker_window_height=0;\n"
         "        SDL_GetWindowSize(SDL_RenderGetWindow(ren),&maker_window_width,&maker_window_height);\n"
         "        native_maker_closed=mtlbr_render_to_screen(ren,0,0,maker_window_width,maker_window_height);\n"
+        "    } else {\n"
+        "        SDL_RenderCopy(ren,tex,&src,&game_dst);\n"
         "    }\n"
         "    SDL_RenderPresent(ren);\n"
         "    if(native_maker_closed) {\n"
@@ -119,7 +120,10 @@ def main() -> None:
         "    }"
     )
     if present_marker not in s:
-        s = insert_after_token(s, present_anchor, present_patch, "RmlUi-only Maker presentation")
+        count = s.count(present_anchor)
+        if count != 1:
+            raise RuntimeError(f"RmlUi-only Maker presentation: expected one original frame-present block, found {count}")
+        s = s.replace(present_anchor, present_patch, 1)
 
     init_marker = "mtlb_model_update_vdp_resources(vdp.vram,vdp.cram,vdp.reg)"
     init_anchor = "if(adev&&pause_audio)SDL_PauseAudioDevice(adev,1);"
