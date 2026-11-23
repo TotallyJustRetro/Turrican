@@ -633,22 +633,138 @@ public:
         const Rml::String action = element->GetAttribute<Rml::String>("data-action", "");
 
         if (action == "mode") {
-            g_maker_mode = std::max(0,std::min(MAKER_MODE_COUNT-1,element->GetAttribute<int>("data-mode",0)));
+            g_maker_mode = std::max(0,std::min(4,element->GetAttribute<int>("data-mode",0)));
             g_maker_tool = 0;
             maker_update_mode_ui();
             maker_save_settings();
             set_status((std::string("Switched to ")+maker_mode_name(g_maker_mode)+".").c_str());
             return;
         }
-        if (action == "tool") {
-            g_maker_tool = std::max(0,std::min(8,element->GetAttribute<int>("data-tool",0)));
-            if(g_maker_mode==MAKER_TILES && g_maker_tool==1) select_brush(g_brush_tile);
-            if(Rml::Element *list=g_document->GetElementById("tool-list")){
-                for(int i=0;i<list->GetNumChildren();i++){
-                    Rml::Element *child=list->GetChild(i);
-                    if(child) child->SetClass("active",child==element);
+        if (action == "global-mode") {
+            const Rml::String requested=element->GetAttribute<Rml::String>("data-mode","");
+            if(requested=="modern")g_maker_modern=true;
+            else if(requested=="vanilla")g_maker_modern=false;
+            else g_maker_modern=!g_maker_modern;
+            maker_update_mode_ui();
+            maker_refresh_asset_shelf();
+            maker_save_settings();
+            set_status(g_maker_modern?
+                "MODERN REBORN: widescreen, 3D models and dynamic lighting unlocked.":
+                "VANILLA 1994: 320 x 224, 2D CRAM palette and hardware limits enforced.");
+            return;
+        }
+        if (action == "asset-filter") {
+            const Rml::String filter=element->GetAttribute<Rml::String>("data-filter","all");
+            g_asset_filter=(filter=="2d")?1:((filter=="3d")?2:0);
+            static const char *buttons[]={"filter-all","filter-2d","filter-3d"};
+            for(int i=0;i<3;i++)if(Rml::Element *b=g_document->GetElementById(buttons[i]))b->SetClass("active",i==g_asset_filter);
+            const char *groups[]={"asset-shelf-items","asset-list-enemies","asset-list-bosses"};
+            const char *models[]={"asset-list-3d-tiles","asset-list-stage","asset-list-items","asset-list-3d-enemies","asset-list-3d-bosses"};
+            for(const char *id:groups)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==2);
+            for(const char *id:models)if(Rml::Element *el=g_document->GetElementById(id))el->SetClass("hidden",g_asset_filter==1);
+            return;
+        }
+        if (action == "folder-toggle") {
+            const Rml::String folder_name=element->GetAttribute<Rml::String>("data-folder","");
+            Rml::Element *folder=find_action_element(element);
+            if(folder)folder=folder->GetParentNode();
+            if(folder)folder->SetClass("collapsed",!folder->IsClassSet("collapsed"));
+            return;
+        }
+        if (action == "asset-select") {
+            g_selected_asset_id=element->GetAttribute<int>("data-asset-id",-1);
+            g_selected_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
+            if(Rml::Element *label=g_document->GetElementById("selected-asset-name"))
+                label->SetInnerRML(Rml::StringUtilities::EncodeRml(g_selected_asset_type+" / "+std::to_string(g_selected_asset_id)));
+            if(g_selected_asset_type=="2d_tile"){
+                const int tile=mtlb_editor_tile_entry(g_selected_asset_id,g_maker_palette);
+                if(tile){select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;}
+            }else if(g_selected_asset_type=="enemy"||g_selected_asset_type=="boss"){
+                g_selected_rom_sprite=g_selected_asset_id;
+                g_maker_mode=(g_selected_asset_type=="boss")?MAKER_BOSS:MAKER_OBJECTS;
+                g_maker_tool=1;
+            }else if(g_selected_asset_type=="3d_model"){
+                if(!g_maker_modern){
+                    set_status("Modern Mode Required: this 3D model is locked by the Vanilla 1994 quality gate.");
+                    return;
                 }
+                g_selected_model_asset=g_selected_asset_id;
+                maker_update_imported_model_panel(g_selected_model_asset);
             }
+            maker_update_mode_ui();
+            return;
+        }
+        if (action == "import-model") {
+            if(!g_maker_modern){
+                set_status("Switch to MODERN REBORN before importing 3D models.");
+                return;
+            }
+            maker_open_model_importer();
+            return;
+        }
+        if (action == "import-texture") {
+            maker_open_texture_importer();
+            return;
+        }
+        if (action == "classify" || action == "import-confirm") {
+            if(g_pending_model_asset>=0){
+                const int classification=element->HasAttribute("data-class")?
+                    element->GetAttribute<int>("data-class",1):
+                    element->GetAttribute<int>("value",1);
+                mtlb_imported_model_classify(g_pending_model_asset,classification);
+                g_selected_model_asset=g_pending_model_asset;
+                g_pending_model_asset=-1;
+                maker_update_imported_asset_lists();
+                maker_update_imported_model_panel(g_selected_model_asset);
+                maker_set_modal("model-import-modal",false);
+                set_status("3D model inspected, classified and registered in the portable Assets/Imported folder.");
+            }
+            return;
+        }
+        if (action == "import-cancel") {
+            g_pending_model_asset=-1;
+            maker_set_modal("model-import-modal",false);
+            set_status("Import classification closed. The model remains in the imported library.");
+            return;
+        }
+        if (action == "model-classification") {
+            if(g_selected_model_asset>=0){
+                const int classification=event.GetParameter<int>("value",element->GetAttribute<int>("value",1));
+                mtlb_imported_model_classify(g_selected_model_asset,classification);
+                maker_refresh_imported_asset_lists();
+            }
+            return;
+        }
+        if (action == "property") {
+            const Rml::String property=element->GetAttribute<Rml::String>("data-property","");
+            const Rml::String value=event.GetParameter<Rml::String>("value",element->GetAttribute<Rml::String>("value",""));
+            if(property=="light-type"){
+                g_light_type=(value=="SPOTLIGHT")?1:((value=="AMBIENT TINT")?2:0);
+            }else if(property=="light-color"){
+                unsigned int rgb=0xE619E6u;
+                if(value.size()==7&&value[0]=='#')std::sscanf(value.c_str()+1,"%x",&rgb);
+                g_light_color=0xFF000000u|(rgb&0xFFFFFFu);
+            }else if(property=="light-radius"){
+                g_light_radius=(float)event.GetParameter<double>("value",g_light_radius);
+            }else if(property=="light-intensity"){
+                g_light_intensity=(float)event.GetParameter<double>("value",g_light_intensity)/100.0f;
+            }else if(property=="bloom")g_fx_bloom=event.GetParameter<bool>("checked",false);
+            else if(property=="rim")g_fx_rim=event.GetParameter<bool>("checked",false);
+            else if(property=="cel")g_fx_cel=event.GetParameter<bool>("checked",false);
+            else if(property=="fog")g_fx_fog=event.GetParameter<bool>("checked",false);
+            else if(property=="crt")g_fx_crt=event.GetParameter<bool>("checked",false);
+            maker_save_settings();
+            return;
+        }
+        if (action == "playtest") {
+            set_status("Playtest is not connected to the native player-spawn handoff yet; level editing remains active.");
+            return;
+        }
+
+        if (action == "tool") {
+            g_maker_tool = std::max(0,std::min(7,element->GetAttribute<int>("data-tool",0)));
+            if(g_maker_mode==MAKER_TILES && g_maker_tool==1) select_brush(g_brush_tile);
+            maker_update_mode_ui();
             maker_save_settings();
             set_status("Tool selected.");
             return;
