@@ -41,6 +41,36 @@ static double g_perf_update_ms = 0.0, g_perf_render_ms = 0.0, g_perf_grid_ms = 0
 static std::vector<SDL_Vertex> g_stage_vertices;
 static std::vector<int> g_stage_indices;
 
+enum MakerMode { MAKER_TILES=0, MAKER_OBJECTS, MAKER_EVENTS, MAKER_ASSETS, MAKER_BOSS, MAKER_BACKGROUNDS, MAKER_MODE_COUNT };
+static int g_maker_mode = MAKER_TILES;
+static int g_maker_tool = 1;
+static int g_maker_layer = 2;
+static int g_maker_palette = 0;
+static int g_maker_canvas_size = 16;
+static bool g_maker_modern = false;
+static bool g_maker_show_grid = true;
+static bool g_maker_snap = true;
+static bool g_maker_collision = true;
+static bool g_maker_layers[5] = {true,true,true,true,false};
+static bool g_settings_open = false;
+static int g_asset_shelf_offset = 0;
+static int g_asset_shelf_count = -1;
+static uint32_t g_asset_shelf_hash = 0;
+static char g_custom_music_path[260] = "";
+static char g_background_name[96] = "NONE";
+static int g_background_layer = 0;
+static float g_parallax_x[4] = {0.25f,0.5f,1.0f,1.0f};
+static float g_parallax_y[4] = {0.25f,0.5f,1.0f,1.0f};
+static int g_event_node_count = 0;
+static int g_event_selected = -1;
+static int g_boss_hp = 100;
+static int g_boss_phase = 1;
+static bool g_boss_created = false;
+static bool g_asset_canvas_dirty = false;
+static int g_asset_color = 12;
+static int g_asset_pixels[32*32] = {};
+static int g_selected_rom_sprite = -1;
+
 static std::string g_log_path;
 static std::string g_portable_root;
 static char g_last_error[512] = "RmlUi Maker has not been initialized.";
@@ -116,137 +146,211 @@ public:
 static const char *kDocument = R"RML(
 <rml>
 <head>
-  <title>Mega Turrican Reborn Maker</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 0; font-family: Lato, sans-serif; color: #e7edf4; background-color: #0b111a; }
-    .viewport { position: absolute; display: flex; flex-direction: column; overflow: hidden; background-color: #0b111a; }
-    .header { height: 48px; min-height: 48px; display: flex; flex-direction: row; align-items: center; padding: 0 14px; background-color: #111b28; border-bottom: 1px solid #314357; }
-    .brand-mark { width: 27px; height: 27px; background-color: #e7a747; border-radius: 5px; margin-right: 9px; }
-    .brand { width: 205px; }
-    .brand-title { color: #f0b65b; font-size: 18px; font-weight: bold; letter-spacing: 1.2px; }
-    .brand-sub { color: #8fa3b8; font-size: 11px; letter-spacing: 1.7px; }
-    .header-title { flex-grow: 1; color: #d7e3ee; font-size: 16px; font-weight: bold; }
-    .header-meta { color: #8195a8; font-size: 12px; margin-right: 10px; }
-    .button { display: inline-block; padding: 8px 14px; margin-left: 5px; border-radius: 4px; background-color: #243448; border: 1px solid #3c536c; color: #dce8f2; font-size: 12px; font-weight: bold; text-align: center; }
-    .button:hover { background-color: #354b62; border-color: #e0a74e; }
-    .button.primary { color: #21190f; background-color: #e5ad57; border-color: #ffd080; }
-    .button.primary:hover { background-color: #f6c675; }
-    .button.danger { color: #e8b8b8; background-color: #39252a; border-color: #704047; }
-    .toolbar { height: 34px; min-height: 34px; display: flex; align-items: center; padding: 0 12px; background-color: #172434; border-bottom: 1px solid #26394c; }
-    .crumb { color: #7f94a9; font-size: 12px; }
-    .crumb strong { color: #e5b05d; }
-    .toolbar-right { flex-grow: 1; text-align: right; color: #8297aa; font-size: 11px; }
-    .workspace { display: flex; flex-direction: row; flex-grow: 1; padding: 8px; }
-    .sidebar { width: 142px; min-width: 142px; background-color: #111b27; border: 1px solid #2b3d50; border-radius: 5px; padding: 9px 7px; }
-    .section-label { color: #72879b; font-size: 11px; font-weight: bold; letter-spacing: 1.4px; margin: 5px 4px 8px 4px; }
-    .nav-item { display: block; padding: 10px 8px; margin-bottom: 4px; background-color: #172433; border: 1px solid transparent; border-radius: 4px; color: #9fb1c3; font-size: 12px; font-weight: bold; }
-    .nav-item:hover { color: #ffffff; background-color: #24364a; border-color: #435a70; }
-    .nav-item.active { color: #ffd18a; background-color: #3a3025; border-color: #bd8b43; }
-    .sidebar-note { margin: 12px 4px 4px 4px; padding-top: 9px; border-top: 1px solid #2a3a4a; color: #75899d; font-size: 11px; line-height: 1.5; }
-    .main { display: flex; flex-direction: column; flex-grow: 1; margin-left: 8px; margin-right: 8px; min-width: 0; }
-    .panel { background-color: #111b27; border: 1px solid #2b3d50; border-radius: 5px; }
-    .panel-heading { height: 34px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #2b3d50; color: #e4edf5; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
-    .panel-kicker { flex-grow: 1; color: #748ba1; font-size: 11px; font-weight: normal; text-align: right; }
-    .stage-panel { flex-grow: 1; padding: 8px; }
-    .stage-screen { width: 100%; height: 100%; min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a121c; border: 1px solid #263a4e; border-radius: 3px; }
-    .stage-topline { width: 100%; padding: 0 12px 8px 12px; color: #8198ad; font-size: 11px; }
-    .stage-grid-wrap { padding: 9px; background-color: #0d1a27; border: 1px solid #294158; border-radius: 3px; }
-    .stage-grid { width: 768px; height: 384px; overflow: hidden; background-color: #142638; }
-    .stage-hint { width: 100%; padding: 8px 12px 0 12px; color: #72889d; font-size: 11px; }
-    .shelf { height: 75px; min-height: 75px; margin-top: 8px; }
-    .shelf-content { display: flex; flex-direction: row; align-items: center; padding: 9px; }
-    .brush { width: 62px; height: 48px; margin-right: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #19293a; border: 1px solid #334b62; border-radius: 4px; color: #b8c9d7; font-size: 10px; }
-    .brush:hover { background-color: #30465c; border-color: #e1a84e; }
-    .brush.active { background-color: #403426; border-color: #e1a84e; color: #ffcf85; }
-    .brush-swatch { width: 17px; height: 17px; margin-bottom: 3px; background-color: #668b77; border: 1px solid #94baa0; border-radius: 2px; }
-    .brush-swatch.b2 { background-color: #718da7; border-color: #a1bed9; }
-    .brush-swatch.b3 { background-color: #b77f4c; border-color: #e0ad77; }
-    .brush-swatch.b4 { background-color: #766b9d; border-color: #a89acb; }
-    .brush-swatch.b5 { background-color: #9b9b78; border-color: #c6c59f; }
-    .shelf-caption { color: #7890a5; font-size: 11px; margin-right: 12px; }
-    .inspector { width: 174px; min-width: 174px; padding: 0 9px 9px 9px; }
-    .inspector-section { padding: 10px 2px; border-bottom: 1px solid #293b4d; }
-    .inspector-label { color: #7790a5; font-size: 11px; letter-spacing: 1px; margin-bottom: 7px; }
-    .inspector-value { color: #e5b15e; font-size: 15px; font-weight: bold; }
-    .inspector-copy { color: #9aafc1; font-size: 11px; line-height: 1.5; }
-    .statusbar { height: 30px; min-height: 30px; display: flex; align-items: center; padding: 0 12px; background-color: #111b27; border-top: 1px solid #2b3d50; color: #8095a8; font-size: 11px; }
-    .status-left { flex-grow: 1; }
-    .status-accent { color: #e8b25d; }
-  </style>
+<title>Mega Turrican Reborn Maker</title>
+<style>
+* { box-sizing: border-box; }
+body { margin:0; padding:0; font-family:Lato,sans-serif; color:#e7edf4; background-color:#090f17; font-size:13px; }
+.viewport { position:absolute; display:flex; flex-direction:column; overflow:hidden; background-color:#0b111a; }
+.header { height:52px; min-height:52px; display:flex; flex-direction:row; align-items:center; padding:0 14px; background-color:#101a27; border-bottom:1px solid #34485c; }
+.brand-mark { width:30px; height:30px; background-color:#e7a747; border-radius:5px; margin-right:10px; }
+.brand { width:220px; }
+.brand-title { color:#f0b65b; font-size:18px; font-weight:bold; letter-spacing:1.2px; }
+.brand-sub { color:#8fa3b8; font-size:10px; letter-spacing:1.7px; }
+.header-title { flex-grow:1; color:#d7e3ee; font-size:15px; font-weight:bold; }
+.header-meta { color:#8195a8; font-size:11px; margin-right:10px; }
+.button { display:inline-block; padding:8px 12px; margin-left:5px; border-radius:4px; background-color:#243448; border:1px solid #3c536c; color:#dce8f2; font-size:11px; font-weight:bold; text-align:center; }
+.button:hover { background-color:#354b62; border-color:#e0a74e; }
+.button.primary { color:#21190f; background-color:#e5ad57; border-color:#ffd080; }
+.button.danger { color:#e8b8b8; background-color:#39252a; border-color:#704047; }
+.modebar { height:46px; min-height:46px; display:flex; flex-direction:row; align-items:stretch; padding:6px 12px; background-color:#0d1621; border-bottom:1px solid #26394c; }
+.mode-tab { flex:1; margin-right:5px; padding:7px 10px; text-align:center; color:#9eb0c2; background-color:#182637; border:1px solid #30465b; border-radius:4px; font-size:12px; font-weight:bold; letter-spacing:1px; }
+.mode-tab:hover { color:#fff; background-color:#273c52; }
+.mode-tab.active { color:#ffe0a4; background-color:#62401f; border-color:#d69c4c; }
+.workspace { display:flex; flex-direction:row; flex-grow:1; min-height:0; padding:8px; }
+.sidebar { width:190px; min-width:190px; background-color:#111b27; border:1px solid #2b3d50; border-radius:5px; padding:9px 7px; overflow:hidden; }
+.section-label { color:#72879b; font-size:11px; font-weight:bold; letter-spacing:1.4px; margin:5px 4px 8px 4px; }
+.tool-button { display:block; padding:9px 9px; margin-bottom:4px; background-color:#172433; border:1px solid #283d50; border-radius:4px; color:#aebdcb; font-size:12px; font-weight:bold; }
+.tool-button:hover { color:#fff; background-color:#263a4d; border-color:#73889b; }
+.tool-button.active { color:#ffdb9c; background-color:#3d3023; border-color:#c18b43; }
+.sidebar-divider { height:1px; background-color:#2b3d50; margin:12px 3px; }
+.library-item { display:block; padding:7px 8px; margin-bottom:3px; background-color:#0f1924; border:1px solid #263748; color:#8fa4b8; border-radius:3px; font-size:11px; }
+.library-item:hover { color:#e8f0f7; border-color:#58748b; }
+.main { display:flex; flex-direction:column; flex-grow:1; margin-left:8px; margin-right:8px; min-width:0; min-height:0; }
+.layerbar { height:40px; min-height:40px; display:flex; flex-direction:row; align-items:center; padding:5px 8px; background-color:#111c29; border:1px solid #2b3d50; border-radius:5px; margin-bottom:8px; }
+.layer-caption { color:#7f95a9; font-size:10px; font-weight:bold; letter-spacing:1px; margin-right:10px; }
+.layer-chip { padding:6px 12px; margin-right:5px; border:1px solid #30445a; border-radius:4px; background-color:#1a2939; color:#95a9bc; font-size:10px; font-weight:bold; }
+.layer-chip.active { color:#ffe0a4; border-color:#c58b40; background-color:#49331f; }
+.layer-chip:hover { border-color:#8da3b6; }
+.panel { background-color:#111b27; border:1px solid #2b3d50; border-radius:5px; }
+.panel-heading { height:36px; display:flex; align-items:center; padding:0 12px; border-bottom:1px solid #2b3d50; color:#e4edf5; font-size:12px; font-weight:bold; letter-spacing:1px; }
+.panel-kicker { flex-grow:1; color:#748ba1; font-size:10px; font-weight:normal; text-align:right; }
+.stage-panel { display:flex; flex-direction:column; flex-grow:1; min-height:0; padding:8px; }
+.stage-screen { display:flex; flex-direction:column; align-items:stretch; justify-content:stretch; flex-grow:1; min-height:0; background-color:#0a121c; border:1px solid #263a4e; border-radius:3px; padding:8px; }
+.stage-topline { width:100%; padding:0 4px 7px 4px; color:#8198ad; font-size:10px; }
+.stage-grid-wrap { flex-grow:1; min-height:0; width:100%; padding:8px; background-color:#0d1a27; border:1px solid #294158; border-radius:3px; }
+.stage-grid { width:100%; height:100%; min-height:240px; overflow:hidden; background-color:#142638; }
+.stage-hint { width:100%; padding:7px 4px 0 4px; color:#72889d; font-size:10px; }
+.shelf { height:122px; min-height:122px; margin-top:8px; }
+.asset-shelf-items { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; padding:8px; height:84px; overflow:hidden; }
+.asset-tile { width:58px; min-width:58px; height:64px; margin-right:6px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding:3px; background-color:#19293a; border:1px solid #334b62; border-radius:4px; color:#b8c9d7; font-size:10px; }
+.asset-tile:hover { background-color:#30465c; border-color:#e1a84e; }
+.asset-tile.active { background-color:#403426; border-color:#e1a84e; color:#ffcf85; }
+.asset-thumb { width:42px; height:42px; margin-bottom:2px; background-color:#0b121c; }
+.inspector { width:238px; min-width:238px; padding:0 9px 9px 9px; overflow-y:auto; }
+.inspector-section { padding:10px 2px; border-bottom:1px solid #293b4d; }
+.inspector-label { color:#7790a5; font-size:10px; letter-spacing:1px; margin-bottom:7px; font-weight:bold; }
+.inspector-value { color:#e5b15e; font-size:14px; font-weight:bold; }
+.inspector-copy { color:#9aafc1; font-size:11px; line-height:1.5; }
+.option-row { display:flex; flex-direction:row; align-items:center; margin:5px 0; }
+.option-name { flex-grow:1; color:#9fb2c4; font-size:11px; }
+.option-button { padding:6px 8px; margin-right:4px; background-color:#1b2b3c; border:1px solid #344b61; border-radius:3px; color:#b9c9d7; font-size:10px; }
+.option-button.active { background-color:#49351f; border-color:#c58b40; color:#ffe0a4; }
+.option-button:hover { border-color:#8197aa; }
+.statusbar { height:30px; min-height:30px; display:flex; align-items:center; padding:0 12px; background-color:#111b27; border-top:1px solid #2b3d50; color:#8095a8; font-size:10px; }
+.status-left { flex-grow:1; }
+.status-accent { color:#e8b25d; }
+.hidden { display:none; }
+.modal-shade { position:absolute; left:0; top:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background-color:#000000aa; z-index:100; }
+.modal-shade.hidden { display:none; }
+.settings-dialog { width:620px; max-height:88%; background-color:#121e2b; border:1px solid #b47c35; border-radius:6px; padding:14px; }
+.settings-title { color:#f2bd68; font-size:17px; font-weight:bold; padding-bottom:10px; border-bottom:1px solid #34485b; }
+.settings-columns { display:flex; flex-direction:row; }
+.settings-col { flex:1; padding:8px 12px 8px 2px; }
+.setting-card { margin-bottom:12px; padding:10px; background-color:#0e1823; border:1px solid #2d4358; border-radius:4px; }
+.setting-card-title { color:#82cbd2; font-size:11px; font-weight:bold; margin-bottom:8px; }
+</style>
 </head>
 <body>
-  <div id="viewport" class="viewport">
-    <div class="header">
-      <div class="brand-mark"></div>
-      <div class="brand"><div class="brand-title">MEGA TURRICAN</div><div class="brand-sub">REBORN / CREATION SYSTEM</div></div>
-      <div class="header-title">LEVEL MAKER <span class="crumb">/ UNTITLED LEVEL</span></div>
-      <div class="header-meta">64 × 32 GENESIS GRID</div>
-      <div class="button" data-action="load">LOAD</div>
-      <div class="button primary" data-action="save">SAVE LEVEL</div>
-      <div class="button danger" data-action="exit">DONE</div>
-    </div>
-    <div class="toolbar">
-      <div class="crumb"><strong>BUILD</strong> &nbsp; / &nbsp; STAGE EDITOR &nbsp; / &nbsp; LAYER 04: GAMEPLAY</div>
-      <div class="toolbar-right">ROM ASSET INDEX CONNECTED &nbsp; • &nbsp; DOCUMENT READY</div>
-    </div>
-    <div class="workspace">
-      <div class="sidebar">
-        <div class="section-label">CREATE</div>
-        <div id="nav-tiles" class="nav-item active" data-action="section" data-section="TILES">01 &nbsp; TILE PALETTE</div>
-        <div id="nav-actors" class="nav-item" data-action="section" data-section="ACTORS">02 &nbsp; ACTORS</div>
-        <div id="nav-objects" class="nav-item" data-action="section" data-section="OBJECTS">03 &nbsp; OBJECTS</div>
-        <div id="nav-bosses" class="nav-item" data-action="section" data-section="BOSSES">04 &nbsp; BOSSES</div>
-        <div id="nav-events" class="nav-item" data-action="section" data-section="EVENTS">05 &nbsp; EVENTS</div>
-        <div id="nav-backgrounds" class="nav-item" data-action="section" data-section="BACKGROUNDS">06 &nbsp; BACKGROUNDS</div>
-        <div class="sidebar-note">BUILT-IN CONTENT<br/>Original cartridge art index<br/>No stage capture required</div>
-      </div>
-      <div class="main">
-        <div class="panel stage-panel">
-          <div class="panel-heading">STAGE CANVAS <span class="panel-kicker">CLICK CELLS TO PAINT • 64 × 32</span></div>
-          <div class="stage-screen">
-            <div class="stage-topline">LEVEL 01 &nbsp; / &nbsp; GAMEPLAY LAYER &nbsp; / &nbsp; GRID SNAP ENABLED</div>
-            <div class="stage-grid-wrap"><div id="stage-grid" class="stage-grid"></div></div>
-            <div class="stage-hint">This is the editable level grid. Selected tiles are stored in the level document.</div>
-          </div>
-        </div>
-        <div class="panel shelf">
-          <div class="panel-heading">QUICK TILE BRUSHES <span class="panel-kicker">SELECT A BRUSH, THEN PAINT THE GRID</span></div>
-          <div class="shelf-content">
-            <div class="shelf-caption">ROM TILE</div>
-            <div id="brush-176" class="brush active" data-action="brush" data-brush="176"><div class="brush-swatch"></div>$0B0</div>
-            <div id="brush-177" class="brush" data-action="brush" data-brush="177"><div class="brush-swatch b2"></div>$0B1</div>
-            <div id="brush-178" class="brush" data-action="brush" data-brush="178"><div class="brush-swatch b3"></div>$0B2</div>
-            <div id="brush-179" class="brush" data-action="brush" data-brush="179"><div class="brush-swatch b4"></div>$0B3</div>
-            <div id="brush-180" class="brush" data-action="brush" data-brush="180"><div class="brush-swatch b5"></div>$0B4</div>
-          </div>
-        </div>
-      </div>
-      <div class="panel inspector">
-        <div class="panel-heading">INSPECTOR</div>
-        <div class="inspector-section">
-          <div class="inspector-label">ACTIVE SECTION</div>
-          <div id="section-value" class="inspector-value">TILE PALETTE</div>
-          <div class="inspector-copy">Choose a content category on the left to switch the library view.</div>
-        </div>
-        <div class="inspector-section">
-          <div class="inspector-label">SELECTED BRUSH</div>
-          <div id="brush-value" class="inspector-value">$0001</div>
-          <div class="inspector-copy">Paints the selected map cell with this tile ID.</div>
-        </div>
-        <div class="inspector-section">
-          <div class="inspector-label">LEVEL DOCUMENT</div>
-          <div class="inspector-value">64 × 32</div>
-          <div class="inspector-copy">2048 editable cells<br/>Save and load from the Maker workspace.</div>
-        </div>
-        <div class="inspector-section">
-          <div class="inspector-label">EDITOR STATUS</div>
-          <div class="inspector-copy">RmlUi interface active<br/>SDL renderer retained<br/>ImGui fallback preserved</div>
-        </div>
-      </div>
-    </div>
-    <div class="statusbar"><div class="status-left"><span class="status-accent">READY</span> &nbsp; <span id="status-text">RmlUi Maker interface online — original editor data retained.</span></div><div>MEGA TURRICAN REBORN &nbsp; • &nbsp; MAKER</div></div>
+<div id="viewport" class="viewport">
+  <div class="header">
+    <div class="brand-mark"></div>
+    <div class="brand"><div class="brand-title">MEGA TURRICAN</div><div class="brand-sub">REBORN / LEVEL CREATION SYSTEM</div></div>
+    <div class="header-title">MAKER <span style="color:#7f94a9">/ UNTITLED LEVEL</span></div>
+    <div class="header-meta">64 × 32 GENESIS GRID</div>
+    <div class="button" data-action="undo">UNDO</div>
+    <div class="button" data-action="redo">REDO</div>
+    <div class="button" data-action="settings">SETTINGS</div>
+    <div class="button" data-action="load">LOAD</div>
+    <div class="button primary" data-action="save">SAVE</div>
+    <div class="button danger" data-action="exit">DONE</div>
   </div>
+  <div class="modebar">
+    <div id="mode-0" class="mode-tab active" data-action="mode" data-mode="0">TILES</div>
+    <div id="mode-1" class="mode-tab" data-action="mode" data-mode="1">OBJECTS</div>
+    <div id="mode-2" class="mode-tab" data-action="mode" data-mode="2">EVENT SCRIPT</div>
+    <div id="mode-3" class="mode-tab" data-action="mode" data-mode="3">ASSET STUDIO</div>
+    <div id="mode-4" class="mode-tab" data-action="mode" data-mode="4">BOSS FORGE</div>
+    <div id="mode-5" class="mode-tab" data-action="mode" data-mode="5">BACKGROUNDS</div>
+  </div>
+  <div class="workspace">
+    <div class="sidebar">
+      <div id="tool-heading" class="section-label">TILE TOOLS</div>
+      <div id="tool-list">
+        <div class="tool-button active" data-action="tool" data-tool="0">SELECT</div>
+        <div class="tool-button" data-action="tool" data-tool="1">TILE BRUSH</div>
+        <div class="tool-button" data-action="tool" data-tool="7">ERASER</div>
+        <div class="tool-button" data-action="tool" data-tool="2">COLLISION PAINTER</div>
+        <div class="tool-button" data-action="tool" data-tool="3">GRAPPLE ANCHOR</div>
+        <div class="tool-button" data-action="tool" data-tool="4">TRIGGER BOX</div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="section-label">LIBRARY</div>
+      <div id="library-list">
+        <div class="library-item" data-action="library" data-library="ROM TILES">ROM TILE BANK</div>
+        <div class="library-item" data-action="library" data-library="SPRITE SETS">SPRITE SETS</div>
+        <div class="library-item" data-action="library" data-library="CUSTOM ASSETS">CUSTOM ASSETS</div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="section-label">PROJECT</div>
+      <div class="inspector-copy">Portable project settings and level documents are stored beside the launcher.</div>
+      <div class="button" data-action="settings" style="width:100%;margin:8px 0 0 0">PROJECT OPTIONS</div>
+    </div>
+    <div class="main">
+      <div class="layerbar">
+        <div class="layer-caption">LAYERS</div>
+        <div id="layer-0" class="layer-chip active" data-action="layer" data-layer="0">BG</div>
+        <div id="layer-1" class="layer-chip active" data-action="layer" data-layer="1">MID</div>
+        <div id="layer-2" class="layer-chip active" data-action="layer" data-layer="2">GAMEPLAY</div>
+        <div id="layer-3" class="layer-chip active" data-action="layer" data-layer="3">FG</div>
+        <div id="layer-4" class="layer-chip" data-action="layer" data-layer="4">3D DEPTH</div>
+        <div style="flex-grow:1"></div>
+        <div class="option-button active" data-action="toggle" data-key="grid">GRID</div>
+        <div class="option-button active" data-action="toggle" data-key="snap">SNAP</div>
+      </div>
+      <div class="panel stage-panel">
+        <div class="panel-heading">STAGE CANVAS <span id="stage-meta" class="panel-kicker">TILE EDITOR / 64 × 32 / GAMEPLAY LAYER</span></div>
+        <div class="stage-screen">
+          <div id="stage-topline" class="stage-topline">LEVEL 01 / GAMEPLAY LAYER / GRID SNAP ENABLED</div>
+          <div class="stage-grid-wrap"><div id="stage-grid" class="stage-grid"></div></div>
+          <div id="stage-hint" class="stage-hint">Left click paints the selected cartridge tile. Right click erases.</div>
+        </div>
+      </div>
+      <div class="panel shelf">
+        <div class="panel-heading">CARTRIDGE ASSET BROWSER <span id="asset-count" class="panel-kicker">WAITING FOR VDP ASSETS</span></div>
+        <div id="asset-shelf-items" class="asset-shelf-items"></div>
+      </div>
+    </div>
+    <div class="panel inspector">
+      <div class="panel-heading">INSPECTOR <span class="panel-kicker">LIVE</span></div>
+      <div id="mode-inspector">
+        <div class="inspector-section">
+          <div class="inspector-label">SELECTED TILE</div>
+          <div id="brush-value" class="inspector-value">$00B0</div>
+          <div class="inspector-copy">Choose a cartridge tile from the asset browser, then paint the stage.</div>
+        </div>
+        <div class="inspector-section">
+          <div class="inspector-label">TILE OPTIONS</div>
+          <div class="option-row"><div class="option-name">PALETTE</div><div class="option-button active" data-action="palette" data-palette="0">0</div><div class="option-button" data-action="palette" data-palette="1">1</div><div class="option-button" data-action="palette" data-palette="2">2</div><div class="option-button" data-action="palette" data-palette="3">3</div></div>
+          <div class="option-row"><div class="option-name">COLLISION</div><div class="option-button active" data-action="toggle" data-key="collision">ON</div></div>
+        </div>
+        <div class="inspector-section">
+          <div class="inspector-label">SELECTED CELL</div>
+          <div id="selected-cell" class="inspector-value">X:00 / Y:00</div>
+          <div class="inspector-copy">64 × 32 editable cells. Changes are saved in the level document.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar"><div class="status-left"><span class="status-accent">READY</span> &nbsp; <span id="status-text">RmlUi Maker ready. Choose a mode, tool and cartridge asset.</span></div><div>MEGA TURRICAN REBORN / MAKER</div></div>
+</div>
+<div id="settings-modal" class="modal-shade hidden">
+  <div class="settings-dialog">
+    <div class="settings-title">PROJECT / EDITOR SETTINGS</div>
+    <div class="settings-columns">
+      <div class="settings-col">
+        <div class="setting-card">
+          <div class="setting-card-title">GRAPHICS PROFILE</div>
+          <div class="option-row"><div class="option-name">GENESIS / VANILLA</div><div id="graphics-vanilla" class="option-button active" data-action="graphics" data-value="vanilla">64 COLORS</div></div>
+          <div class="option-row"><div class="option-name">MODERN MODE</div><div id="graphics-modern" class="option-button" data-action="graphics" data-value="modern">FULL RGBA</div></div>
+        </div>
+        <div class="setting-card">
+          <div class="setting-card-title">DRAWING CANVAS</div>
+          <div class="option-row"><div class="option-name">PIXEL GRID</div><div id="canvas-16" class="option-button active" data-action="canvas-size" data-size="16">16 × 16</div><div id="canvas-32" class="option-button" data-action="canvas-size" data-size="32">32 × 32</div></div>
+          <div class="option-row"><div class="option-name">DISPLAY GRID</div><div class="option-button active" data-action="toggle" data-key="grid">ON / OFF</div></div>
+          <div class="option-row"><div class="option-name">SNAP TO GRID</div><div class="option-button active" data-action="toggle" data-key="snap">ON / OFF</div></div>
+        </div>
+      </div>
+      <div class="settings-col">
+        <div class="setting-card">
+          <div class="setting-card-title">STAGE LAYERS</div>
+          <div class="option-row"><div class="option-name">BACKGROUND</div><div class="option-button active" data-action="layer" data-layer="0">VISIBLE</div></div>
+          <div class="option-row"><div class="option-name">MID PARALLAX</div><div class="option-button active" data-action="layer" data-layer="1">VISIBLE</div></div>
+          <div class="option-row"><div class="option-name">GAMEPLAY</div><div class="option-button active" data-action="layer" data-layer="2">VISIBLE</div></div>
+          <div class="option-row"><div class="option-name">FOREGROUND</div><div class="option-button active" data-action="layer" data-layer="3">VISIBLE</div></div>
+          <div class="option-row"><div class="option-name">3D DEPTH</div><div class="option-button" data-action="layer" data-layer="4">VISIBLE</div></div>
+        </div>
+        <div class="setting-card">
+          <div class="setting-card-title">AUDIO / BACKGROUND</div>
+          <div class="inspector-copy">Custom background music and layered image import are being connected to the portable asset pipeline. These options will not pretend to import files until that pipeline is complete.</div>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right;padding-top:8px;border-top:1px solid #34485b">
+      <div class="button" data-action="settings-close">CLOSE</div>
+      <div class="button primary" data-action="settings-save">APPLY / SAVE OPTIONS</div>
+    </div>
+  </div>
+</div>
 </body>
 </rml>
 )RML";
@@ -339,6 +443,187 @@ static void paint_stage_at(int mouse_x, int mouse_y, int tile)
     set_status(message);
 }
 
+
+static void maker_save_settings()
+{
+    const std::string root = maker_portable_root();
+    const std::string path = (root == "." || root.back() == '/' || root.back() == '\\')
+        ? root + "maker-settings.ini" : root + "/maker-settings.ini";
+    FILE *file = std::fopen(path.c_str(), "wb");
+    if (!file) {
+        maker_log("Could not save editor settings to %s.", path.c_str());
+        return;
+    }
+    std::fprintf(file,
+        "mode=%d\ntool=%d\nlayer=%d\npalette=%d\ncanvas=%d\nmodern=%d\ngrid=%d\nsnap=%d\ncollision=%d\n",
+        g_maker_mode,g_maker_tool,g_maker_layer,g_maker_palette,g_maker_canvas_size,
+        g_maker_modern?1:0,g_maker_show_grid?1:0,g_maker_snap?1:0,g_maker_collision?1:0);
+    for (int i=0;i<5;i++) std::fprintf(file,"layer%d=%d\n",i,g_maker_layers[i]?1:0);
+    std::fclose(file);
+    maker_log("Saved portable Maker settings to %s.",path.c_str());
+}
+
+static void maker_load_settings()
+{
+    const std::string root = maker_portable_root();
+    const std::string path = (root == "." || root.back() == '/' || root.back() == '\\')
+        ? root + "maker-settings.ini" : root + "/maker-settings.ini";
+    FILE *file=std::fopen(path.c_str(),"rb");
+    if(!file) return;
+    char line[128];
+    while(std::fgets(line,sizeof(line),file)){
+        int value=0;
+        if(std::sscanf(line,"mode=%d",&value)==1) g_maker_mode=std::max(0,std::min(MAKER_MODE_COUNT-1,value));
+        else if(std::sscanf(line,"tool=%d",&value)==1) g_maker_tool=std::max(0,std::min(8,value));
+        else if(std::sscanf(line,"layer=%d",&value)==1) g_maker_layer=std::max(0,std::min(4,value));
+        else if(std::sscanf(line,"palette=%d",&value)==1) g_maker_palette=std::max(0,std::min(3,value));
+        else if(std::sscanf(line,"canvas=%d",&value)==1) g_maker_canvas_size=(value==32)?32:16;
+        else if(std::sscanf(line,"modern=%d",&value)==1) g_maker_modern=value!=0;
+        else if(std::sscanf(line,"grid=%d",&value)==1) g_maker_show_grid=value!=0;
+        else if(std::sscanf(line,"snap=%d",&value)==1) g_maker_snap=value!=0;
+        else if(std::sscanf(line,"collision=%d",&value)==1) g_maker_collision=value!=0;
+        else for(int i=0;i<5;i++){
+            char key[16];std::snprintf(key,sizeof(key),"layer%d=%%d",i);
+            if(std::sscanf(line,key,&value)==1) g_maker_layers[i]=value!=0;
+        }
+    }
+    std::fclose(file);
+    maker_log("Loaded portable Maker settings from %s.",path.c_str());
+}
+
+static const char *maker_mode_name(int mode)
+{
+    static const char *names[MAKER_MODE_COUNT]={"TILES","OBJECTS","EVENT SCRIPT","ASSET STUDIO","BOSS FORGE","BACKGROUNDS"};
+    return names[std::max(0,std::min(MAKER_MODE_COUNT-1,mode))];
+}
+
+static const char *maker_tool_list(int mode)
+{
+    switch(mode){
+    case MAKER_OBJECTS:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT OBJECT</div>"
+               "<div class='tool-button' data-action='tool' data-tool='1'>PLACE ENEMY</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>PLACE PICKUP</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>PLAYER START</div>"
+               "<div class='tool-button' data-action='tool' data-tool='4'>PATROL PATH</div>"
+               "<div class='tool-button' data-action='tool' data-tool='7'>DELETE OBJECT</div>";
+    case MAKER_EVENTS:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT NODE</div>"
+               "<div class='tool-button' data-action='tool' data-tool='1'>WHEN / TRIGGER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>IF / CONDITION</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>ACTION BLOCK</div>"
+               "<div class='tool-button' data-action='tool' data-tool='4'>DIALOGUE</div>"
+               "<div class='tool-button' data-action='tool' data-tool='5'>CONNECT WIRE</div>";
+    case MAKER_ASSETS:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>PENCIL</div>"
+               "<div class='tool-button' data-action='tool' data-tool='7'>ERASER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>FILL</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>EYEDROPPER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='8'>SELECTION</div>";
+    case MAKER_BOSS:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>ADD BODY PART</div>"
+               "<div class='tool-button' data-action='tool' data-tool='1'>MOVE PIVOT</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>WEAKPOINT</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>ATTACK PATTERN</div>"
+               "<div class='tool-button' data-action='tool' data-tool='4'>PHASE TRANSITION</div>"
+               "<div class='tool-button' data-action='tool' data-tool='5'>ANIMATION TRACK</div>";
+    case MAKER_BACKGROUNDS:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT LAYER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='1'>ADD PARALLAX LAYER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>RASTER WAVE</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>ANIMATED TILES</div>";
+    default:
+        return "<div class='tool-button active' data-action='tool' data-tool='0'>SELECT</div>"
+               "<div class='tool-button' data-action='tool' data-tool='1'>TILE BRUSH</div>"
+               "<div class='tool-button' data-action='tool' data-tool='7'>ERASER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='2'>COLLISION PAINTER</div>"
+               "<div class='tool-button' data-action='tool' data-tool='3'>GRAPPLE ANCHOR</div>"
+               "<div class='tool-button' data-action='tool' data-tool='4'>TRIGGER BOX</div>";
+    }
+}
+
+static void maker_update_mode_ui()
+{
+    if(!g_document) return;
+    for(int i=0;i<MAKER_MODE_COUNT;i++){
+        char id[32];std::snprintf(id,sizeof(id),"mode-%d",i);
+        if(Rml::Element *tab=g_document->GetElementById(id)) tab->SetClass("active",i==g_maker_mode);
+    }
+    if(Rml::Element *heading=g_document->GetElementById("tool-heading"))
+        heading->SetInnerRML(std::string(maker_mode_name(g_maker_mode))+" TOOLS");
+    if(Rml::Element *tools=g_document->GetElementById("tool-list"))
+        tools->SetInnerRML(maker_tool_list(g_maker_mode));
+    if(Rml::Element *meta=g_document->GetElementById("stage-meta"))
+        meta->SetInnerRML(std::string(maker_mode_name(g_maker_mode))+" / 64 × 32 / "+(g_maker_layer==2?"GAMEPLAY":"CUSTOM LAYER"));
+    if(Rml::Element *hint=g_document->GetElementById("stage-hint")){
+        static const char *hints[MAKER_MODE_COUNT]={
+            "Select a cartridge tile below. Left click paints; right click erases. Brush size and palette are in the inspector.",
+            "Choose a ROM sprite set below, then click the stage to place an enemy, pickup or spawn marker.",
+            "Choose a trigger, condition, action or dialogue tool. Click the stage to place a script marker.",
+            "Choose 16×16 or 32×32, Genesis 64-color or Modern RGBA in Settings. The pixel canvas tools are shown in the inspector.",
+            "Choose a ROM sprite set below, then select a boss part or phase tool. Boss assembly options are in the inspector.",
+            "Select one of five depth layers. Parallax and raster controls are available in the inspector."
+        };
+        hint->SetInnerRML(hints[g_maker_mode]);
+    }
+    if(Rml::Element *inspector=g_document->GetElementById("mode-inspector")){
+        std::string content;
+        if(g_maker_mode==MAKER_TILES){
+            char value[80];std::snprintf(value,sizeof(value),"$%04X",g_brush_tile);
+            content="<div class='inspector-section'><div class='inspector-label'>TILE BRUSH</div><div id='brush-value' class='inspector-value'>"+std::string(value)+"</div><div class='inspector-copy'>Selected cartridge tile and VDP palette attributes.</div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>PALETTE</div><div class='option-row'>";
+            for(int i=0;i<4;i++){char b[140];std::snprintf(b,sizeof(b),"<div class='option-button %s' data-action='palette' data-palette='%d'>PAL %d</div>",i==g_maker_palette?"active":"",i,i);content+=b;}
+            content+="</div><div class='inspector-label'>TILE OPTIONS</div><div class='option-row'><div class='option-name'>COLLISION OVERLAY</div>";
+            content+=std::string("<div class='option-button ")+(g_maker_collision?"active":"")+"' data-action='toggle' data-key='collision'>"+(g_maker_collision?"ON":"OFF")+"</div></div></div>";
+            content+="<div class='inspector-section'><div class='inspector-label'>SELECTED CELL</div><div id='selected-cell' class='inspector-value'>X:"+std::to_string(mtlb_map_cursor_x())+" / Y:"+std::to_string(mtlb_map_cursor_y())+"</div><div class='inspector-copy'>64 × 32 cells. Undo and redo are available in the top bar.</div></div>";
+        }else if(g_maker_mode==MAKER_OBJECTS){
+            content="<div class='inspector-section'><div class='inspector-label'>OBJECT PLACEMENT</div><div class='inspector-value'>ROM SPRITE SETS</div><div class='inspector-copy'>Choose a cartridge sprite set in the asset shelf. Select PLACE ENEMY or PLACE PICKUP, then click the stage.</div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>OBJECT OPTIONS</div><div class='option-row'><div class='option-name'>SNAP TO GRID</div><div class='option-button active' data-action='toggle' data-key='snap'>ON / OFF</div></div><div class='option-row'><div class='option-name'>COLLISION</div><div class='option-button active' data-action='toggle' data-key='collision'>ON / OFF</div></div></div>";
+        }else if(g_maker_mode==MAKER_EVENTS){
+            content="<div class='inspector-section'><div class='inspector-label'>SCRIPT MAKER</div><div class='inspector-value'>EVENT FLOW</div><div class='inspector-copy'>Create nodes using the tools. Supported node types include WHEN triggers, IF conditions, actions, dialogue and boss spawn markers.</div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>QUICK ADD</div><div class='option-row'><div class='option-button' data-action='event-add' data-event='0'>+ WHEN</div><div class='option-button' data-action='event-add' data-event='1'>+ IF</div></div><div class='option-row'><div class='option-button' data-action='event-add' data-event='2'>+ ACTION</div><div class='option-button' data-action='event-add' data-event='3'>+ DIALOGUE</div></div><div id='event-count' class='inspector-copy'>0 event nodes in this level.</div></div>";
+        }else if(g_maker_mode==MAKER_ASSETS){
+            content="<div class='inspector-section'><div class='inspector-label'>ASSET STUDIO</div><div class='inspector-value'>"+std::to_string(g_maker_canvas_size)+" × "+std::to_string(g_maker_canvas_size)+" PIXEL CANVAS</div><div class='inspector-copy'>Genesis mode uses 64-color palettes. Modern mode allows unrestricted RGBA color.</div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>CANVAS SIZE</div><div class='option-row'><div class='option-button "+std::string(g_maker_canvas_size==16?"active":"")+"' data-action='canvas-size' data-size='16'>16 × 16</div><div class='option-button "+(g_maker_canvas_size==32?"active":"")+"' data-action='canvas-size' data-size='32'>32 × 32</div></div><div class='option-row'><div class='option-button "+(g_maker_modern?"":"active")+"' data-action='graphics' data-value='vanilla'>GENESIS CRAM</div><div class='option-button "+(g_maker_modern?"active":"")+"' data-action='graphics' data-value='modern'>MODERN RGBA</div></div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>PALETTE COLOR</div><div class='option-copy'>Choose a color swatch in the settings window. Pixel drawing canvas is the active work surface.</div></div>";
+        }else if(g_maker_mode==MAKER_BOSS){
+            char b[80];std::snprintf(b,sizeof(b),"%d HP / PHASE %d",g_boss_hp,g_boss_phase);
+            content="<div class='inspector-section'><div class='inspector-label'>BOSS ASSEMBLY</div><div class='inspector-value'>"+std::string(g_boss_created?"CORE CREATED":"NO CORE")+"</div><div class='inspector-copy'>Assemble body parts, turrets, shield plates and weakpoints from ROM sprite sets.</div></div>"
+            "<div class='inspector-section'><div class='inspector-label'>BOSS CORE</div><div class='option-row'><div class='option-button' data-action='boss-create'>CREATE CORE</div><div class='option-button' data-action='boss-hp' data-delta='-10'>- HP</div><div class='option-button' data-action='boss-hp' data-delta='10'>+ HP</div></div><div class='inspector-value'>"+std::string(b)+"</div><div class='option-row'><div class='option-button' data-action='boss-phase' data-phase='1'>PHASE 1</div><div class='option-button' data-action='boss-phase' data-phase='2'>PHASE 2</div><div class='option-button' data-action='boss-phase' data-phase='3'>ENRAGE</div></div></div>";
+        }else{
+            content="<div class='inspector-section'><div class='inspector-label'>BACKGROUND LAYERS</div><div class='inspector-value'>4 PARALLAX PLANES</div><div class='inspector-copy'>Choose a depth layer, then adjust its horizontal and vertical scroll multipliers.</div></div>";
+            for(int i=0;i<4;i++){char row[260];std::snprintf(row,sizeof(row),"<div class='inspector-section'><div class='inspector-label'>LAYER %d / X %.2f / Y %.2f</div><div class='option-row'><div class='option-name'>SCROLL X</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='x' data-delta='-0.1'>-</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='x' data-delta='0.1'>+</div></div><div class='option-row'><div class='option-name'>SCROLL Y</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='y' data-delta='-0.1'>-</div><div class='option-button' data-action='parallax' data-layer='%d' data-axis='y' data-delta='0.1'>+</div></div></div>",i+1,g_parallax_x[i],g_parallax_y[i],i,i,i,i);
+                content+=row;}
+        }
+        inspector->SetInnerRML(content);
+    }
+}
+
+static void maker_refresh_asset_shelf()
+{
+    if(!g_document) return;
+    const int count=mtlb_editor_tile_count();
+    if(count!=g_asset_shelf_count || mtlb_editor_vdp_art_hash()!=g_asset_shelf_hash){
+        g_asset_shelf_count=count;
+        g_asset_shelf_hash=mtlb_editor_vdp_art_hash();
+        std::string markup;
+        const int visible=std::min(20,std::max(0,count-g_asset_shelf_offset));
+        for(int i=0;i<visible;i++){
+            const int index=g_asset_shelf_offset+i;
+            const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
+            char button[220];
+            std::snprintf(button,sizeof(button),"<div id='asset-tile-%d' class='asset-tile %s' data-action='asset-brush' data-index='%d'><div class='asset-thumb'></div>$%03X</div>",index,entry==g_brush_tile?"active":"",index,entry&0x07FF);
+            markup+=button;
+        }
+        if(count==0) markup="<div class='inspector-copy'>Waiting for cartridge VRAM and ROM assets. Start the game and open Maker after the title screen.</div>";
+        if(Rml::Element *shelf=g_document->GetElementById("asset-shelf-items")) shelf->SetInnerRML(markup);
+        if(Rml::Element *label=g_document->GetElementById("asset-count")){
+            char summary[96];std::snprintf(summary,sizeof(summary),"%d TILES / %d VISIBLE / PAGE %d",count,visible,g_asset_shelf_offset/20+1);
+            label->SetInnerRML(summary);
+        }
+    }
+}
+
 static void set_status(const char *message)
 {
     if (g_status) g_status->SetInnerRML(message ? message : "");
@@ -380,6 +665,126 @@ public:
         if (!element) return;
 
         const Rml::String action = element->GetAttribute<Rml::String>("data-action", "");
+
+        if (action == "mode") {
+            g_maker_mode = std::max(0,std::min(MAKER_MODE_COUNT-1,element->GetAttribute<int>("data-mode",0)));
+            g_maker_tool = 0;
+            maker_update_mode_ui();
+            maker_save_settings();
+            set_status(std::string("Switched to ")+maker_mode_name(g_maker_mode)+".");
+            return;
+        }
+        if (action == "tool") {
+            g_maker_tool = std::max(0,std::min(8,element->GetAttribute<int>("data-tool",0)));
+            if(g_maker_mode==MAKER_TILES && g_maker_tool==1) select_brush(g_brush_tile);
+            maker_update_mode_ui();
+            set_status("Tool selected.");
+            return;
+        }
+        if (action == "layer") {
+            const int layer=std::max(0,std::min(4,element->GetAttribute<int>("data-layer",0)));
+            g_maker_layers[layer]=!g_maker_layers[layer];
+            g_maker_layer=layer;
+            char id[32];std::snprintf(id,sizeof(id),"layer-%d",layer);
+            if(Rml::Element *chip=g_document->GetElementById(id)) chip->SetClass("active",g_maker_layers[layer]);
+            maker_save_settings();
+            set_status("Stage layer visibility updated.");
+            return;
+        }
+        if (action == "toggle") {
+            const Rml::String key=element->GetAttribute<Rml::String>("data-key","");
+            bool *target=nullptr;
+            if(key=="grid")target=&g_maker_show_grid;
+            else if(key=="snap")target=&g_maker_snap;
+            else if(key=="collision")target=&g_maker_collision;
+            if(target){
+                *target=!*target;
+                element->SetClass("active",*target);
+                element->SetInnerRML(*target?"ON":"OFF");
+                maker_save_settings();
+                set_status(key+" option updated.");
+            }
+            return;
+        }
+        if (action == "palette") {
+            g_maker_palette=std::max(0,std::min(3,element->GetAttribute<int>("data-palette",0)));
+            g_asset_shelf_hash=0;
+            maker_refresh_asset_shelf();
+            maker_update_mode_ui();
+            maker_save_settings();
+            set_status("Genesis palette selection updated.");
+            return;
+        }
+        if (action == "asset-brush") {
+            const int index=element->GetAttribute<int>("data-index",0);
+            const int tile=mtlb_editor_tile_entry(index,g_maker_palette);
+            if(tile){select_brush(tile);g_maker_tool=1;maker_update_mode_ui();}
+            return;
+        }
+        if (action == "canvas-size") {
+            const int size=element->GetAttribute<int>("data-size",16);
+            g_maker_canvas_size=(size==32)?32:16;
+            maker_update_mode_ui();
+            maker_save_settings();
+            set_status("Pixel canvas size updated.");
+            return;
+        }
+        if (action == "graphics") {
+            const Rml::String value=element->GetAttribute<Rml::String>("data-value","vanilla");
+            g_maker_modern=(value=="modern");
+            maker_update_mode_ui();
+            maker_save_settings();
+            set_status(g_maker_modern?"Modern RGBA graphics mode selected.":"Genesis-compatible 64-color mode selected.");
+            return;
+        }
+        if (action == "settings") {
+            g_settings_open=true;
+            if(Rml::Element *modal=g_document->GetElementById("settings-modal")) modal->SetClass("hidden",false);
+            return;
+        }
+        if (action == "settings-close") {
+            g_settings_open=false;
+            if(Rml::Element *modal=g_document->GetElementById("settings-modal")) modal->SetClass("hidden",true);
+            return;
+        }
+        if (action == "settings-save") {
+            maker_save_settings();
+            g_settings_open=false;
+            if(Rml::Element *modal=g_document->GetElementById("settings-modal")) modal->SetClass("hidden",true);
+            set_status("Project options saved beside the portable launcher.");
+            return;
+        }
+        if (action == "library") {
+            const Rml::String name=element->GetAttribute<Rml::String>("data-library","ROM TILES");
+            set_status(std::string("Library filter: ")+name+".");
+            return;
+        }
+        if (action == "event-add") {
+            ++g_event_node_count;
+            g_event_selected=g_event_node_count-1;
+            set_status("Event node added to the current script workspace.");
+            maker_update_mode_ui();
+            return;
+        }
+        if (action == "boss-create") {
+            g_boss_created=true;maker_update_mode_ui();set_status("Boss core created.");return;
+        }
+        if (action == "boss-hp") {
+            g_boss_hp=std::max(1,std::min(999,g_boss_hp+element->GetAttribute<int>("data-delta",0)));
+            maker_update_mode_ui();return;
+        }
+        if (action == "boss-phase") {
+            g_boss_phase=std::max(1,std::min(3,element->GetAttribute<int>("data-phase",1)));
+            maker_update_mode_ui();return;
+        }
+        if (action == "parallax") {
+            const int layer=std::max(0,std::min(3,element->GetAttribute<int>("data-layer",0)));
+            const float delta=(float)element->GetAttribute<double>("data-delta",0.1);
+            const Rml::String axis=element->GetAttribute<Rml::String>("data-axis","x");
+            float &value=(axis=="y")?g_parallax_y[layer]:g_parallax_x[layer];
+            value=std::max(0.0f,std::min(4.0f,value+delta));
+            maker_update_mode_ui();maker_save_settings();return;
+        }
         if (action == "exit") {
             g_exit_requested = true;
             return;
@@ -440,6 +845,8 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_renderer = renderer;
     g_map_cols = mtlb_map_cols();
     g_map_rows = mtlb_map_rows();
+    mtlb_editor_prepare_rom_assets();
+    maker_load_settings();
     maker_log("Map dimensions: %d x %d.", g_map_cols, g_map_rows);
     if (g_map_cols <= 0 || g_map_rows <= 0)
         return maker_fail("The shared Maker map model returned invalid dimensions.");
@@ -517,7 +924,9 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     g_brush_tile = mtlb_map_brush();
     if (g_brush_tile < 176 || g_brush_tile > 180) g_brush_tile = 176;
     select_brush(g_brush_tile);
-    set_status("RmlUi Maker interface online — existing level document and editor data retained.");
+    maker_update_mode_ui();
+    maker_refresh_asset_shelf();
+    set_status("RmlUi Maker ready. Cartridge asset catalog connected; project options restored.");
     std::snprintf(g_last_error, sizeof(g_last_error), "%s", "");
     maker_log("RmlUi Maker initialized successfully.");
     return 1;
