@@ -310,9 +310,9 @@ static void native_title_open_selected(void) {
         native_menu_pause_loop();
     } else if(native_title_menu_selection==3) {
         native_level_builder_from_pause=0;
-        /* Run Level Builder as its own paused modal, exactly like Game Options.
-           The modal loop owns input and presentation until ImGui exits; its
-           saved VDP backdrop is restored before the title screen resumes. */
+        /* Run RmlUi Level Builder as its own paused menu screen, like Game Options.
+           The modal loop owns input and presentation; the title frame is hidden while
+           the full-window Maker GUI is active, then the saved VDP backdrop is restored. */
         native_title_compose_enabled=0;
         native_title_input_block=1;
         native_menu_state=11;
