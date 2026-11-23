@@ -126,9 +126,13 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
     if(ec){g_import_error="Could not copy the model into Assets/Imported: "+ec.message();return false;}
     if(!scene)return true;
 
+    std::string source_extension=source.extension().string();
+    std::transform(source_extension.begin(),source_extension.end(),source_extension.begin(),
+        [](unsigned char c){return (char)std::tolower(c);});
+
     // glTF sidecar buffers and images use relative URI paths. Preserve those
     // files beside the copied document so the portable library can reopen it.
-    if(source.extension()==".gltf"){
+    if(source_extension==".gltf"){
         std::ifstream input(source,std::ios::binary);
         std::string json,line;
         if(input)while(std::getline(input,line)){json+=line;json.push_back('\n');}
@@ -175,7 +179,7 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
 
     // OBJ material libraries are external sidecars. The texture files
     // themselves are copied below from Assimp's material references.
-    if(source.extension()==".obj"){
+    if(source_extension==".obj"){
         std::ifstream input(source);
         std::string line;
         while(std::getline(input,line)){
@@ -188,7 +192,11 @@ static bool copy_model_bundle(const fs::path &source,const aiScene *scene,int in
                 const std::string library=libraries.substr(pos,end==std::string::npos?std::string::npos:end-pos);
                 if(!library.empty()){
                     const fs::path relative(library);
-                    if(relative.is_absolute()||relative.has_root_name())continue;
+                    if(relative.is_absolute()||relative.has_root_name()){
+                        if(end==std::string::npos)break;
+                        pos=end+1;
+                        continue;
+                    }
                     const fs::path from=source.parent_path()/relative;
                     if(fs::is_regular_file(from,ec)&&!ec){
                         const fs::path target=folder/relative;
