@@ -89,15 +89,15 @@ for rel in FILES:
    while queue:
     owner=queue.pop(0)
     depth=depth_map[owner]
-    if depth>=3: continue
+    if depth>=6: continue
     for target in direct_call.findall(fn_bodies.get(owner,"")):
      if target in fn_bodies and target not in depth_map:
       depth_map[target]=depth+1
       queue.append(target)
-   emit(f"PLAYER_GRAPH_ROOT {root} reachable_functions={len(depth_map)} max_depth=3")
+   emit(f"PLAYER_GRAPH_ROOT {root} reachable_functions={len(depth_map)} max_depth=6")
    for name,depth in sorted(depth_map.items(),key=lambda item:(item[1],item[0])):
     body=fn_bodies[name]
-    refs=sorted(set(m.group(1).upper() for m in actor_addr.finditer(body)))
+    refs=sorted(set(m.group(1).upper() for m in actor_addr.finditer(body) if m.group(1).upper()!="FFFF"))
     calls=sorted(set(direct_call.findall(body)))
     indirect_lines=[i for i,line in enumerate(body.splitlines()) if "rt_call_addr" in line]
     emit(f"PLAYER_GRAPH_FUNCTION root={root} function={name} depth={depth} source_lines={fn_lines[name][0]}-{fn_lines[name][1]} refs={','.join('$FF'+x for x in refs) or '-'} direct_calls={','.join(calls[:40]) or '-'} indirect_calls={len(indirect_lines)}")
@@ -106,6 +106,46 @@ for rel in FILES:
      lo=max(0,ix-4); hi=min(len(body_lines),ix+2)
      for q in range(lo,hi):
       emit(f"  INDIRECT_CONTEXT {name} line={fn_lines[name][0]+q} {body_lines[q].strip()[:260]}")
+  emit("[PLAYER_DIRECT_RAM_ACCESS_SUMMARY]")
+  access={}
+  for root in audit_roots:
+   if root not in fn_bodies: continue
+   depth_map={root:0}; queue=[root]
+   while queue:
+    owner=queue.pop(0)
+    depth=depth_map[owner]
+    if depth>=6: continue
+    for target in direct_call.findall(fn_bodies.get(owner,"")):
+     if target in fn_bodies and target not in depth_map:
+      depth_map[target]=depth+1
+      queue.append(target)
+   for name in depth_map:
+    body_lines=fn_bodies[name].splitlines()
+    for ix,line in enumerate(body_lines):
+     for match in actor_addr.finditer(line):
+      addr=match.group(1).upper()
+      if addr=="FFFF": continue
+      window=" ".join(body_lines[ix:min(len(body_lines),ix+5)])
+      modes=set()
+      if re.search(r"\bRD(?:8|16|32)\s*\(",window): modes.add("read")
+      if re.search(r"\bWR(?:8|16|32)\s*\(",window): modes.add("write")
+      if "rt_call_addr" in window: modes.add("callback")
+      if not modes: modes.add("address-use")
+      entry=access.setdefault(addr,{"modes":set(),"functions":set(),"roots":set()})
+      entry["modes"].update(modes)
+      entry["functions"].add(name)
+      entry["roots"].add(root)
+  for addr,entry in sorted(access.items()):
+   emit(f"PLAYER_RAM_ACCESS address=$FF{addr} modes={','.join(sorted(entry['modes']))} functions={','.join(sorted(entry['functions']))[:900]} roots={','.join(sorted(entry['roots']))}")
+  emit("[PLAYER_CALLBACK_SLOT_SUMMARY]")
+  for root in ("f_156A","f_19FA","f_1BDE"):
+   body=fn_bodies.get(root,"")
+   bl=body.splitlines()
+   for ix,line in enumerate(bl):
+    if "rt_call_addr" not in line: continue
+    context=" ".join(bl[max(0,ix-5):ix+1])
+    slots=sorted(set(m.group(1).upper() for m in re.finditer(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})u",context,re.I)))
+    emit(f"PLAYER_CALLBACK_DISPATCH function={root} line={fn_lines[root][0]+ix} slots={','.join('$FF'+s for s in slots) or 'dynamic'} code={line.strip()[:240]}")
   emit("[PLAYER_CONTEXT_DESCRIPTOR_SETUP]")
   for name in ("f_156A","f_1994","f_19FA","f_1BDE","f_2150","f_224C"):
    body=fn_bodies.get(name)
