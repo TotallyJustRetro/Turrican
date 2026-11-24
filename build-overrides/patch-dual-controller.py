@@ -156,7 +156,18 @@ inject=r"""
   }
   cfg.push(...dualPadConfigForLaunch);
   process.env.MEGATURRICAN_PAD2_MAP = dualControllerSettingsForLaunch.pad2Map.join(',');
-"""MAIN.write_text(main,encoding="utf-8")
+"""# Ensure newly selected controller maps win over stale values retained from config.ini.
+old_controller_preserve='if (!savedNativeConfig.has(key)) return entry;'
+new_controller_preserve='if (!savedNativeConfig.has(key) || key.startsWith("pad_") || key.startsWith("pad2_")) return entry;'
+if old_controller_preserve in main:
+    main=main.replace(old_controller_preserve,new_controller_preserve,1)
+append_anchor="for (const [key, value] of savedNativeConfig) {\\n        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);\\n      }"
+append_new="for (const [key, value] of savedNativeConfig) {\\n        if (key.startsWith('pad_') || key.startsWith('pad2_')) continue;\\n        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);\\n      }"
+if append_anchor in main:
+    main=main.replace(append_anchor,append_new,1)
+else:
+    raise SystemExit('dual-controller patch: native config preservation block not found')
+MAIN.write_text(main,encoding="utf-8")
 
 # 2. Launcher profile switch and JS keep the two maps independent.
 html=HTML.read_text(encoding="utf-8-sig")
