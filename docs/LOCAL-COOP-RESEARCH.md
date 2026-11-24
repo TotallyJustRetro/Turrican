@@ -45,6 +45,14 @@ The generated recomp report establishes a central work-RAM access path:
 - The callback graph rooted at `f_224C` touches both likely player-local state (for example `$FFBCC0-$FFBCFE` and `$FFBD00-$FFBD22)) and confirmed shared structures: object-pool links `$FFBC28/$FFBC2C), VDP command queue `$FFBCA4/$FFBCA6/$FFD2DA), and camera/scroll fields `$FFDFD4-$FFDFE4). This rules out banking broad contiguous blocks without a byte-level ownership map.
 - The renderer uses a fixed 29-entry sprite-part scratch table at `$FFFFFCE8`, then allocates shared draw records. A P2 render pass will need separate scratch storage but must append to the same draw queue, with pool-capacity checks.
 
+## Confirmed coordinate and input semantics
+
+- `f_224C` polls the controller bytes at `$FFBC90/$FFBC91`; the SDL runtime separately samples controller 2 into `$FFBC92/$FFBC93`. A P2 pass must expose the second sample at the player-local input location without altering P1's sample.
+- `$FFBD1E) and `$FFBD20` are screen-space player coordinates. The movement routine compares and clamps X to `0x128` and Y to `0xE0`; they are not world coordinates.
+- The camera/scroll fields `$FFDFD4/$FFDFD6` are read separately by the player logic. Camera values and screen-space player coordinates must never be combined or interpreted as the same coordinate.
+- `f_224C` also uses `$FFDFD8/$FFDFDA` through helper `f_3368`, while helpers `f_3430` and `f_3514` access `$FFDFD4/$FFDFD6`. These are shared-camera candidates that must be examined before deciding which writes P2 may perform.
+- The callback contains a computed call through A6 at PC `0x288E`, in addition to its direct calls. Its dynamic target is part of the player's per-frame behavior and must be preserved in P2's initialized context.
+
 The memory bus is therefore a useful *mechanism*, not an ownership map. Before implementing it, we still need to classify every direct and pointer-indirect player access, isolate event/interrupt execution onto the shared view, and reserve a safe P2 stack.
 
 ## Why the previous attempt was unsafe
