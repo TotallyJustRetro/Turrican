@@ -153,6 +153,8 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xDE4E, 0xDECD);
         md_coop_p2_mark(0xDFD4, 0xDFDA);
         md_coop_p2_mark(0xDFCE, 0xE035);
+        md_coop_p2_mark(0xDA1E, 0xDC9D); /* f_1E64 player counter/HUD state */
+        md_coop_p2_mark(0xFCA8, 0xFDCF); /* f_1E64 scratch + multipart sprite work */
         md_coop_p2_mark(0xBD28, 0xBD29); /* player descriptor base */
         md_coop_p2_mark(0xBF08, 0xBF29); /* player motion/camera/stats */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
@@ -203,6 +205,24 @@ void md_coop_p2_sync_handshake(void) {
         md_coop_p2_ram[0xBC85] = ram[0xBC85];
 }
 
+/* f_1E64 builds player-specific counter records through BC54/BC58. Give it
+   P2's E002 work table without redirecting the later native P2 body renderer:
+   hud_end() restores shared BC54/BC58 visibility before f_5DB2 runs. */
+void md_coop_p2_hud_begin(void) {
+    unsigned i;
+    if (!md_coop_p2_active || !md_coop_p2_ready || md_coop_p2_disabled) return;
+    for (i = 0xBC54u; i <= 0xBC59u; ++i) {
+        md_coop_p2_ram[i] = ram[i];
+        md_coop_p2_private[i] = 1;
+    }
+}
+
+void md_coop_p2_hud_end(void) {
+    unsigned i;
+    for (i = 0xBC54u; i <= 0xBC59u; ++i)
+        md_coop_p2_private[i] = 0;
+}
+
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     unsigned i;
     FILE *f;
@@ -224,6 +244,13 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_player_scratch_F200_F9FF=");
     for (i = 0xF200u; i <= 0xF9FFu; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_hud_queue_ptr_count=%02X%02X%02X%02X%02X%02X",
+            (unsigned)md_coop_p2_ram[0xBC54], (unsigned)md_coop_p2_ram[0xBC55],
+            (unsigned)md_coop_p2_ram[0xBC56], (unsigned)md_coop_p2_ram[0xBC57],
+            (unsigned)md_coop_p2_ram[0xBC58], (unsigned)md_coop_p2_ram[0xBC59]);
+    fprintf(f, "\np2_hud_scratch_DA1E_DC9D=");
+    for (i = 0xDA1Eu; i <= 0xDC9Du; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_animation_clear_DC9E_DD1D=");
     for (i = 0xDC9Eu; i <= 0xDD1Du; ++i)
@@ -360,6 +387,8 @@ GEN_RUNNER = r"""
 extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_sync_handshake(void);
+extern void md_coop_p2_hud_begin(void);
+extern void md_coop_p2_hud_end(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
@@ -488,9 +517,28 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     }
     p2->a[6] = 0xFFFFE002u;
     if (!md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE24u) ||
-        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE28u) ||
-        !md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE2Cu)) {
+        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE28u)) {
         md_coop_p2_abort("P2 descriptor callbacks did not restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
+    /* Original PC 0x1636 calls f_1E64 after BC3C/BC44/BC4C and before BC1C.
+       It maintains per-player life/timer counters and builds that player's
+       small HUD descriptor list through A6=$E002. Isolate only BC54/BC58 for
+       this call; restore their shared view before f_5DB2 appends P2's body. */
+    p2->a[6] = 0xFFFFE002u;
+    md_coop_p2_hud_begin();
+    if (!md_coop_p2_call_native(p2, 0x00001E64u, 0x00FEEE2Cu)) {
+        md_coop_p2_hud_end();
+        md_coop_p2_abort("P2 HUD/counter update did not restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+    md_coop_p2_hud_end();
+
+    if (!md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE30u)) {
+        md_coop_p2_abort("P2 final per-player callback did not restore its private stack", callback);
         md_coop_p2_finish();
         return;
     }
@@ -594,6 +642,7 @@ checks = {
     "P2 owns input sequence state for f_E0C": "md_coop_p2_mark(0xBC7E, 0xBC83)" in h,
     "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
     "P2 owns descriptor pointers and DMA slots": "md_coop_p2_mark(0xBC5A, 0xBC5D)" in h and "md_coop_p2_mark(0xBC94, 0xBC9B)" in h,
+    "P2 owns f_1E64 counter/HUD scratch": "md_coop_p2_mark(0xDA1E, 0xDC9D)" in h and "md_coop_p2_mark(0xFCA8, 0xFDCF)" in h,
     "P2 owns f_5BC animation clear buffer": "md_coop_p2_mark(0xDC9E, 0xDD1D)" in h,
     "P2 owns both descriptor callback work buffers": "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h,
     "P2 owns native A6 callback tables": "md_coop_p2_mark(0xDFCE, 0xE035)" in h,
@@ -607,6 +656,10 @@ checks = {
     "P2 reloads BF28 before conditional animation callback": "fl_logic(p2, RD16(0xFFFFBF28u), 16);" in g,
     "P2 main callback gets its A0 target": "p2->a[0] = callback;" in g,
     "P2 callback-slot dispatch loads A0": "p2->a[0] = target;" in g,
+    "P2 runs native player HUD/counter pass": "md_coop_p2_call_native(p2, 0x00001E64u" in g,
+    "P2 scopes BC54/BC58 away from the shared body queue": "md_coop_p2_hud_begin();" in g and "md_coop_p2_hud_end();" in g,
+    "P2 HUD/counter pass precedes BC1C callback": g.index("md_coop_p2_call_native(p2, 0x00001E64u") < g.index("md_coop_p2_call_slot(p2, 0xBC1Cu"),
+    "P2 renderer retains shared BC54/BC58 body queue": "md_coop_p2_hud_end();" in g and g.index("md_coop_p2_hud_end();") < g.index("md_coop_p2_call_native(p2, 0x00005DB2u"),
     "P2 runs player-local animation preamble": "0x00003B38u" in g and "0x00001E00u" in g and "0x00002150u" in g,
     "P2 runs native sprite builder through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 post-contact pass is after shared render flush": "md_coop_run_local_p2_post(c);" in g and "L_1666:" in g,
