@@ -139,7 +139,10 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBCBC, 0xBD26);
         md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
-        md_coop_p2_mark(0xF226, 0xF226); /* confirmed actor scratch byte */
+        /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
+           records (BCE0 is bounded by 0x7C); f_3650/f_36E0 read the same
+           frame table. Bank the whole scratch page span, not only F226. */
+        md_coop_p2_mark(0xF200, 0xF9FF);
         md_coop_p2_mark(0xFCE8, 0xFDCF); /* 29-entry multipart sprite scratch */
 
         memset(md_coop_p2_ram, 0, sizeof md_coop_p2_ram);
@@ -193,9 +196,12 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f, "p2_state_BC62_BD26=");
     for (i = 0xBC62u; i <= 0xBD26u; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X scratch_F226=%02X sprite_FD24_25=%02X%02X\n",
+    fprintf(f, "\np2_player_scratch_F200_F9FF=");
+    for (i = 0xF200u; i <= 0xF9FFu; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
-            (unsigned)md_coop_p2_ram[0xDFDA], (unsigned)md_coop_p2_ram[0xF226],
+            (unsigned)md_coop_p2_ram[0xDFDA],
             (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25]);
     fclose(f);
 }
@@ -448,6 +454,7 @@ checks = {
     "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
+    "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
@@ -463,4 +470,4 @@ for label, passed in checks.items():
         raise SystemExit("local co-op verification failed: " + label)
 
 print("Installed guarded native P2 actor prototype: independent stack/state, frame-entry register seed, port-2 input, native sprite builder and pre-callback actor scheduling.")
-print("P2 runtime snapshots now include its CPU registers and private player-state bytes; gameplay still requires in-game verification.")
+print("P2 runtime snapshots now include its CPU registers, private player-state bytes and indexed F200-F9FF work area; gameplay still requires in-game verification.")
