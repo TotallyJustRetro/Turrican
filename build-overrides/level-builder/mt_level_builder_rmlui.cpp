@@ -223,7 +223,22 @@ static void maker_prepare_log()
 {
     if (g_log_file) return;
     const std::string &root = maker_portable_root();
-    g_log_path = root + "/maker-rmlui.log";
+    const std::filesystem::path current = std::filesystem::path(root) / "maker-rmlui.log";
+    const std::filesystem::path previous = std::filesystem::path(root) / "maker-rmlui.previous.log";
+    g_log_path = current.string();
+
+    std::error_code ec;
+    const std::uintmax_t existing_size = std::filesystem::file_size(current, ec);
+    if (!ec && existing_size > 8u * 1024u * 1024u) {
+        ec.clear();
+        std::filesystem::remove(previous, ec);
+        ec.clear();
+        std::filesystem::rename(current, previous, ec);
+        if (ec) {
+            maker_log("Log rotation could not rename the previous log: %s", ec.message().c_str());
+        }
+    }
+
     g_log_file = std::fopen(g_log_path.c_str(), "ab");
     if (g_log_file) std::setvbuf(g_log_file, nullptr, _IOLBF, 0);
 }
@@ -941,6 +956,8 @@ public:
             g_placement_armed=false;
             g_selected_asset_id=element->GetAttribute<int>("data-asset-id",-1);
             g_selected_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
+            maker_log("Asset card selected: type=%s id=%d.",
+                g_selected_asset_type.c_str(),g_selected_asset_id);
             static const char *selection_lists[]={"asset-list-tiles","asset-list-review","asset-list-character","asset-list-items","asset-list-enemies","asset-list-bosses","asset-list-3d-review","asset-list-3d-character","asset-list-3d-items","asset-list-3d-enemies","asset-list-3d-bosses"};
             for(const char *list_id:selection_lists){
                 if(Rml::Element *list=g_document->GetElementById(list_id)){
@@ -1390,7 +1407,8 @@ extern "C" int mtlbr_init(SDL_Window *window, SDL_Renderer *renderer)
     maker_log("Portable root: %s.", portable_root.c_str());
     maker_log("Diagnostic log path: %s.", g_log_path.c_str());
     maker_log("Loading regular font: %s.", font_regular.c_str());
-    const bool regular_loaded = Rml::LoadFontFace(font_regular, true);
+    const bool regular_loaded = Rml::LoadFontFace(font_regular, "Lato",
+        Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, false);
     maker_log("Regular font result: %d.", regular_loaded ? 1 : 0);
     maker_log("Loading bold font: %s.", font_bold.c_str());
     const bool bold_loaded = Rml::LoadFontFace(font_bold, "Lato", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold, false);
@@ -1519,6 +1537,45 @@ static Rml::Element *maker_find_asset_card(Rml::Element *element)
     while(element){
         if(element->HasAttribute("data-asset-id")&&element->HasAttribute("data-asset-type"))return element;
         element=element->GetParentNode();
+    }
+    return nullptr;
+}
+
+static Rml::Element *maker_find_asset_card_at_point(int px,int py,Rml::Element **hit_element)
+{
+    if(hit_element)*hit_element=nullptr;
+    if(!g_document||!g_context)return nullptr;
+
+    Rml::Element *hit=g_context->GetElementAtPoint(Rml::Vector2f((float)px,(float)py));
+    if(hit_element)*hit_element=hit;
+    if(Rml::Element *card=maker_find_asset_card(hit))return card;
+
+    Rml::Element *scroll=g_document->GetElementById("folder-scroll");
+    if(!scroll)return nullptr;
+    const Rml::Vector2f scroll_pos=scroll->GetAbsoluteOffset();
+    const float scroll_w=scroll->GetClientWidth(),scroll_h=scroll->GetClientHeight();
+    if(scroll_w<=0.0f||scroll_h<=0.0f||
+       px<scroll_pos.x||py<scroll_pos.y||
+       px>=scroll_pos.x+scroll_w||py>=scroll_pos.y+scroll_h)return nullptr;
+
+    static const char *list_ids[]={
+        "asset-list-review","asset-list-character","asset-list-items",
+        "asset-list-enemies","asset-list-bosses","asset-list-tiles",
+        "asset-list-3d-review","asset-list-3d-character","asset-list-3d-items",
+        "asset-list-3d-enemies","asset-list-3d-bosses"
+    };
+    for(const char *list_id:list_ids){
+        Rml::Element *list=g_document->GetElementById(list_id);
+        if(!list)continue;
+        for(int i=0;i<list->GetNumChildren();i++){
+            Rml::Element *card=maker_find_asset_card(list->GetChild(i));
+            if(!card)continue;
+            const Rml::Vector2f pos=card->GetAbsoluteOffset();
+            const float width=card->GetClientWidth(),height=card->GetClientHeight();
+            if(width<=0.0f||height<=0.0f)continue;
+            if((float)px>=pos.x&&(float)py>=pos.y&&
+               (float)px<pos.x+width&&(float)py<pos.y+height)return card;
+        }
     }
     return nullptr;
 }
@@ -1657,9 +1714,18 @@ static void maker_place_asset_at(int px,int py)
 
 static void maker_begin_asset_drag(int px,int py)
 {
-    Rml::Element *element=g_context?g_context->GetElementAtPoint(Rml::Vector2f((float)px,(float)py)):nullptr;
-    element=maker_find_asset_card(element);
-    if(!element)return;
+    Rml::Element *hit=nullptr;
+    Rml::Element *element=maker_find_asset_card_at_point(px,py,&hit);
+    if(!element){
+        Rml::Element *scroll=g_document?g_document->GetElementById("folder-scroll"):nullptr;
+        if(scroll){
+            const Rml::Vector2f pos=scroll->GetAbsoluteOffset();
+            const float width=scroll->GetClientWidth(),height=scroll->GetClientHeight();
+            if(width>0.0f&&height>0.0f&&px>=pos.x&&py>=pos.y&&px<pos.x+width&&py<pos.y+height)
+                maker_log("Asset press missed card hit-test at %d,%d (Rml hit element=%d).",px,py,hit?1:0);
+        }
+        return;
+    }
     g_drag_asset_id=element->GetAttribute<int>("data-asset-id",-1);
     g_drag_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
     if(g_drag_asset_id<0||g_drag_asset_type.empty())return;
@@ -2381,7 +2447,7 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
     g_perf_update_ms += (double)(update_end - update_start) * ticks_to_ms;
     g_perf_render_ms += (double)(render_end - update_end) * ticks_to_ms;
     g_perf_grid_ms += (double)(grid_end - render_end) * ticks_to_ms;
-    if (++g_perf_frames >= 120) {
+    if (++g_perf_frames >= 600) {
         maker_log("Maker frame averages over %u frames: RmlUi update %.3f ms, RmlUi render %.3f ms, stage batch %.3f ms.",
             g_perf_frames, g_perf_update_ms/g_perf_frames, g_perf_render_ms/g_perf_frames, g_perf_grid_ms/g_perf_frames);
         g_perf_frames = 0;

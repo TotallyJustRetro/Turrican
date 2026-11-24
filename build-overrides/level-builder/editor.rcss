@@ -32,7 +32,7 @@ body {
   padding: 0 8px;
   gap: 8px;
   background-color: #111a2b;
-  border-bottom: 2px solid #40516b;
+  border-bottom: 2px #40516b;
 }
 
 .brand-mark {
@@ -43,7 +43,7 @@ body {
   align-items: center;
   justify-content: center;
   background-color: #273a58;
-  border: 1px solid #e7bd53;
+  border: 1px #e7bd53;
   color: #ffd76b;
   font-size: 11px;
   font-weight: 700;
@@ -80,7 +80,7 @@ body {
   padding: 7px 8px;
   color: #a9bbd3;
   background-color: transparent;
-  border: 1px solid transparent;
+  border: 1px transparent;
   font-size: 9px;
 }
 
@@ -94,10 +94,10 @@ body {
   padding: 6px 10px;
   color: #e1eafa;
   background-color: #26364f;
-  border-top: 1px solid #7286a2;
-  border-left: 1px solid #7286a2;
-  border-bottom: 2px solid #172438;
-  border-right: 1px solid #172438;
+  border-top: 1px #7286a2;
+  border-left: 1px #7286a2;
+  border-bottom: 2px #172438;
+  border-right: 1px #172438;
   font-size: 9px;
   font-weight: 700;
 }
@@ -117,7 +117,7 @@ body {
   padding: 7px 10px;
   color: #8ce9f5;
   background-color: #172b42;
-  border: 1px solid #398da7;
+  border: 1px #398da7;
   font-size: 9px;
   font-weight: 700;
 }
@@ -166,7 +166,7 @@ body {
   gap: 4px;
   padding: 6px 5px;
   background-color: #111b2b;
-  border: 1px solid #34455f;
+  border: 1px #34455f;
 }
 
 .rail-caption, .dock-caption, .property-subtitle {
@@ -179,7 +179,7 @@ body {
 .rail-caption {
   text-align: center;
   padding: 4px 0 8px;
-  border-bottom: 1px solid #34445c;
+  border-bottom: 1px #34445c;
 }
 
 .tool-button {
@@ -192,10 +192,10 @@ body {
   gap: 2px;
   color: #b9c9df;
   background-color: #1c2b40;
-  border-top: 1px solid #526985;
-  border-left: 1px solid #526985;
-  border-bottom: 2px solid #101a2a;
-  border-right: 1px solid #101a2a;
+  border-top: 1px #526985;
+  border-left: 1px #526985;
+  border-bottom: 2px #101a2a;
+  border-right: 1px #101a2a;
   font-size: 8px;
   font-weight: 700;
 }
@@ -208,7 +208,7 @@ body {
 .tool-button.active {
   color: #ffffff;
   background-color: #17445b;
-  border: 1px solid #64d9eb;
+  border: 1px #64d9eb;
 }
 
 .tool-glyph {
@@ -230,7 +230,7 @@ body {
   flex-direction: column;
   gap: 3px;
   padding-top: 5px;
-  border-top: 1px solid #34445c;
+  border-top: 1px #34445c;
 }
 
 .rail-mini-button {
@@ -238,7 +238,7 @@ body {
   min-height: 23px;
   color: #c3d2e6;
   background-color: #202f45;
-  border: 1px solid #475c78;
+  border: 1px #475c78;
   font-size: 8px;
   font-weight: 700;
 }
@@ -289,10 +289,10 @@ body {
   flex-grow: 1;
   color: #b7c7dc;
   background-color: #17263a;
-  border-top: 1px solid #647994;
-  border-left: 1px solid #647994;
-  border-bottom: 2px solid #0e192a;
-  border-right: 1px solid #0e192a;
+  border-top: 1px #647994;
+  border-left: 1px #647994;
+  border-bottom: 2px #0e192a;
+  border-right: 1px #0e192a;
   font-size: 9px;
   font-weight: 700;
 }
@@ -315,7 +315,7 @@ body {
   align-items: center;
   padding: 0 9px;
   background-color: #111d2e;
-  border: 1px solid #465d78;
+  border: 1px #465d78;
 }
 
 .stage-title {
@@ -346,7 +346,7 @@ body {
   padding: 4px 6px;
   color: #bdcbe0;
   background-color: #1d2d43;
-  border: 1px solid #506681;
+  border: 1px #506681;
   font-size: 8px;
   font-weight: 700;
 }
@@ -366,7 +366,7 @@ body {
   min-height: 0;
   overflow: hidden;
   background-color: #111c2d;
-  border: 1px solid #6a829c;
+  border: 1px #6a829c;
 }
 
 .stage-grid {
@@ -385,7 +385,7 @@ body {
   padding: 5px 7px;
   color: #e6f2ff;
   background-color: #111d2e;
-  border: 1px solid #58c9df;
+  border: 1px #58c9df;
   font-size: 9px;
 }
 
@@ -400,7 +400,7 @@ body {
   padding: 5px 8px;
   color: #fff0b6;
   background-color: #253348;
-  border: 1px solid #d5b65e;
+  border: 1px #d5b65e;
   font-size: 8px;
   font-weight: 700;
 }
@@ -412,7 +412,7 @@ body {
   padding: 5px 7px;
   color: #b8cce0;
   background-color: #101b2c;
-  border: 1px solid #4d617a;
+  border: 1px #4d617a;
   font-size: 8px;
 }
 
@@ -423,7 +423,7 @@ body {
   padding: 7px 11px;
   color: #ffffff;
   background-color: #27516a;
-  border: 1px dashed #8be5f0;
+  border: 1px #8be5f0;
   font-size: 9px;
   font-weight: 700;
 }
@@ -443,7 +443,7 @@ body {
 .script-flow, .animation-sequencer {
   padding: 7px;
   background-color: #111c2d;
-  border: 1px solid #415873;
+  border: 1px #415873;
 }
 
 .script-flow {
@@ -465,7 +465,7 @@ body {
   padding: 7px 8px;
   color: #e7f0fc;
   background-color: #22344b;
-  border: 1px solid #7187a1;
+  border: 1px #7187a1;
   font-size: 8px;
 }
 
@@ -503,7 +503,7 @@ body {
 .timeline-ruler {
   position: relative;
   height: 30px;
-  border: 1px solid #4a607a;
+  border: 1px #4a607a;
   background-color: #0d1727;
 }
 
@@ -522,7 +522,7 @@ body {
   width: 8px;
   height: 13px;
   background-color: #f1cb65;
-  border: 1px solid #fff0b1;
+  border: 1px #fff0b1;
 }
 
 .timeline-key:nth-child(2) { left: 18%; }
@@ -554,7 +554,7 @@ body {
   min-height: 0;
   padding: 7px;
   background-color: #111b2b;
-  border: 1px solid #3d536f;
+  border: 1px #3d536f;
 }
 
 .inspector-stack {
@@ -572,7 +572,7 @@ body {
   min-width: 0;
   padding: 7px;
   background-color: #111b2b;
-  border: 1px solid #3d536f;
+  border: 1px #3d536f;
 }
 
 .model-import-card {
@@ -596,7 +596,7 @@ body {
   color: #f0d17c;
   font-size: 9px;
   font-weight: 700;
-  border-bottom: 1px solid #3e526c;
+  border-bottom: 1px #3e526c;
   padding-bottom: 6px;
   margin-bottom: 6px;
 }
@@ -638,7 +638,7 @@ body {
   padding: 5px 4px;
   color: #cbd9ea;
   background-color: #1c2d43;
-  border: 1px solid #3f5874;
+  border: 1px #3f5874;
   font-size: 9px;
   font-weight: 700;
 }
@@ -689,7 +689,7 @@ body {
   padding: 4px;
   color: #c2d0e2;
   background-color: #1c2d43;
-  border: 1px solid #465d78;
+  border: 1px #465d78;
   font-size: 7px;
   text-align: center;
 }
@@ -701,7 +701,7 @@ body {
 }
 
 .asset-card.selected {
-  border: 1px solid #eacb72;
+  border: 1px #eacb72;
   background-color: #3a3a3b;
   color: #fff1bd;
 }
@@ -731,7 +731,7 @@ body {
   justify-content: center;
   color: #91a5bd;
   background-color: #0b1524;
-  border: 1px solid #405873;
+  border: 1px #405873;
   margin-bottom: 5px;
   font-size: 8px;
 }
@@ -796,7 +796,7 @@ body {
   min-width: 0;
   color: #e4effb;
   background-color: #1d2d43;
-  border: 1px solid #536a85;
+  border: 1px #536a85;
   padding: 4px;
   font-size: 8px;
 }
@@ -827,7 +827,7 @@ body {
   padding: 5px;
   color: #ffb1b8;
   background-color: #3a2030;
-  border: 1px solid #a6536c;
+  border: 1px #a6536c;
   font-size: 7px;
   text-align: center;
 }
@@ -841,7 +841,7 @@ body {
   padding: 0 8px;
   color: #9eb0c6;
   background-color: #111b2b;
-  border-top: 1px solid #465b74;
+  border-top: 1px #465b74;
   font-size: 8px;
 }
 
@@ -885,17 +885,17 @@ body {
   max-height: 88%;
   padding: 14px;
   background-color: #17253a;
-  border-top: 2px solid #f0d27c;
-  border-left: 2px solid #f0d27c;
-  border-bottom: 2px solid #394d68;
-  border-right: 2px solid #394d68;
+  border-top: 2px #f0d27c;
+  border-left: 2px #f0d27c;
+  border-bottom: 2px #394d68;
+  border-right: 2px #394d68;
 }
 
 .modal-title {
   color: #f3d47c;
   font-size: 12px;
   font-weight: 700;
-  border-bottom: 1px solid #526782;
+  border-bottom: 1px #526782;
   padding-bottom: 9px;
 }
 
@@ -909,7 +909,7 @@ body {
   padding: 8px;
   color: #73d7e7;
   background-color: #0e1929;
-  border: 1px solid #455d79;
+  border: 1px #455d79;
   font-size: 9px;
   margin-bottom: 8px;
 }
@@ -925,7 +925,7 @@ body {
   text-align: left;
   color: #edf4ff;
   background-color: #23344b;
-  border: 1px solid #59718c;
+  border: 1px #59718c;
   font-size: 9px;
 }
 
@@ -949,7 +949,7 @@ body {
   flex-direction: row;
   justify-content: flex-end;
   gap: 6px;
-  border-top: 1px solid #4a5d76;
+  border-top: 1px #4a5d76;
   margin-top: 11px;
   padding-top: 9px;
 }
@@ -972,7 +972,7 @@ body {
   flex-basis: 270px;
   padding: 10px;
   background-color: #111d30;
-  border: 1px solid #465b75;
+  border: 1px #465b75;
 }
 
 .settings-note {
@@ -996,7 +996,7 @@ body {
 
 .maker-app {
   background-color: #050916;
-  border-top: 2px solid #e58b4b;
+  border-top: 2px #e58b4b;
 }
 
 .topbar {
@@ -1006,8 +1006,8 @@ body {
   padding: 0 10px;
   gap: 7px;
   background-color: #0a1227;
-  border-top: 1px solid #37568a;
-  border-bottom: 3px solid #1d3470;
+  border-top: 1px #37568a;
+  border-bottom: 3px #1d3470;
 }
 
 .brand-mark {
@@ -1016,10 +1016,10 @@ body {
   height: 34px;
   color: #ffbd6b;
   background-color: #152b55;
-  border-top: 2px solid #6b91c8;
-  border-left: 2px solid #6b91c8;
-  border-bottom: 2px solid #050a18;
-  border-right: 2px solid #050a18;
+  border-top: 2px #6b91c8;
+  border-left: 2px #6b91c8;
+  border-bottom: 2px #050a18;
+  border-right: 2px #050a18;
   font-family: Silkscreen;
   font-size: 12px;
 }
@@ -1062,10 +1062,10 @@ body {
   padding: 7px 7px;
   color: #a9c1e5;
   background-color: #101d3b;
-  border-top: 1px solid #36568b;
-  border-left: 1px solid #36568b;
-  border-bottom: 2px solid #040917;
-  border-right: 1px solid #040917;
+  border-top: 1px #36568b;
+  border-left: 1px #36568b;
+  border-bottom: 2px #040917;
+  border-right: 1px #040917;
   font-family: Silkscreen;
   font-size: 7px;
   letter-spacing: 0;
@@ -1080,10 +1080,10 @@ body {
 .button {
   color: #e4ebfb;
   background-color: #1a2d56;
-  border-top: 2px solid #6789bd;
-  border-left: 2px solid #6789bd;
-  border-bottom: 2px solid #040817;
-  border-right: 2px solid #040817;
+  border-top: 2px #6789bd;
+  border-left: 2px #6789bd;
+  border-bottom: 2px #040817;
+  border-right: 2px #040817;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1108,7 +1108,7 @@ body {
   padding: 7px 8px;
   color: #82e2e6;
   background-color: #14294e;
-  border: 1px solid #397caa;
+  border: 1px #397caa;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1147,10 +1147,10 @@ body {
   gap: 4px;
   padding: 6px 5px;
   background-color: #0c1732;
-  border-top: 2px solid #3f6098;
-  border-left: 2px solid #3f6098;
-  border-bottom: 2px solid #030714;
-  border-right: 2px solid #030714;
+  border-top: 2px #3f6098;
+  border-left: 2px #3f6098;
+  border-bottom: 2px #030714;
+  border-right: 2px #030714;
 }
 
 .rail-caption, .dock-caption, .property-subtitle {
@@ -1163,16 +1163,16 @@ body {
 
 .rail-caption {
   padding: 5px 0 8px;
-  border-bottom: 1px solid #355181;
+  border-bottom: 1px #355181;
 }
 
 .tool-button {
   color: #b6c9e8;
   background-color: #14264a;
-  border-top: 2px solid #45669c;
-  border-left: 2px solid #45669c;
-  border-bottom: 2px solid #030815;
-  border-right: 2px solid #030815;
+  border-top: 2px #45669c;
+  border-left: 2px #45669c;
+  border-bottom: 2px #030815;
+  border-right: 2px #030815;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1185,7 +1185,7 @@ body {
 .tool-button.active {
   color: #fff0c8;
   background-color: #274a79;
-  border: 2px solid #e89b57;
+  border: 2px #e89b57;
 }
 
 .tool-glyph {
@@ -1200,16 +1200,16 @@ body {
 }
 
 .rail-actions {
-  border-top: 1px solid #385486;
+  border-top: 1px #385486;
 }
 
 .rail-mini-button {
   color: #bfceea;
   background-color: #172b52;
-  border-top: 1px solid #46689e;
-  border-left: 1px solid #46689e;
-  border-bottom: 2px solid #030815;
-  border-right: 1px solid #030815;
+  border-top: 1px #46689e;
+  border-left: 1px #46689e;
+  border-bottom: 2px #030815;
+  border-right: 1px #030815;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1248,10 +1248,10 @@ body {
 .center-tab {
   color: #a8c0e4;
   background-color: #101e40;
-  border-top: 2px solid #496a9f;
-  border-left: 2px solid #496a9f;
-  border-bottom: 2px solid #030815;
-  border-right: 2px solid #030815;
+  border-top: 2px #496a9f;
+  border-left: 2px #496a9f;
+  border-bottom: 2px #030815;
+  border-right: 2px #030815;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1272,10 +1272,10 @@ body {
   min-height: 30px;
   padding: 0 9px;
   background-color: #14254a;
-  border-top: 1px solid #6589c2;
-  border-left: 1px solid #6589c2;
-  border-bottom: 2px solid #050a18;
-  border-right: 1px solid #050a18;
+  border-top: 1px #6589c2;
+  border-left: 1px #6589c2;
+  border-bottom: 2px #050a18;
+  border-right: 1px #050a18;
 }
 
 .stage-title {
@@ -1304,10 +1304,10 @@ body {
   padding: 4px 6px;
   color: #b8cbed;
   background-color: #182d56;
-  border-top: 1px solid #5175ab;
-  border-left: 1px solid #5175ab;
-  border-bottom: 2px solid #030815;
-  border-right: 1px solid #030815;
+  border-top: 1px #5175ab;
+  border-left: 1px #5175ab;
+  border-bottom: 2px #030815;
+  border-right: 1px #030815;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1320,7 +1320,7 @@ body {
 
 .stage-viewport {
   background-color: #030817;
-  border: 2px solid #355b99;
+  border: 2px #355b99;
 }
 
 .stage-grid {
@@ -1330,7 +1330,7 @@ body {
 .stage-coordinate {
   color: #e7f1ff;
   background-color: #0a1530;
-  border: 1px solid #65d8df;
+  border: 1px #65d8df;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1342,7 +1342,7 @@ body {
 .spawn-badge {
   color: #ffe0a9;
   background-color: #172b53;
-  border: 1px solid #e69b58;
+  border: 1px #e69b58;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1350,7 +1350,7 @@ body {
 .stage-hint {
   color: #bad0ee;
   background-color: #0b1631;
-  border: 1px solid #3d639e;
+  border: 1px #3d639e;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1358,7 +1358,7 @@ body {
 .drop-ghost {
   color: #ffffff;
   background-color: #1e4778;
-  border: 1px dashed #67dce4;
+  border: 1px #67dce4;
   font-family: Silkscreen;
   font-size: 8px;
 }
@@ -1370,16 +1370,16 @@ body {
 .script-flow, .animation-sequencer {
   padding: 7px;
   background-color: #0d1935;
-  border-top: 1px solid #44659a;
-  border-left: 1px solid #44659a;
-  border-bottom: 2px solid #030815;
-  border-right: 1px solid #030815;
+  border-top: 1px #44659a;
+  border-left: 1px #44659a;
+  border-bottom: 2px #030815;
+  border-right: 1px #030815;
 }
 
 .script-node {
   color: #dbe8fb;
   background-color: #1a315b;
-  border: 1px solid #496a9b;
+  border: 1px #496a9b;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1420,7 +1420,7 @@ body {
 }
 
 .timeline-ruler {
-  border: 1px solid #426399;
+  border: 1px #426399;
   background-color: #050c20;
 }
 
@@ -1430,7 +1430,7 @@ body {
 
 .timeline-key {
   background-color: #e99550;
-  border: 1px solid #ffe0a2;
+  border: 1px #ffe0a2;
 }
 
 .right-dock {
@@ -1440,10 +1440,10 @@ body {
 .asset-drawer {
   padding: 7px;
   background-color: #0c1732;
-  border-top: 2px solid #3f6098;
-  border-left: 2px solid #3f6098;
-  border-bottom: 2px solid #030714;
-  border-right: 2px solid #030714;
+  border-top: 2px #3f6098;
+  border-left: 2px #3f6098;
+  border-bottom: 2px #030714;
+  border-right: 2px #030714;
 }
 
 .inspector-stack {
@@ -1453,15 +1453,15 @@ body {
 .model-import-card, .property-inspector {
   padding: 7px;
   background-color: #0c1732;
-  border-top: 2px solid #3f6098;
-  border-left: 2px solid #3f6098;
-  border-bottom: 2px solid #030714;
-  border-right: 2px solid #030714;
+  border-top: 2px #3f6098;
+  border-left: 2px #3f6098;
+  border-bottom: 2px #030714;
+  border-right: 2px #030714;
 }
 
 .dock-title {
   color: #ffb567;
-  border-bottom: 1px solid #3a5888;
+  border-bottom: 1px #3a5888;
   font-family: Silkscreen;
   font-size: 7px;
   letter-spacing: 0;
@@ -1490,10 +1490,10 @@ body {
   padding: 5px 4px;
   color: #cad8f0;
   background-color: #172b52;
-  border-top: 1px solid #496b9f;
-  border-left: 1px solid #496b9f;
-  border-bottom: 2px solid #030815;
-  border-right: 1px solid #030815;
+  border-top: 1px #496b9f;
+  border-left: 1px #496b9f;
+  border-bottom: 2px #030815;
+  border-right: 1px #030815;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1524,7 +1524,7 @@ body {
 .asset-card {
   color: #c3d2ed;
   background-color: #13264a;
-  border: 1px solid #3b5c8b;
+  border: 1px #3b5c8b;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1537,13 +1537,13 @@ body {
 
 .asset-card.selected {
   color: #ffe1ad;
-  border: 2px solid #ee9d57;
+  border: 2px #ee9d57;
   background-color: #493047;
 }
 
 .asset-thumb {
   background-color: #050b1b;
-  border: 1px solid #2c4b7b;
+  border: 1px #2c4b7b;
 }
 
 .asset-tag {
@@ -1582,7 +1582,7 @@ body {
 .model-preview {
   color: #8db9df;
   background-color: #050b1b;
-  border: 1px solid #385a8c;
+  border: 1px #385a8c;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1624,7 +1624,7 @@ body {
 .property-row select, .property-row input {
   color: #e1ebfa;
   background-color: #15284d;
-  border: 1px solid #436499;
+  border: 1px #436499;
   font-family: Lato;
   font-size: 9px;
 }
@@ -1647,7 +1647,7 @@ body {
 .modern-lock {
   color: #ffc0b7;
   background-color: #44253c;
-  border: 1px solid #b05b73;
+  border: 1px #b05b73;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1657,7 +1657,7 @@ body {
   min-height: 23px;
   color: #a4bbdf;
   background-color: #0a132a;
-  border-top: 2px solid #35568c;
+  border-top: 2px #35568c;
   font-family: Silkscreen;
   font-size: 6px;
 }
@@ -1667,7 +1667,7 @@ body {
   height: 7px;
   border-radius: 0;
   background-color: #65d8df;
-  border: 1px solid #b6ffff;
+  border: 1px #b6ffff;
 }
 
 .status-right {
@@ -1682,15 +1682,15 @@ body {
 
 .modal-card {
   background-color: #101d40;
-  border-top: 2px solid #e9a15a;
-  border-left: 2px solid #e9a15a;
-  border-bottom: 2px solid #1c3971;
-  border-right: 2px solid #1c3971;
+  border-top: 2px #e9a15a;
+  border-left: 2px #e9a15a;
+  border-bottom: 2px #1c3971;
+  border-right: 2px #1c3971;
 }
 
 .modal-title {
   color: #ffb76b;
-  border-bottom: 1px solid #48699d;
+  border-bottom: 1px #48699d;
   font-family: Silkscreen;
   font-size: 9px;
 }
@@ -1703,7 +1703,7 @@ body {
 .modal-asset-info {
   color: #73dce3;
   background-color: #07132b;
-  border: 1px solid #3f639a;
+  border: 1px #3f639a;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1711,7 +1711,7 @@ body {
 .class-card {
   color: #ebf2ff;
   background-color: #1a315d;
-  border: 1px solid #5074aa;
+  border: 1px #5074aa;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -1733,12 +1733,12 @@ body {
 }
 
 .modal-actions {
-  border-top: 1px solid #3c5c90;
+  border-top: 1px #3c5c90;
 }
 
 .settings-card {
   background-color: #0e1c3b;
-  border: 1px solid #3e5f96;
+  border: 1px #3e5f96;
 }
 
 .settings-note {
@@ -1761,22 +1761,22 @@ body {
 
 .maker-app {
   background-color: #070912;
-  border-top: 2px solid #f0a05e;
+  border-top: 2px #f0a05e;
 }
 
 .topbar {
   background-color: #090c18;
-  border-top: 2px solid #596783;
-  border-bottom: 3px solid #7c88a5;
+  border-top: 2px #596783;
+  border-bottom: 3px #7c88a5;
 }
 
 .brand-mark {
   color: #a5faff;
   background-color: #111a30;
-  border-top: 2px solid #e1e8f5;
-  border-left: 2px solid #a9b8d5;
-  border-bottom: 2px solid #22283d;
-  border-right: 2px solid #22283d;
+  border-top: 2px #e1e8f5;
+  border-left: 2px #a9b8d5;
+  border-bottom: 2px #22283d;
+  border-right: 2px #22283d;
 }
 
 .brand-title {
@@ -1795,10 +1795,10 @@ body {
 .menu-item {
   color: #c4cce2;
   background-color: #111729;
-  border-top: 1px solid #9ba8c3;
-  border-left: 1px solid #64718d;
-  border-bottom: 2px solid #20263a;
-  border-right: 1px solid #20263a;
+  border-top: 1px #9ba8c3;
+  border-left: 1px #64718d;
+  border-bottom: 2px #20263a;
+  border-right: 1px #20263a;
 }
 
 .menu-item:hover {
@@ -1810,10 +1810,10 @@ body {
 .button {
   color: #edf1ff;
   background-color: #26334e;
-  border-top: 2px solid #c2cbe0;
-  border-left: 2px solid #8999b9;
-  border-bottom: 2px solid #20263c;
-  border-right: 2px solid #20263c;
+  border-top: 2px #c2cbe0;
+  border-left: 2px #8999b9;
+  border-bottom: 2px #20263c;
+  border-right: 2px #20263c;
 }
 
 .button:hover {
@@ -1835,7 +1835,7 @@ body {
 .mode-toggle {
   color: #83f5f2;
   background-color: #15283d;
-  border: 2px solid #9a3e9e;
+  border: 2px #9a3e9e;
 }
 
 .mode-toggle.active {
@@ -1859,24 +1859,24 @@ body {
 
 .tool-rail {
   background-color: #101727;
-  border-top: 3px solid #c0cbe2;
-  border-left: 3px solid #8f9dbb;
-  border-bottom: 3px solid #22283d;
-  border-right: 2px solid #22283d;
+  border-top: 3px #c0cbe2;
+  border-left: 3px #8f9dbb;
+  border-bottom: 3px #22283d;
+  border-right: 2px #22283d;
 }
 
 .rail-caption {
   color: #83f1ef;
-  border-bottom: 1px solid #586783;
+  border-bottom: 1px #586783;
 }
 
 .tool-button {
   color: #e0e6f5;
   background-color: #1a2338;
-  border-top: 2px solid #9ba9c6;
-  border-left: 2px solid #7383a2;
-  border-bottom: 2px solid #252b40;
-  border-right: 2px solid #252b40;
+  border-top: 2px #9ba9c6;
+  border-left: 2px #7383a2;
+  border-bottom: 2px #252b40;
+  border-right: 2px #252b40;
 }
 
 .tool-button:hover {
@@ -1889,7 +1889,7 @@ body {
 .tool-button.active {
   color: #efffff;
   background-color: #123b49;
-  border: 2px solid #62f1ed;
+  border: 2px #62f1ed;
 }
 
 .tool-glyph {
@@ -1907,10 +1907,10 @@ body {
 .rail-mini-button {
   color: #e3e8f7;
   background-color: #1d2940;
-  border-top: 1px solid #9ba9c6;
-  border-left: 1px solid #71819f;
-  border-bottom: 2px solid #22283b;
-  border-right: 2px solid #22283b;
+  border-top: 1px #9ba9c6;
+  border-left: 1px #71819f;
+  border-bottom: 2px #22283b;
+  border-right: 2px #22283b;
 }
 
 .rail-mini-button.rail-save {
@@ -1932,17 +1932,17 @@ body {
 .center-tab {
   color: #c3cbe1;
   background-color: #111626;
-  border-top: 2px solid #aebad2;
-  border-left: 2px solid #7f8da9;
-  border-bottom: 2px solid #20263b;
-  border-right: 2px solid #20263b;
+  border-top: 2px #aebad2;
+  border-left: 2px #7f8da9;
+  border-bottom: 2px #20263b;
+  border-right: 2px #20263b;
   font-size: 8px;
 }
 
 .center-tab.active {
   color: #cfffff;
   background-color: #123b49;
-  border: 2px solid #64f3ef;
+  border: 2px #64f3ef;
 }
 
 .center-tab:hover {
@@ -1954,10 +1954,10 @@ body {
 .stage-head {
   color: #ffffff;
   background-color: #151d34;
-  border-top: 2px solid #b4c0d9;
-  border-left: 2px solid #8998b8;
-  border-bottom: 2px solid #242a41;
-  border-right: 2px solid #242a41;
+  border-top: 2px #b4c0d9;
+  border-left: 2px #8998b8;
+  border-bottom: 2px #242a41;
+  border-right: 2px #242a41;
 }
 
 .stage-title {
@@ -1979,30 +1979,30 @@ body {
 .tiny-button, .filter-button {
   color: #e1e8f8;
   background-color: #1c2943;
-  border-top: 1px solid #a9b8d2;
-  border-left: 1px solid #7384a3;
-  border-bottom: 2px solid #242a3f;
-  border-right: 2px solid #242a3f;
+  border-top: 1px #a9b8d2;
+  border-left: 1px #7384a3;
+  border-bottom: 2px #242a3f;
+  border-right: 2px #242a3f;
 }
 
 .tiny-button.active, .filter-button.active {
   color: #eaffff;
   background-color: #124550;
-  border: 1px solid #65f0ec;
+  border: 1px #65f0ec;
 }
 
 .stage-viewport {
   background-color: #03040a;
-  border-top: 4px solid #c4cce0;
-  border-left: 4px solid #8996b6;
-  border-bottom: 4px solid #25283e;
-  border-right: 4px solid #25283e;
+  border-top: 4px #c4cce0;
+  border-left: 4px #8996b6;
+  border-bottom: 4px #25283e;
+  border-right: 4px #25283e;
 }
 
 .stage-coordinate {
   color: #ffffff;
   background-color: #101a2b;
-  border: 2px solid #65eee9;
+  border: 2px #65eee9;
 }
 
 .stage-coordinate span {
@@ -2012,19 +2012,19 @@ body {
 .spawn-badge {
   color: #ffe4ad;
   background-color: #38213d;
-  border: 2px solid #f0a45e;
+  border: 2px #f0a45e;
 }
 
 .stage-hint {
   color: #d2dcf1;
   background-color: #11182a;
-  border: 1px solid #8495b6;
+  border: 1px #8495b6;
 }
 
 .drop-ghost {
   color: #ffffff;
   background-color: #164c61;
-  border: 2px dashed #78f7ef;
+  border: 2px #78f7ef;
 }
 
 .bottom-workspace {
@@ -2034,10 +2034,10 @@ body {
 .script-flow, .animation-sequencer {
   padding: 8px;
   background-color: #0a0d17;
-  border-top: 3px solid #c0c9dd;
-  border-left: 3px solid #8f9dbb;
-  border-bottom: 3px solid #252a40;
-  border-right: 3px solid #252a40;
+  border-top: 3px #c0c9dd;
+  border-left: 3px #8f9dbb;
+  border-bottom: 3px #252a40;
+  border-right: 3px #252a40;
 }
 
 .dock-caption {
@@ -2047,7 +2047,7 @@ body {
 .script-node {
   color: #eff4ff;
   background-color: #1c2945;
-  border: 2px solid #7e9bc0;
+  border: 2px #7e9bc0;
 }
 
 .trigger-node {
@@ -2074,7 +2074,7 @@ body {
 }
 
 .timeline-ruler {
-  border: 2px solid #8292b1;
+  border: 2px #8292b1;
   background-color: #050710;
 }
 
@@ -2084,7 +2084,7 @@ body {
 
 .timeline-key {
   background-color: #ffbd63;
-  border: 1px solid #fff0b7;
+  border: 1px #fff0b7;
 }
 
 .timeline-key:nth-child(3) {
@@ -2098,23 +2098,23 @@ body {
 
 .asset-drawer {
   background-color: #101626;
-  border-top: 3px solid #c0c9de;
-  border-left: 3px solid #8997b4;
-  border-bottom: 3px solid #252a40;
-  border-right: 2px solid #252a40;
+  border-top: 3px #c0c9de;
+  border-left: 3px #8997b4;
+  border-bottom: 3px #252a40;
+  border-right: 2px #252a40;
 }
 
 .model-import-card, .property-inspector {
   background-color: #101626;
-  border-top: 3px solid #c0c9de;
-  border-left: 3px solid #8997b4;
-  border-bottom: 3px solid #252a40;
-  border-right: 3px solid #252a40;
+  border-top: 3px #c0c9de;
+  border-left: 3px #8997b4;
+  border-bottom: 3px #252a40;
+  border-right: 3px #252a40;
 }
 
 .dock-title {
   color: #83f0ed;
-  border-bottom: 2px solid #667694;
+  border-bottom: 2px #667694;
 }
 
 .dock-subtitle {
@@ -2129,10 +2129,10 @@ body {
 .folder-heading {
   color: #dfe7f7;
   background-color: #1b2740;
-  border-top: 1px solid #9aa9c6;
-  border-left: 2px solid #7586a4;
-  border-bottom: 2px solid #282e43;
-  border-right: 2px solid #282e43;
+  border-top: 1px #9aa9c6;
+  border-left: 2px #7586a4;
+  border-bottom: 2px #282e43;
+  border-right: 2px #282e43;
 }
 
 .folder-heading:hover {
@@ -2156,24 +2156,24 @@ body {
 .asset-card {
   color: #e1e9f9;
   background-color: #10192d;
-  border: 1px solid #7889a9;
+  border: 1px #7889a9;
 }
 
 .asset-card:hover {
   color: #ffffff;
-  border: 1px solid #6cf4f0;
+  border: 1px #6cf4f0;
   background-color: #183a4e;
 }
 
 .asset-card.selected {
   color: #fff0cb;
-  border: 2px solid #f3ad61;
+  border: 2px #f3ad61;
   background-color: #492b48;
 }
 
 .asset-thumb {
   background-color: #03050d;
-  border: 1px solid #526990;
+  border: 1px #526990;
 }
 
 .asset-tag {
@@ -2210,7 +2210,7 @@ body {
 .model-preview {
   color: #8ceef1;
   background-color: #05070f;
-  border: 2px solid #7187a8;
+  border: 2px #7187a8;
 }
 
 .model-preview-placeholder {
@@ -2244,7 +2244,7 @@ body {
 .property-row select, .property-row input {
   color: #f2f5ff;
   background-color: #151f37;
-  border: 1px solid #7386aa;
+  border: 1px #7386aa;
 }
 
 .property-row select:hover, .property-row input:hover {
@@ -2266,13 +2266,13 @@ body {
 .modern-lock {
   color: #ffd0d0;
   background-color: #4a2138;
-  border: 1px solid #ef7185;
+  border: 1px #ef7185;
 }
 
 .statusbar {
   color: #c2cde4;
   background-color: #0b1020;
-  border-top: 2px solid #8491ad;
+  border-top: 2px #8491ad;
 }
 
 .status-led {
@@ -2291,27 +2291,27 @@ body {
 .modal-card {
   color: #eef2ff;
   background-color: #121b32;
-  border-top: 3px solid #d4dced;
-  border-left: 3px solid #9aa9c7;
-  border-bottom: 3px solid #282e46;
-  border-right: 3px solid #282e46;
+  border-top: 3px #d4dced;
+  border-left: 3px #9aa9c7;
+  border-bottom: 3px #282e46;
+  border-right: 3px #282e46;
 }
 
 .modal-title {
   color: #ffd080;
-  border-bottom: 2px solid #647594;
+  border-bottom: 2px #647594;
 }
 
 .modal-asset-info {
   color: #84f0ec;
   background-color: #060a14;
-  border: 1px solid #7185a7;
+  border: 1px #7185a7;
 }
 
 .class-card {
   color: #eff4ff;
   background-color: #1c2a47;
-  border: 1px solid #899abb;
+  border: 1px #899abb;
 }
 
 .class-card:hover {
@@ -2326,12 +2326,12 @@ body {
 }
 
 .modal-actions {
-  border-top: 2px solid #647594;
+  border-top: 2px #647594;
 }
 
 .settings-card {
   background-color: #0c1427;
-  border: 1px solid #7184a5;
+  border: 1px #7184a5;
 }
 
 
@@ -2352,7 +2352,7 @@ body {
 
 .maker-app {
   background-color: #070a14;
-  border-top: 3px solid #f0a05d;
+  border-top: 3px #f0a05d;
 }
 
 .topbar {
@@ -2362,8 +2362,8 @@ body {
   gap: 9px;
   background-color: #10182a;
   decorator: vertical-gradient(#28354f #0b1020);
-  border-top: 2px solid #d0d8e9;
-  border-bottom: 4px solid #242b43;
+  border-top: 2px #d0d8e9;
+  border-bottom: 4px #242b43;
 }
 
 .brand-mark {
@@ -2373,10 +2373,10 @@ body {
   color: #9cfaff;
   background-color: #142541;
   decorator: vertical-gradient(#31557a #101a31);
-  border-top: 2px solid #f0f3ff;
-  border-left: 2px solid #a4b4d3;
-  border-bottom: 3px solid #252b42;
-  border-right: 3px solid #252b42;
+  border-top: 2px #f0f3ff;
+  border-left: 2px #a4b4d3;
+  border-bottom: 3px #252b42;
+  border-right: 3px #252b42;
   font-size: 15px;
 }
 
@@ -2415,10 +2415,10 @@ body {
   color: #d0d9eb;
   background-color: #15213a;
   decorator: vertical-gradient(#263a5d #11192d);
-  border-top: 1px solid #a8b6d2;
-  border-left: 1px solid #7486a8;
-  border-bottom: 2px solid #222a42;
-  border-right: 2px solid #222a42;
+  border-top: 1px #a8b6d2;
+  border-left: 1px #7486a8;
+  border-bottom: 2px #222a42;
+  border-right: 2px #222a42;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -2438,10 +2438,10 @@ body {
   color: #f1f5ff;
   background-color: #263652;
   decorator: vertical-gradient(#415a7c #1a2945);
-  border-top: 2px solid #d5deed;
-  border-left: 2px solid #9cacc8;
-  border-bottom: 3px solid #252b41;
-  border-right: 3px solid #252b41;
+  border-top: 2px #d5deed;
+  border-left: 2px #9cacc8;
+  border-bottom: 3px #252b41;
+  border-right: 3px #252b41;
   font-family: Lato;
   font-size: 10px;
   font-weight: 700;
@@ -2470,7 +2470,7 @@ body {
   color: #a3f8f5;
   background-color: #202141;
   decorator: vertical-gradient(#39284d #1a1b35);
-  border: 2px solid #a249a4;
+  border: 2px #a249a4;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -2512,10 +2512,10 @@ body {
   padding: 8px 7px;
   background-color: #131b2e;
   decorator: vertical-gradient(#202e47 #0c1221);
-  border-top: 3px solid #d2d9e8;
-  border-left: 3px solid #9aa8c3;
-  border-bottom: 3px solid #242a40;
-  border-right: 3px solid #242a40;
+  border-top: 3px #d2d9e8;
+  border-left: 3px #9aa8c3;
+  border-bottom: 3px #242a40;
+  border-right: 3px #242a40;
 }
 
 .rail-caption, .dock-caption, .property-subtitle {
@@ -2528,7 +2528,7 @@ body {
 
 .rail-caption {
   padding: 6px 0 9px;
-  border-bottom: 2px solid #596783;
+  border-bottom: 2px #596783;
 }
 
 .tool-button {
@@ -2538,10 +2538,10 @@ body {
   color: #dce6f8;
   background-color: #1b2943;
   decorator: vertical-gradient(#2b4163 #152138);
-  border-top: 2px solid #bdc9df;
-  border-left: 2px solid #8497b8;
-  border-bottom: 3px solid #252c42;
-  border-right: 3px solid #252c42;
+  border-top: 2px #bdc9df;
+  border-left: 2px #8497b8;
+  border-bottom: 3px #252c42;
+  border-right: 3px #252c42;
   font-family: Lato;
   font-size: 9px;
 }
@@ -2558,7 +2558,7 @@ body {
   color: #f5ffff;
   background-color: #174758;
   decorator: vertical-gradient(#236c7c #123341);
-  border: 2px solid #63f0eb;
+  border: 2px #63f0eb;
 }
 
 .tool-glyph {
@@ -2575,7 +2575,7 @@ body {
 
 .rail-actions {
   gap: 4px;
-  border-top: 2px solid #566783;
+  border-top: 2px #566783;
 }
 
 .rail-mini-button {
@@ -2584,10 +2584,10 @@ body {
   color: #d9e4f7;
   background-color: #1d2d49;
   decorator: vertical-gradient(#314b70 #17243d);
-  border-top: 1px solid #9eacc8;
-  border-left: 1px solid #7689aa;
-  border-bottom: 2px solid #242b41;
-  border-right: 2px solid #242b41;
+  border-top: 1px #9eacc8;
+  border-left: 1px #7689aa;
+  border-bottom: 2px #242b41;
+  border-right: 2px #242b41;
   font-family: Silkscreen;
   font-size: 7px;
 }
@@ -2621,10 +2621,10 @@ body {
   color: #cbd6eb;
   background-color: #16213a;
   decorator: vertical-gradient(#2a3b5b #10182b);
-  border-top: 2px solid #c6d0e3;
-  border-left: 2px solid #8b9bb8;
-  border-bottom: 3px solid #242a41;
-  border-right: 3px solid #242a41;
+  border-top: 2px #c6d0e3;
+  border-left: 2px #8b9bb8;
+  border-bottom: 3px #242a41;
+  border-right: 3px #242a41;
   font-family: Silkscreen;
   font-size: 9px;
 }
@@ -2633,7 +2633,7 @@ body {
   color: #d8ffff;
   background-color: #174a59;
   decorator: vertical-gradient(#236b78 #123443);
-  border: 2px solid #67eee9;
+  border: 2px #67eee9;
 }
 
 .center-tab:hover {
@@ -2668,10 +2668,10 @@ body {
   padding: 0 12px;
   background-color: #182744;
   decorator: vertical-gradient(#30476c #121d34);
-  border-top: 2px solid #c6d2e8;
-  border-left: 2px solid #8c9dbb;
-  border-bottom: 3px solid #252b43;
-  border-right: 3px solid #252b43;
+  border-top: 2px #c6d2e8;
+  border-left: 2px #8c9dbb;
+  border-bottom: 3px #252b43;
+  border-right: 3px #252b43;
 }
 
 .stage-title {
@@ -2695,10 +2695,10 @@ body {
   color: #d7e4f8;
   background-color: #1b2b48;
   decorator: vertical-gradient(#30496d #17233b);
-  border-top: 1px solid #bdc9e1;
-  border-left: 1px solid #8b9cbd;
-  border-bottom: 2px solid #252b40;
-  border-right: 2px solid #252b40;
+  border-top: 1px #bdc9e1;
+  border-left: 1px #8b9cbd;
+  border-bottom: 2px #252b40;
+  border-right: 2px #252b40;
   font-family: Lato;
   font-size: 8px;
   font-weight: 700;
@@ -2708,16 +2708,16 @@ body {
   color: #eaffff;
   background-color: #155365;
   decorator: vertical-gradient(#247b88 #123a4e);
-  border: 1px solid #72f3ed;
+  border: 1px #72f3ed;
 }
 
 .stage-viewport {
   background-color: #03050c;
   decorator: vertical-gradient(#101932 #03050c);
-  border-top: 4px solid #cfd7e8;
-  border-left: 4px solid #98a6c1;
-  border-bottom: 4px solid #232a43;
-  border-right: 4px solid #232a43;
+  border-top: 4px #cfd7e8;
+  border-left: 4px #98a6c1;
+  border-bottom: 4px #232a43;
+  border-right: 4px #232a43;
 }
 
 .stage-grid {
@@ -2729,7 +2729,7 @@ body {
   color: #ffffff;
   background-color: #101b31;
   decorator: vertical-gradient(#243b5c #0b1427);
-  border: 2px solid #70eee9;
+  border: 2px #70eee9;
   font-family: Lato;
   font-size: 10px;
 }
@@ -2743,7 +2743,7 @@ body {
   color: #ffe6b8;
   background-color: #432743;
   decorator: vertical-gradient(#643c58 #291d36);
-  border: 2px solid #f2b46a;
+  border: 2px #f2b46a;
   font-family: Silkscreen;
   font-size: 8px;
 }
@@ -2752,7 +2752,7 @@ body {
   padding: 7px 10px;
   color: #d8e6fa;
   background-color: #101a2d;
-  border: 1px solid #788dab;
+  border: 1px #788dab;
   font-family: Lato;
   font-size: 10px;
 }
@@ -2762,7 +2762,7 @@ body {
   color: #ffffff;
   background-color: #15536a;
   decorator: vertical-gradient(#247e91 #12394e);
-  border: 2px dashed #83fff4;
+  border: 2px #83fff4;
   font-family: Silkscreen;
   font-size: 8px;
 }
@@ -2777,10 +2777,10 @@ body {
   padding: 9px;
   background-color: #0d1425;
   decorator: vertical-gradient(#1d2a43 #090e1a);
-  border-top: 3px solid #c6d0e3;
-  border-left: 3px solid #8999b7;
-  border-bottom: 3px solid #252b40;
-  border-right: 3px solid #252b40;
+  border-top: 3px #c6d0e3;
+  border-left: 3px #8999b7;
+  border-bottom: 3px #252b40;
+  border-right: 3px #252b40;
 }
 
 .dock-caption {
@@ -2799,7 +2799,7 @@ body {
   color: #f1f5ff;
   background-color: #243452;
   decorator: vertical-gradient(#354d72 #1a2943);
-  border: 1px solid #92a6c7;
+  border: 1px #92a6c7;
   font-family: Lato;
   font-size: 9px;
   font-weight: 700;
@@ -2846,7 +2846,7 @@ body {
 
 .timeline-ruler {
   height: 34px;
-  border: 2px solid #8496b7;
+  border: 2px #8496b7;
   background-color: #050812;
   decorator: vertical-gradient(#101a2c #03060d);
 }
@@ -2861,7 +2861,7 @@ body {
   width: 9px;
   height: 17px;
   background-color: #ffc46d;
-  border: 1px solid #fff1bd;
+  border: 1px #fff1bd;
 }
 
 .timeline-key:nth-child(3) {
@@ -2888,10 +2888,10 @@ body {
   padding: 9px;
   background-color: #131c30;
   decorator: vertical-gradient(#202f49 #0d1424);
-  border-top: 3px solid #d0d8e8;
-  border-left: 3px solid #95a4c0;
-  border-bottom: 3px solid #242a40;
-  border-right: 3px solid #242a40;
+  border-top: 3px #d0d8e8;
+  border-left: 3px #95a4c0;
+  border-bottom: 3px #242a40;
+  border-right: 3px #242a40;
 }
 
 .inspector-stack {
@@ -2902,10 +2902,10 @@ body {
   padding: 9px;
   background-color: #131c30;
   decorator: vertical-gradient(#202f49 #0d1424);
-  border-top: 3px solid #d0d8e8;
-  border-left: 3px solid #95a4c0;
-  border-bottom: 3px solid #242a40;
-  border-right: 3px solid #242a40;
+  border-top: 3px #d0d8e8;
+  border-left: 3px #95a4c0;
+  border-bottom: 3px #242a40;
+  border-right: 3px #242a40;
 }
 
 .model-import-card {
@@ -2918,7 +2918,7 @@ body {
   color: #83f2ee;
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 2px solid #697b9a;
+  border-bottom: 2px #697b9a;
   font-family: Silkscreen;
   font-size: 8px;
 }
@@ -2954,10 +2954,10 @@ body {
   color: #e1e8f7;
   background-color: #1b2b49;
   decorator: vertical-gradient(#304a70 #15233e);
-  border-top: 1px solid #a9b9d5;
-  border-left: 2px solid #8295b5;
-  border-bottom: 2px solid #252c43;
-  border-right: 2px solid #252c43;
+  border-top: 1px #a9b9d5;
+  border-left: 2px #8295b5;
+  border-bottom: 2px #252c43;
+  border-right: 2px #252c43;
   font-family: Lato;
   font-size: 10px;
   font-weight: 700;
@@ -2998,7 +2998,7 @@ body {
   color: #dfe8f8;
   background-color: #111c32;
   decorator: vertical-gradient(#1c2f4d #0a1222);
-  border: 1px solid #8798b6;
+  border: 1px #8798b6;
   font-family: Lato;
   font-size: 8px;
   font-weight: 700;
@@ -3008,21 +3008,21 @@ body {
   color: #ffffff;
   background-color: #174357;
   decorator: vertical-gradient(#246b7c #102c40);
-  border: 1px solid #6df2ed;
+  border: 1px #6df2ed;
 }
 
 .asset-card.selected {
   color: #fff0ca;
   background-color: #512e4c;
   decorator: vertical-gradient(#744261 #38223d);
-  border: 2px solid #f5bd70;
+  border: 2px #f5bd70;
 }
 
 .asset-thumb {
   width: 52px;
   height: 48px;
   background-color: #03060e;
-  border: 1px solid #506b96;
+  border: 1px #506b96;
 }
 
 .asset-tag {
@@ -3066,7 +3066,7 @@ body {
   color: #90eff0;
   background-color: #050912;
   decorator: vertical-gradient(#121e35 #03070f);
-  border: 2px solid #8295b5;
+  border: 2px #8295b5;
   font-family: Lato;
   font-size: 9px;
 }
@@ -3098,7 +3098,7 @@ body {
   padding: 5px;
   color: #f4f7ff;
   background-color: #1a2b49;
-  border: 1px solid #7f93b3;
+  border: 1px #7f93b3;
   font-size: 9px;
 }
 
@@ -3131,7 +3131,7 @@ body {
   padding: 6px;
   color: #f0f4ff;
   background-color: #192945;
-  border: 1px solid #7c90b2;
+  border: 1px #7c90b2;
   font-size: 10px;
 }
 
@@ -3161,7 +3161,7 @@ body {
   padding: 7px;
   color: #ffd1d7;
   background-color: #4d263f;
-  border: 1px solid #e87890;
+  border: 1px #e87890;
   font-family: Lato;
   font-size: 8px;
   font-weight: 700;
@@ -3173,7 +3173,7 @@ body {
   color: #c6d3e9;
   background-color: #0d1526;
   decorator: vertical-gradient(#18243b #090f1d);
-  border-top: 2px solid #8291ad;
+  border-top: 2px #8291ad;
   font-family: Lato;
   font-size: 9px;
 }
@@ -3183,7 +3183,7 @@ body {
   height: 8px;
   border-radius: 0;
   background-color: #72f1dc;
-  border: 1px solid #e0fff8;
+  border: 1px #e0fff8;
 }
 
 .status-right {
@@ -3194,10 +3194,10 @@ body {
 .modal-card {
   background-color: #121c33;
   decorator: vertical-gradient(#253552 #0d1426);
-  border-top: 3px solid #d8dfed;
-  border-left: 3px solid #a1b0ca;
-  border-bottom: 3px solid #222b43;
-  border-right: 3px solid #222b43;
+  border-top: 3px #d8dfed;
+  border-left: 3px #a1b0ca;
+  border-bottom: 3px #222b43;
+  border-right: 3px #222b43;
 }
 
 .modal-title {
@@ -3214,7 +3214,7 @@ body {
 .modal-asset-info {
   color: #86f4ee;
   background-color: #050a14;
-  border: 1px solid #8499b9;
+  border: 1px #8499b9;
   font-size: 9px;
 }
 
@@ -3222,7 +3222,7 @@ body {
   color: #f0f4ff;
   background-color: #1d2e4d;
   decorator: vertical-gradient(#304c72 #17243c);
-  border: 1px solid #9bacc9;
+  border: 1px #9bacc9;
   font-size: 9px;
 }
 
@@ -3241,7 +3241,7 @@ body {
 .settings-card {
   background-color: #101a2f;
   decorator: vertical-gradient(#1b2a43 #0b1221);
-  border: 1px solid #8194b4;
+  border: 1px #8194b4;
 }
 
 .settings-note {
@@ -3325,7 +3325,7 @@ body {
 }
 
 .topbar {
-  border-bottom: 4px solid #2e3655;
+  border-bottom: 4px #2e3655;
 }
 
 .brand-title {
@@ -3702,7 +3702,7 @@ body {
 }
 .tile-card .asset-thumb {
   background-color: #081321;
-  border: 1px solid #405979;
+  border: 1px #405979;
 }
 .tile-card-grid {
   padding-bottom: 7px;
@@ -3766,7 +3766,7 @@ body {
 .place-stage-button {
   color: #fff0b9;
   background-color: #523c22;
-  border: 1px solid #e2b96b;
+  border: 1px #e2b96b;
 }
 .place-stage-button:hover,
 .place-stage-button.active {
@@ -3969,7 +3969,7 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
   padding: 5px;
   color: #f0eee7;
   background-color: #313c42;
-  border: 1px solid #69747a;
+  border: 1px #69747a;
   font-family: Lato;
   font-size: 10px;
 }
@@ -4126,8 +4126,8 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
   padding: 7px 8px;
   color: #d0d0c9;
   background-color: #303a41;
-  border: 1px solid #69747a;
-  border-bottom: 3px solid #69747a;
+  border: 1px #69747a;
+  border-bottom: 3px #69747a;
   font-family: Lato;
   font-size: 11px;
   font-weight: 800;
@@ -4310,7 +4310,7 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
   padding: 6px 7px;
   color: #d4d0c5;
   background-color: #242d32;
-  border-left: 2px solid #bc8748;
+  border-left: 2px #bc8748;
   font-family: Lato;
   font-size: 9px;
   line-height: 1.3;
@@ -4377,7 +4377,7 @@ body { font-family: Lato; font-size: 12px; color: #d9d5ca; background-color: #0c
 .placement-help {
   margin-top: 9px;
   padding-top: 8px;
-  border-top: 1px solid #59636a;
+  border-top: 1px #59636a;
   font-family: Lato;
   font-size: 10px;
   line-height: 1.45;
@@ -4552,14 +4552,14 @@ scrollbarvertical slidertrack {
   width: 7px;
   margin-left: 3px;
   background-color: #27343d;
-  border: 1px solid #4c5960;
+  border: 1px #4c5960;
 }
 scrollbarvertical sliderbar {
   width: 7px;
   min-height: 28px;
   margin-left: 3px;
   background-color: #946b39;
-  border: 1px solid #e2b56a;
+  border: 1px #e2b56a;
 }
 scrollbarvertical sliderbar:hover {
   background-color: #bf9252;
@@ -4581,16 +4581,61 @@ scrollbarhorizontal slidertrack {
   height: 7px;
   margin-top: 2px;
   background-color: #27343d;
-  border: 1px solid #4c5960;
+  border: 1px #4c5960;
 }
 scrollbarhorizontal sliderbar {
   height: 7px;
   min-width: 28px;
   margin-top: 2px;
   background-color: #946b39;
-  border: 1px solid #e2b56a;
+  border: 1px #e2b56a;
 }
 /* These cards use the Maker's SDL drag controller, never RmlUi drag-drop. */
 .asset-card {
   drag: none;
+}
+
+/* RmlUi asset bay: the folder viewport is the sole scrolling container. */
+#dock-panel-assets {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+#folder-scroll {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+#folder-scroll .folder {
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+#folder-scroll .folder-content {
+  width: 100%;
+  min-width: 0;
+}
+#folder-scroll .asset-card-grid {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+}
+#folder-scroll .asset-card-grid .asset-card {
+  flex: 0 0 86px;
+  width: 86px;
+  min-width: 86px;
+  max-width: 86px;
 }
