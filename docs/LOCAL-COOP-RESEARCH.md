@@ -429,3 +429,33 @@ This gives a candidate P2 scheduling point immediately after the f_224C call at 
 f_5DB2 uses $FFFFFCE8 as temporary multipart sprite scratch, but writes completed sprite entries through the shared $FFBC54/$FFBC58 output queue. Sequential P1 then P2 rendering may allow scratch to be reused while the output queue accumulates both players, provided no queued record retains a pointer into $FFFFFCE8. The object pool and $FFBC28/$FFBC2C/$FFBC30 heads remain shared and must never be banked as player-local memory.
 
 Camera handling needs a separate treatment. f_3368 computes the player's camera threshold state in per-player fields $FFBC87, $FFBCCE, $FFBCD2, $FFBCD6, and $FFBCD7, but writes the candidate camera to shared $FFDFD8/$FFDFDA. P2's threshold-state fields are candidates for its local bank. Its camera writes should be captured as a P2 candidate rather than replacing the visible shared camera; after both player updates the runtime can merge P1 and P2 candidates so the trailing player limits forward progress. The merge direction, stage boundaries, and scrolling lock behavior still need to be validated from more than one level.
+
+
+## November 24, 2026 — user-supplied Build #555 traces
+
+The user supplied both Build #555 outputs: MegaTurrican-coop-player-state-trace.txt (283,948 bytes) and MegaTurrican-coop-runtime-trace(5).txt (269,643 bytes). The player-state trace contains 345 snapshots through frame 20,640; the standard runtime trace contains 1,501 input samples through the same session. The build run 45365606464 completed successfully.
+
+### Life and continue flow are now separated
+
+The trace records eight writes to $FFBF26:
+
+- Startup: PC 0x1968 writes 03 (difficulty $FFBC69 = 01).
+- Death: PC 0x1766 performs BCD decrement 03 -> 02 -> 01 -> 00. The samples show the intermediate and zero states.
+- Bonus-life increment: PC 0x657C performs BCD increment 00 -> 01, then later 03 -> 04. The generated body identifies this as f_6566: it loads D0=5, calls f_D0010, then sets D0=1, BCD-increments $FFBF26, and writes the result. This confirms the increment path; the exact event/caller that reaches f_6566 is still not mapped to a particular pickup or score threshold.
+- Continue/reinitialization: PC 0x1968 later writes 03 after lives reached zero. In the f_156A flow this is reached after continue/restart processing and a call to f_1944, which initializes the lives count from difficulty. It is not the bonus-life path.
+
+$FFBF3A stayed at 03 in this session. At PC 0x1934 the trace showed D1=0 and the new value remained 03. The generated f_156A code sets D1 to zero when md_infinite_continues_enabled is true, so this session exercised the infinite-continues override. Do not infer normal finite-continue decrement behavior from this run.
+
+### Implications for the requested co-op rules
+
+P1 and P2 require separate life values. Death should decrement only the life counter of the player who died. f_6566 is the original game's life-award path; a co-op award policy can be applied there once we have identified the event/caller and can distinguish ordinary shared score effects from player-local life state. The shared continue flow must not be entered while either player still has lives. Once both are out, P1 alone should own the shared continue input, consistent with the requested behavior. Keep the original start-life difficulty selection from f_1944 for both players unless co-op design tests show a deliberate difference.
+
+### Better view of the player context
+
+The sampled $FFBCC0-$FFBD26 block changes during normal movement, jumps, weapon actions, and level traversal, with X/Y at $FFBD1E/$FFBD20. Cross-checking the static report shows that f_224C references 52 distinct RAM addresses, f_2E94 references 33, f_3368 references seven, and f_5DB2 references 13. Their union is not just the 0x67-byte snapshot region: some fields live in the callback/context area, camera-threshold state, and scratch fields outside it. Thus $BCC0-$BD26 is a useful first view, not a complete P2 bank definition.
+
+In particular, f_3368 references $FFBC87, $FFBCCE, $FFBCD2, $FFBCD6, and $FFBCD7 as camera-threshold state, while it also reads the player's $FFBD1E/$FFBD20 position and writes shared $FFDFD8/$FFDFDA camera output. f_5DB2 reads player state and $FFBD24/$FFBD25 scratch, uses shared multipart sprite scratch $FFFFFCE8, and appends output through shared $FFBC54/$FFBC58. Keep camera output, object lists, and final render queue shared; give any player-local sprite scratch a distinct buffer only after proving the renderer does not retain pointers into it.
+
+### Runtime trace status
+
+The live selector stayed at zero with descriptor 0x008E5E. No f_2E94 entry was observed. The P2 host connection was present but its live button mask and emulated input bytes were idle throughout this session. An earlier session already showed active P2 input reaching $FFBC92/$FFBC93, so this does not invalidate the controller mapping. The next controller-specific run should include intentional P2 movement and buttons to verify that the eventual actor pass consumes the port-2 input pair.
