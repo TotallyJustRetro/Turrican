@@ -350,14 +350,17 @@ if "static int pad2_map[8]" not in s:
 
 # Parse P2 map keys from config.ini.
 if 'pad2_up' not in s:
-    background=re.search(r'(?m)^[ \\t]*else\\s+if\\s*\\(\\s*!\\s*strcmp\\s*\\(\\s*l\\s*,\\s*"background"\\s*\\)\\s*\\)[^\\n]*',s)
-    if not background: raise SystemExit("dual-controller patch: config.ini background parser branch not found")
-    indent=re.match(r'[ \\t]*',background.group(0)).group(0)
+    marker='else if(!strcmp(l, "background"))'
+    if s.count(marker)!=1: raise SystemExit("dual-controller patch: config.ini background parser marker not found uniquely")
+    marker_pos=s.find(marker)
+    line_start=s.rfind("\\n",0,marker_pos)+1
+    indent=s[line_start:marker_pos]
     extra="\\n".join(
         indent+f'else if(!strcmp(l, "pad2_{key}")) pad2_map[{i}] = atoi(v);'
         for i,key in enumerate(MAP_KEYS)
     )
-    s=s[:background.start()]+extra+"\\n"+s[background.start():]
+    s=s[:line_start]+extra+"\\n"+s[line_start:]
+
 
 # Make mapping helper device-agnostic and keep the existing P1 function.
 if "mapped_controller_button_for" not in s:
