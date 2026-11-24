@@ -2338,6 +2338,7 @@ static void draw_stage_lighting(SDL_Renderer *renderer)
 
 extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int view_y, int view_width, int view_height)
 {
+    try{
     if (!g_context || !g_document || !renderer || renderer != g_renderer || view_width <= 0 || view_height <= 0)
         return 0;
 
@@ -2387,4 +2388,29 @@ extern "C" int mtlbr_render_to_screen(SDL_Renderer *renderer, int view_x, int vi
         g_perf_update_ms = g_perf_render_ms = g_perf_grid_ms = 0.0;
     }
     return g_exit_requested ? 1 : 0;
+    }catch(const std::bad_alloc&){
+        if(renderer){
+            SDL_RenderSetClipRect(renderer,nullptr);
+            SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+        }
+        maker_log("Maker render pass skipped: memory allocation exhausted.");
+        set_status("The Maker ran out of memory while drawing a preview. See maker-rmlui.log.");
+        return g_exit_requested?1:0;
+    }catch(const std::exception &error){
+        if(renderer){
+            SDL_RenderSetClipRect(renderer,nullptr);
+            SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+        }
+        maker_log("Maker render pass failed safely: %s",error.what());
+        set_status("A Maker preview failed safely. See maker-rmlui.log for details.");
+        return g_exit_requested?1:0;
+    }catch(...){
+        if(renderer){
+            SDL_RenderSetClipRect(renderer,nullptr);
+            SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+        }
+        maker_log("Maker render pass failed with an unknown exception.");
+        set_status("A Maker preview failed safely. See maker-rmlui.log for details.");
+        return g_exit_requested?1:0;
+    }
 }
