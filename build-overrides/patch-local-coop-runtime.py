@@ -129,7 +129,7 @@ void md_coop_prepare_p2(M68K *primary) {
         if (callback != 0x0000224Cu) return;
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
-        md_coop_p2_mark(0xBC1C, 0xBC20); /* pre/post actor callbacks */
+        md_coop_p2_mark(0xBC1C, 0xBC23); /* pre/post actor callbacks */
         md_coop_p2_mark(0xBC3C, 0xBC4F); /* descriptor setup callbacks */
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
@@ -474,7 +474,7 @@ checks = {
     "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
-    "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC20)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
+    "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC23)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
     "P2 resets multipart sprite scratch every frame": "md_coop_p2_call_native(p2, 0x00005D8Au" in g,
     "P2 runs post-actor contact state": "md_coop_p2_call_native(p2, 0x00003BD8u" in g and "md_coop_p2_call_slot(p2, 0xBC20u" in g,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
