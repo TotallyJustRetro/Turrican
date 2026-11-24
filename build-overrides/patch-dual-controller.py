@@ -338,9 +338,11 @@ HTML.write_text(html,encoding="utf-8")
 s=SDL.read_text(encoding="utf-8-sig")
 for header in ("#include <stdlib.h>","#include <stdio.h>"):
     if header not in s:
-        first_include=re.search(r"(?m)^#include[^\\n]*\\n",s)
-        if not first_include: raise SystemExit("dual-controller patch: SDL include section missing")
-        s=s[:first_include.end()]+header+"\\n"+s[first_include.end():]
+        include_pos=s.find("#include")
+        if include_pos<0: raise SystemExit("dual-controller patch: SDL include section missing")
+        newline=s.find(chr(10),include_pos)
+        if newline<0: raise SystemExit("dual-controller patch: SDL include line is unterminated")
+        s=s[:newline+1]+header+chr(10)+s[newline+1:]
 if "static SDL_GameController *pad2 = NULL;" not in s:
     decl=re.search(r"(?m)^\s*static\s+SDL_GameController\s*\*\s*pad\s*(?:=\s*NULL)?\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: SDL primary pad declaration not found")
@@ -428,9 +430,10 @@ HARNESS.write_text(h,encoding="utf-8")
 
 # Static contract checks before native compilation.
 checks={
- "launcher settings preserve P1/P2 maps": "pad2Map" in main and "pad2_up" in main,
+ "launcher settings preserve separate P1/P2 maps": "pad2Map" in main and "MEGATURRICAN_PAD2_MAP" in main,
  "launcher offers separate profile tabs": 'id="p1Profile"' in html and 'id="p2Profile"' in html,
  "SDL opens two controller handles": "static SDL_GameController *pad2 = NULL;" in s and "SDL_GameControllerOpen(i)" in s,
+ "SDL loads the saved P2 map": "MEGATURRICAN_PAD2_MAP" in s and "sscanf(map" in s,
  "SDL has independent P2 input reader": "static int readpad2(void)" in s,
  "P2 mask is sampled each frame": "md_player2_live_mask=md_player2_connected?readpad2():0;" in s,
  "Genesis port 2 consumes P2 mask": "int b = (p==1) ? md_player2_live_mask : buttons();" in h
