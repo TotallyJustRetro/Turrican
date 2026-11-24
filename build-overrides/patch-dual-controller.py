@@ -90,23 +90,21 @@ function syncControllerSettingsFromConfig(configPath) {
       const at = line.indexOf('=');
       if (at > 0) current.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
     }
-    const readMap = prefix => MAP_KEYS.map((key, i) => {
-      const value = Number(current.get(prefix + key));
-      return Number.isInteger(value) && value >= -8 && value <= 15
-        ? value : defaultControllerSettings.padMap[i];
-    });
-    let previousP2 = defaultControllerSettings.pad2Map.slice();
+    let previous = normalizeControllerSettings(defaultControllerSettings);
     try {
-      const stored = JSON.parse(fs.readFileSync(controllerSettingsFile, 'utf8'));
-      previousP2 = normalizeControllerSettings(stored).pad2Map;
+      previous = normalizeControllerSettings(JSON.parse(fs.readFileSync(controllerSettingsFile, 'utf8')));
     } catch (_) {}
-    const pad2Map = previousP2.slice();
+    const padMap = previous.padMap.slice();
+    const pad2Map = previous.pad2Map.slice();
     MAP_KEYS.forEach((key, i) => {
-      const raw = current.get('pad2_' + key);
-      const value = Number(raw);
-      if (raw !== undefined && Number.isInteger(value) && value >= -8 && value <= 15) pad2Map[i] = value;
+      const raw1 = current.get('pad_' + key);
+      const raw2 = current.get('pad2_' + key);
+      const value1 = Number(raw1);
+      const value2 = Number(raw2);
+      if (raw1 !== undefined && Number.isInteger(value1) && value1 >= -8 && value1 <= 15) padMap[i] = value1;
+      if (raw2 !== undefined && Number.isInteger(value2) && value2 >= -8 && value2 <= 15) pad2Map[i] = value2;
     });
-    const normalized = { version: 4, padMap: readMap('pad_'), pad2Map };
+    const normalized = { version: 4, padMap, pad2Map };
     fs.mkdirSync(path.dirname(controllerSettingsFile), { recursive: true });
     const temporary = controllerSettingsFile + '.tmp';
     fs.writeFileSync(temporary, JSON.stringify(normalized, null, 2), 'utf8');
@@ -145,27 +143,10 @@ write_anchor="fs.writeFileSync(configPath,"
 if main.count(write_anchor)!=1:
     raise SystemExit("dual-controller patch: config.ini write site not found uniquely")
 inject=r"""
-  // Keep P1's original config.ini mapping and pass P2's independent map
-  // to the child process without depending on the private config parser.
+  // Controller maps are passed directly to the native child process. Do not
+  // mutate cfg here: the launch handler's config representation is not an array.
   const dualControllerSettingsForLaunch = normalizeControllerSettings(settings);
-  const dualPadActionsForLaunch = [
-    ['up',0],['down',1],['left',2],['right',3],
-    ['a',4],['b',5],['c',6],['start',7]
-  ];
-  const dualPadConfigForLaunch = [];
-  const dualPadKeysForLaunch = new Set();
-  for (const [key,index] of dualPadActionsForLaunch) {
-    dualPadConfigForLaunch.push('pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
-    dualPadConfigForLaunch.push('pad2_' + key + '=' + dualControllerSettingsForLaunch.pad2Map[index]);
-    dualPadKeysForLaunch.add('pad_' + key);
-    dualPadKeysForLaunch.add('pad2_' + key);
-  }
-  for (let i = cfg.length - 1; i >= 0; i--) {
-    const entry = String(cfg[i]);
-    const at = entry.indexOf('=');
-    if (at > 0 && dualPadKeysForLaunch.has(entry.slice(0, at))) cfg.splice(i, 1);
-  }
-  cfg.push(...dualPadConfigForLaunch);
+  process.env.MEGATURRICAN_PAD1_MAP = dualControllerSettingsForLaunch.padMap.join(',');
   process.env.MEGATURRICAN_PAD2_MAP = dualControllerSettingsForLaunch.pad2Map.join(',');
 """# Ensure newly selected controller maps win over stale values retained from config.ini.
 if inject not in main:
@@ -407,7 +388,20 @@ static int readpad2(void){
     s=s[:b]+reader+s[b:]
 
 open_pad=r"""static void open_pad(void){
+    static int p1_map_env_loaded=0;
     static int p2_map_env_loaded=0;
+    if(!p1_map_env_loaded){
+        const char *map=getenv("MEGATURRICAN_PAD1_MAP");
+        if(map){
+            int values[8];
+            if(sscanf(map,"%d,%d,%d,%d,%d,%d,%d,%d",
+                      &values[0],&values[1],&values[2],&values[3],
+                      &values[4],&values[5],&values[6],&values[7])==8){
+                for(int i=0;i<8;i++)if(values[i]>=-8&&values[i]<=15)pad_map[i]=values[i];
+            }
+        }
+        p1_map_env_loaded=1;
+    }
     if(!p2_map_env_loaded){
         const char *map=getenv("MEGATURRICAN_PAD2_MAP");
         if(map){
@@ -459,7 +453,7 @@ HARNESS.write_text(h,encoding="utf-8")
 
 # Static contract checks before native compilation.
 checks={
- "launcher settings preserve separate P1/P2 maps": "pad2Map" in main and "MEGATURRICAN_PAD2_MAP" in main,
+ "launcher passes both maps without mutating cfg": "MEGATURRICAN_PAD1_MAP" in main and "MEGATURRICAN_PAD2_MAP" in main and "cfg.push(...dualPadConfigForLaunch)" not in main,
  "launcher offers separate profile tabs": 'id="p1Profile"' in html and 'id="p2Profile"' in html,
  "SDL opens two controller handles": "static SDL_GameController *pad2 = NULL;" in s and "SDL_GameControllerOpen(i)" in s,
  "SDL loads the saved P2 map": "MEGATURRICAN_PAD2_MAP" in s and "sscanf(map" in s,
