@@ -399,7 +399,7 @@ checks = {
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
-    "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a+1)" in h,
+    "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
 }
 for label, passed in checks.items():
     if not passed:
