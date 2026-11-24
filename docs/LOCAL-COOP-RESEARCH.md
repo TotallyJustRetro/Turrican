@@ -69,6 +69,17 @@ The runtime helper bodies add another critical constraint:
 
 The memory bus is therefore a useful *mechanism*, not an ownership map. Before implementing it, we still need to classify every direct and pointer-indirect player access, isolate event/interrupt execution onto the shared view, and reserve a safe P2 stack.
 
+## Player callback call-graph findings
+
+The depth-six generated-code audit rooted at `f_224C` gives a more specific separation:
+
+- `f_224C` is a large player-local movement/input state machine. Its direct calls include `f_20D2`, `f_2150`, `f_2612`, `f_2640`, `f_26A2`, `f_28A6`, `f_2A18`, `f_2D84), `f_2DE8`, `f_2E34`, `f_31A0`, `f_31E4`, `f_3222`, `f_3284`, `f_3368`, `f_3430`, `f_34DA`, `f_3514`, `f_35D8`, `f_35E4`, `f_3650`, `f_374E), and others. Its dynamic indirect callback at PC `0x288E) must also be retained in a proper P2 context.
+- The callback has a substantial per-player data region at `$FFBCBC-$FFBCFE) and `$FFBD00-$FFBD22), with the core screen position at `$FFBD1E/$FFBD20). It also reads/writes player control/condition bytes at `$FFBC84/$FFBC88) and input at `$FFBC90/$FFBC91). These are candidates for P2's private RAM bank, but the full access map and pointers still need reviewing before defining an allowlist.
+- The movement graph calls `f_4992`, which allocates through `f_5300`; it also reaches `f_5B02`, which removes a record through the same shared free list. This is the game's native way for player actions to create/retire projectile or related records. P2 should therefore use the same global object lists and allocator so both players' projectiles and effects coexist in one world. Those pool links and free-list metadata must never be copied into P2's private bank.
+- The movement graph reaches `f_3430` through `f_26A2`; `f_3430) and its helpers `f_3422), `f_34DA), and `f_34E2) read/write the shared camera fields `$FFDFD4/$FFDFD6) and related scroll data. P2 must not independently execute the camera-advance side effect. A safe first implementation should gate camera movement while the P2 context is active, then let one shared camera decision inspect both players' screen-space X positions before allowing the original P1 camera routine to advance.
+- This is consistent with the coordinate model: `$FFBD1E/$FFBD20) are screen-space coordinates; the camera is represented separately. The shared-camera condition must be based on both screen-space player positions, not a second copy of world scroll state.
+- The callback also touches `$FFBC54/$FFBC58`, `$FFBF20/$FFBF21/$FFBF23), `$FFF226), and `$FFFA00). These fields have mixed cross-routine use, so they remain unclassified; do not bank them merely because they appear under the player call graph.
+
 ## Why the previous attempt was unsafe
 
 The old prototype copied P1's upper player RAM window but did not initialize P2 through the game's own descriptor/setup path. It also copied P1's live CPU register context before each P2 callback instead of preserving an independent P2 execution context. That mixed state and caused the observed out-of-bounds movement and corruption.
