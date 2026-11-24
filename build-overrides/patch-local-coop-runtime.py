@@ -45,9 +45,6 @@ static uint8_t md_coop_p2_private[0x10000];
 static uint8_t md_coop_p2_stack[0x10000];
 static M68K md_coop_p2_m68k;
 static M68K md_coop_p2_frame_seed;
-static uint8_t md_coop_p2_primary_sprite_parts[0xE8];
-static int md_coop_p2_primary_sprite_parts_valid = 0;
-static unsigned md_coop_p2_primary_sprite_parts_nonzero = 0;
 static M68K *md_coop_primary_m68k = NULL;
 static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
@@ -110,14 +107,16 @@ void md_coop_prepare_p2(M68K *primary) {
     unsigned i;
     if (!primary) return;
     md_coop_primary_m68k = primary;
-    /* Each frame must capture a fresh renderer context at the 1658 seam. */
-    md_coop_p2_frame_seed_valid = 0;
-    md_coop_p2_primary_sprite_parts_valid = 0;
-    md_coop_p2_primary_sprite_parts_nonzero = 0;
     if (md_coop_p2_disabled || !md_player2_connected) {
         md_coop_p2_frame_seed_valid = 0;
         return;
     }
+
+    /* Capture the caller immediately before the original f_5DB2 render pass.
+       P2 starts from this same frame-entry context, runs its own renderer, then
+       carries those renderer-produced registers into its movement callback. */
+    memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
+    md_coop_p2_frame_seed_valid = 1;
 
     callback = ((uint32_t)ram[0xBC62] << 24) |
                ((uint32_t)ram[0xBC63] << 16) |
@@ -130,34 +129,15 @@ void md_coop_prepare_p2(M68K *primary) {
         if (callback != 0x0000224Cu) return;
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
-        md_coop_p2_mark(0xBC1C, 0xBC23); /* pre/post actor callbacks */
-        md_coop_p2_mark(0xBC3C, 0xBC4F); /* descriptor setup callbacks */
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
-        md_coop_p2_mark(0xBC5A, 0xBC5D); /* current player resource table */
-        md_coop_p2_mark(0xBC5E, 0xBC61); /* player transition callback */
-        md_coop_p2_mark(0xBC68, 0xBC68); /* player contact/weapon state */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
-        md_coop_p2_mark(0xBC7E, 0xBC83); /* per-player input sequence pointer/state */
         md_coop_p2_mark(0xBC70, 0xBC70);
-        md_coop_p2_mark(0xBC84, 0xBC8B);
+        md_coop_p2_mark(0xBC84, 0xBC89);
         md_coop_p2_mark(0xBC90, 0xBC91);
-        md_coop_p2_mark(0xBC94, 0xBC9B); /* player-specific DMA descriptors */
         md_coop_p2_mark(0xBC9C, 0xBC9F);
-        md_coop_p2_mark(0xBCA4, 0xBCB4); /* animation/work descriptors */
-        md_coop_p2_mark(0xBCC2, 0xBCC8); /* alternate animation state */
+        md_coop_p2_mark(0xBCA4, 0xBCA7);
         md_coop_p2_mark(0xBCBC, 0xBD26);
-        /* Native setup callbacks dereference these P1 RAM pointer targets.
-           f_5BC clears 64 words (128 bytes) at DC9E; player descriptor work areas begin at
-           DD1E, DD9E, and DE4E; A6 callback contexts span DFCE through E035. */
-        md_coop_p2_mark(0xDC9E, 0xDD1D);
-        md_coop_p2_mark(0xDD1E, 0xDE1D);
-        md_coop_p2_mark(0xDE4E, 0xDECD);
-        md_coop_p2_mark(0xDFD4, 0xDFDA);
-        md_coop_p2_mark(0xDFCE, 0xE035);
-        md_coop_p2_mark(0xDA1E, 0xDC9D); /* f_1E64 player counter/HUD state */
-        md_coop_p2_mark(0xFCA8, 0xFDCF); /* f_1E64 scratch + multipart sprite work */
-        md_coop_p2_mark(0xBD28, 0xBD29); /* player descriptor base */
-        md_coop_p2_mark(0xBF08, 0xBF29); /* player motion/camera/stats */
+        md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
         /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
            records (BCE0 is bounded by 0x7C); f_3650/f_36E0 read the same
@@ -184,58 +164,6 @@ void md_coop_prepare_p2(M68K *primary) {
     }
 }
 
-/* L_1658 is reached after the native player-preparation path and f_3D80,
-   immediately before P1's f_5DB2 sprite builder. The P2 pass runs just after
-   that builder, so preserve the CPU context from this exact pre-render seam. */
-void md_coop_p2_capture_render_seed(M68K *primary) {
-    unsigned i;
-    uint32_t first;
-    FILE *f;
-    if (!primary || !md_coop_p2_is_ready()) return;
-    md_coop_primary_m68k = primary;
-    memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
-
-    /* At this exact native seam P1 has prepared the current 29-part sprite
-       descriptor list, but its f_5DB2 renderer has not consumed/cleared it.
-       Preserve only those descriptors for P2's independent renderer pass. */
-    memcpy(md_coop_p2_primary_sprite_parts, &ram[0xFCE8],
-           sizeof md_coop_p2_primary_sprite_parts);
-    md_coop_p2_primary_sprite_parts_nonzero = 0;
-    for (i = 0; i < 29u; ++i) {
-        unsigned o = i * 8u;
-        if (md_coop_p2_primary_sprite_parts[o] ||
-            md_coop_p2_primary_sprite_parts[o + 1u] ||
-            md_coop_p2_primary_sprite_parts[o + 2u] ||
-            md_coop_p2_primary_sprite_parts[o + 3u])
-            ++md_coop_p2_primary_sprite_parts_nonzero;
-    }
-    md_coop_p2_primary_sprite_parts_valid = 1;
-    first = ((uint32_t)md_coop_p2_primary_sprite_parts[0] << 24) |
-            ((uint32_t)md_coop_p2_primary_sprite_parts[1] << 16) |
-            ((uint32_t)md_coop_p2_primary_sprite_parts[2] << 8) |
-            (uint32_t)md_coop_p2_primary_sprite_parts[3];
-
-    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-    if (f) {
-        fprintf(f, "event=primary-sprite-parts frame=%lu nonzero=%u first=%08X valid=%d\\n",
-                md_coop_p2_frame_count, md_coop_p2_primary_sprite_parts_nonzero,
-                (unsigned)first, md_coop_p2_primary_sprite_parts_valid);
-        fclose(f);
-    }
-    md_coop_p2_frame_seed_valid = 1;
-}
-
-/* f_5D8A clears P2's FCE8 table at frame entry. Restore the current frame's
-   prepared part descriptors captured from P1 immediately before P1's own
-   f_5DB2 consumes them. Player position/physics/state remain P2-private. */
-void md_coop_p2_seed_sprite_parts(void) {
-    if (!md_coop_p2_is_ready() || !md_coop_p2_primary_sprite_parts_valid)
-        return;
-    memcpy(&md_coop_p2_ram[0xFCE8],
-           md_coop_p2_primary_sprite_parts,
-           sizeof md_coop_p2_primary_sprite_parts);
-}
-
 void md_coop_p2_refresh(void) {
     if (!md_coop_p2_is_ready()) return;
     /* Port 2 is latched by the normal Genesis input path into BC92/BC93.
@@ -247,135 +175,6 @@ void md_coop_p2_refresh(void) {
     md_coop_p2_ram[0xDFD9] = ram[0xDFD9];
     md_coop_p2_ram[0xDFDA] = ram[0xDFDA];
     ++md_coop_p2_frame_count;
-}
-
-/* f_8BE is an event-driven poll on BC85. Its completion flag is produced by
-   the main frame/event path, which services interrupts with the primary RAM
-   view. Copy the already-completed P1 latch rather than polling inside the
-   isolated P2 bank where the event cannot update it. */
-void md_coop_p2_sync_handshake(void) {
-    if (md_coop_p2_ready && !md_coop_p2_disabled)
-        md_coop_p2_ram[0xBC85] = ram[0xBC85];
-}
-
-/* Emit a compact trace marker after each player-only phase. Avoid a huge log:
-   capture every phase for the first 12 P2 frames, then once per second. */
-void md_coop_p2_phase_log(const char *phase, uint32_t callback) {
-    if (md_coop_p2_frame_count <= 12u || (md_coop_p2_frame_count % 60u) == 0u)
-        md_coop_p2_log("phase", callback, phase ? phase : "-");
-}
-
-/* f_1E64 builds player-specific counter records through BC54/BC58. Give it
-   P2's E002 work table without redirecting the later native P2 body renderer:
-   hud_end() restores shared BC54/BC58 visibility before f_5DB2 runs. */
-void md_coop_p2_hud_begin(void) {
-    unsigned i;
-    if (!md_coop_p2_active || !md_coop_p2_ready || md_coop_p2_disabled) return;
-    for (i = 0xBC54u; i <= 0xBC59u; ++i) {
-        md_coop_p2_ram[i] = ram[i];
-        md_coop_p2_private[i] = 1;
-    }
-}
-
-void md_coop_p2_hud_end(void) {
-    unsigned i;
-    for (i = 0xBC54u; i <= 0xBC59u; ++i)
-        md_coop_p2_private[i] = 0;
-}
-
-/* f_5DB2 appends sprite records through BC54/BC58. Its destination can
-   resolve into DA1E-DC9D, which is banked for P2 HUD work. Merge only the
-   newly appended span back to shared RAM before the primary VDP queue flush. */
-void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end,
-                                      uint16_t count_before, uint16_t count_after,
-                                      uint32_t callback) {
-    uint32_t s24 = start & 0x00FFFFFFu;
-    uint32_t e24 = end & 0x00FFFFFFu;
-    unsigned s = s24 & 0xFFFFu;
-    unsigned e = e24 & 0xFFFFu;
-    unsigned i;
-    int valid = 1;
-    unsigned copied = 0;
-    FILE *f;
-
-    if ((s24 & 0x00FF0000u) != 0x00FF0000u ||
-        (e24 & 0x00FF0000u) != 0x00FF0000u ||
-        s < 0xDA1Eu || s >= 0xDC9Eu ||
-        e < s || e > 0xDC9Eu || (e - s) > 0x0280u) {
-        valid = 0;
-    }
-
-    if (valid) {
-        for (i = s; i < e; ++i) {
-            if (!md_coop_p2_private[i]) { valid = 0; break; }
-        }
-    }
-
-    if (valid) {
-        for (i = s; i < e; ++i) {
-            ram[i] = md_coop_p2_ram[i];
-            ++copied;
-        }
-    }
-
-    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-    if (f) {
-        fprintf(f,
-                "event=render-queue-merge frame=%lu connected=%d callback=%06X start=%06X end=%06X count=%u->%u bytes=%u status=%s\n",
-                md_coop_p2_frame_count, md_player2_connected, callback,
-                (unsigned)start, (unsigned)end, (unsigned)count_before,
-                (unsigned)count_after, copied,
-                valid ? "merged" : "skipped");
-        fclose(f);
-    }
-}
-
-/* f_5D8A clears 29 eight-byte sprite-part entries at FCE8; f_5DB2 then
-   consumes them. Dump the exact input list and the renderer queue registers
-   around the builder so an empty-list/early-filter case is distinguishable
-   from a queue-buffer visibility problem. */
-void md_coop_p2_sprite_diag(const M68K *cpu, const char *phase) {
-    FILE *f;
-    unsigned i;
-    uint32_t qptr = ((uint32_t)ram[0xBC54] << 24) |
-                    ((uint32_t)ram[0xBC55] << 16) |
-                    ((uint32_t)ram[0xBC56] << 8) |
-                    (uint32_t)ram[0xBC57];
-    uint16_t qcount = (uint16_t)(((uint16_t)ram[0xBC58] << 8) |
-                                 (uint16_t)ram[0xBC59]);
-
-    if (!cpu || (md_coop_p2_frame_count > 12u &&
-                 (md_coop_p2_frame_count % 60u) != 0u))
-        return;
-
-    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-    if (!f) return;
-    fprintf(f, "event=sprite-builder-diag frame=%lu phase=%s queue=%08X/%04X",
-            md_coop_p2_frame_count, phase ? phase : "-", (unsigned)qptr,
-            (unsigned)qcount);
-    fprintf(f, " regs_d:");
-    for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->d[i]);
-    fprintf(f, " regs_a:");
-    for (i = 0; i < 7u; ++i) fprintf(f, " %08X", (unsigned)cpu->a[i]);
-    fprintf(f, " state_BD1E_22=%02X%02X%02X%02X%02X%02X",
-            (unsigned)md_coop_p2_ram[0xBD1E],
-            (unsigned)md_coop_p2_ram[0xBD1F],
-            (unsigned)md_coop_p2_ram[0xBD20],
-            (unsigned)md_coop_p2_ram[0xBD21],
-            (unsigned)md_coop_p2_ram[0xBD22],
-            (unsigned)md_coop_p2_ram[0xBD23]);
-    fprintf(f, " flags_BC86_BD00_BD02_BD16_BCC0=%02X%02X%02X%02X%02X%02X",
-            (unsigned)md_coop_p2_ram[0xBC86],
-            (unsigned)md_coop_p2_ram[0xBD00],
-            (unsigned)md_coop_p2_ram[0xBD02],
-            (unsigned)md_coop_p2_ram[0xBD16],
-            (unsigned)md_coop_p2_ram[0xBCC0],
-            (unsigned)md_coop_p2_ram[0xBCC1]);
-    fprintf(f, "\np2_sprite_parts_FCE8_FDCF=");
-    for (i = 0xFCE8u; i <= 0xFDCFu; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\n");
-    fclose(f);
 }
 
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
@@ -399,25 +198,6 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_player_scratch_F200_F9FF=");
     for (i = 0xF200u; i <= 0xF9FFu; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_hud_queue_ptr_count=%02X%02X%02X%02X%02X%02X",
-            (unsigned)md_coop_p2_ram[0xBC54], (unsigned)md_coop_p2_ram[0xBC55],
-            (unsigned)md_coop_p2_ram[0xBC56], (unsigned)md_coop_p2_ram[0xBC57],
-            (unsigned)md_coop_p2_ram[0xBC58], (unsigned)md_coop_p2_ram[0xBC59]);
-    fprintf(f, "\np2_hud_scratch_DA1E_DC9D=");
-    for (i = 0xDA1Eu; i <= 0xDC9Du; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_animation_clear_DC9E_DD1D=");
-    for (i = 0xDC9Eu; i <= 0xDD1Du; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_descriptor_work_DD1E_DE1D=");
-    for (i = 0xDD1Eu; i <= 0xDE1Du; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_descriptor_work_DE4E_DECD=");
-    for (i = 0xDE4Eu; i <= 0xDECDu; ++i)
-        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_callback_tables_DFCE_E035=");
-    for (i = 0xDFCEu; i <= 0xE035u; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
@@ -515,7 +295,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_run_local_p2_post(M68K *primary);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -531,15 +311,6 @@ if "md_coop_p2_service_event(c)" not in header:
     )
     if count != 1:
         raise SystemExit("local co-op patch: could not safely wrap RT_POLL event/IRQ dispatch")
-if "void md_coop_p2_capture_render_seed(M68K *primary);" not in header:
-    marker = "void md_coop_prepare_p2(M68K *primary);"
-    if marker not in header:
-        raise SystemExit("local co-op patch: header declaration insertion anchor missing")
-    header = header.replace(
-        marker,
-        "void md_coop_p2_capture_render_seed(M68K *primary);\n" + marker,
-        1,
-    )
 RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 
 # 3) Add native actor execution in the generated translation unit, where the
@@ -547,17 +318,9 @@ RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 # must return to the exact sentinel/stack pointer before P1 resumes.
 GEN_RUNNER = r"""
 
-/* Native Mega Turrican P2 frame slice. */
+/* First native Mega Turrican P2 actor runner. */
 extern void md_coop_prepare_p2(M68K *primary);
-extern void md_coop_p2_capture_render_seed(M68K *primary);
 extern void md_coop_p2_refresh(void);
-extern void md_coop_p2_sync_handshake(void);
-extern void md_coop_p2_phase_log(const char *phase, uint32_t callback);
-extern void md_coop_p2_hud_begin(void);
-extern void md_coop_p2_hud_end(void);
-extern void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint16_t count_before, uint16_t count_after, uint32_t callback);
-extern void md_coop_p2_sprite_diag(const M68K *cpu, const char *phase);
-extern void md_coop_p2_seed_sprite_parts(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
@@ -566,8 +329,9 @@ extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
 extern void md_coop_p2_finish(void);
 
-/* P2 keeps its own A7/USP and player RAM, while receiving the frame-entry
-   non-stack registers from the original player at the same point in the loop. */
+/* Player state persists in P2 RAM, but the game's callback also receives live
+   per-frame D/A register inputs from its caller. Refresh those inputs for each
+   native call while preserving P2's independent A7 and USP. */
 static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
     unsigned i;
     if (!p2 || !primary) return;
@@ -581,11 +345,31 @@ static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
     p2->sr_sys = primary->sr_sys;
 }
 
-static int md_coop_p2_call_native(M68K *p2, uint32_t target, uint32_t sentinel) {
+static int md_coop_p2_call_renderer(M68K *p2) {
+    const uint32_t sentinel = 0x00FEEE00u;
     uint32_t original_sp;
     int original_rt_sp;
     int ok;
-    if (!p2 || !target || rt_sp < 0 || rt_sp >= 65534) return 0;
+    if (!p2 || rt_sp < 0 || rt_sp >= 65534) return 0;
+    original_sp = p2->a[7];
+    if (original_sp < 0x00F00008u || original_sp > 0x00F0FFFCu) return 0;
+    original_rt_sp = rt_sp;
+    p2->a[7] -= 4;
+    WR32(p2->a[7], sentinel);
+    rt_shadow[rt_sp++] = sentinel;
+    f_5DB2(p2);
+    ok = (p2->ret == sentinel && p2->a[7] == original_sp &&
+          rt_sp == original_rt_sp + 1);
+    rt_sp = original_rt_sp;
+    return ok;
+}
+
+static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
+    const uint32_t sentinel = 0x00FEEE04u;
+    uint32_t original_sp;
+    int original_rt_sp;
+    int ok;
+    if (!p2 || rt_sp < 0 || rt_sp >= 65534) return 0;
     original_sp = p2->a[7];
     if (original_sp < 0x00F00008u || original_sp > 0x00F0FFFCu) return 0;
     original_rt_sp = rt_sp;
@@ -599,18 +383,6 @@ static int md_coop_p2_call_native(M68K *p2, uint32_t target, uint32_t sentinel) 
     return ok;
 }
 
-static int md_coop_p2_call_slot(M68K *p2, unsigned slot, uint32_t sentinel) {
-    uint32_t target;
-    if (!p2 || slot > 0xFFFCu) return 0;
-    target = RD32(0xFFFF0000u + (uint32_t)slot);
-    if (!target) return 1;
-    /* The original dispatch loads the function pointer into A0 before calling. */
-    p2->a[0] = target;
-    return md_coop_p2_call_native(p2, target, sentinel);
-}
-
-/* Runs before P1's callback and shared render-queue flush. Only player-owned
-   setup, animation and sprite-building routines are repeated here. */
 void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     M68K *p2;
     const M68K *frame_seed;
@@ -622,186 +394,43 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     if (!p2 || !frame_seed) return;
 
     md_coop_p2_sync_call_context(p2, frame_seed);
-    md_coop_p2_sync_handshake();
     md_coop_p2_set_active(1);
-
-    /* Match f_156A's player-local preamble in its original order. */
-    if (!md_coop_p2_call_native(p2, 0x00005D8Au, 0x00FEEE08u) ||
-        !md_coop_p2_call_native(p2, 0x00003B38u, 0x00FEEE0Cu) ||
-        !md_coop_p2_call_native(p2, 0x00001E00u, 0x00FEEE10u)) {
-        md_coop_p2_abort("P2 per-frame state preamble did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_phase_log("player-preamble-5D8A-3B38-1E00", callback);
-
-    /* Mirror PCs 0x15DE-0x1614, including the conditional input/state
-       branch. The old P2 pass skipped it, leaving BD26 and BC82/83 stale. */
-    fl_logic(p2, RD8(0xFFFFBC88u), 8);
-    if (!cond(p2, 6)) {
-        p2->d[0] = 2u;
-        p2->a[0] = RD32(0xFFFFBC5Au);
-        if (!md_coop_p2_call_native(p2, 0x000005BCu, 0x00FEEE14u)) {
-            md_coop_p2_abort("P2 animation descriptor setup failed", callback);
-            md_coop_p2_finish();
-            return;
-        }
-    }
-    md_coop_p2_phase_log("animation-descriptor-5BC", callback);
-    /* f_8BE is intentionally not rerun: its BC85 wait is serviced by the
-       original event path. P2 received the completed BC85 latch above. */
-
-    /* The original checks BC70, then port-1 START in bit 7 (P2's BC90 is
-       fed from controller port 2). Keep the same conditional BD26/BC70
-       writes and invoke f_E0C with P2's own BC7E cursor and BC82/83 bytes. */
-    fl_logic(p2, RD8(0xFFFFBC70u), 8);
-    if (!cond(p2, 7)) {
-        p2->z = (RD8(0xFFFFBC90u) & 0x80u) == 0u;
-        if (!cond(p2, 6)) {
-            WR8(0xFFFFBD26u, cond(p2, 0) ? 0xFFu : 0u);
-            WR8(0xFFFFBC70u, 1u);
-        }
-        if (!md_coop_p2_call_native(p2, 0x00000E0Cu, 0x00FEEE1Cu)) {
-            md_coop_p2_abort("P2 input/ground-state update failed", callback);
-            md_coop_p2_finish();
-            return;
-        }
-    }
-
-    md_coop_p2_phase_log("input-ground-state-E0C", callback);
-    /* PC 0x160E reloads BF28 before testing whether the alternate animation
-       state callback f_2150 should run. */
-    fl_logic(p2, RD16(0xFFFFBF28u), 16);
-    if (!cond(p2, 6) &&
-        !md_coop_p2_call_native(p2, 0x00002150u, 0x00FEEE20u)) {
-        md_coop_p2_abort("P2 alternate animation-state update failed", callback);
+    if (!md_coop_p2_call_renderer(p2)) {
+        md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
         md_coop_p2_finish();
         return;
     }
 
-    /* f_156A installs the callback-specific A6 contexts before the first two
-       descriptor calls. The targets consume these base pointers indirectly. */
-    p2->a[6] = 0xFFFFDFCEu;
-    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE20u)) {
-        md_coop_p2_abort("P2 first descriptor callback did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-    p2->a[6] = 0xFFFFE002u;
-    if (!md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE24u) ||
-        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE28u)) {
-        md_coop_p2_abort("P2 descriptor callbacks did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-
-    /* Original PC 0x1636 calls f_1E64 after BC3C/BC44/BC4C and before BC1C.
-       It maintains per-player life/timer counters and builds that player's
-       small HUD descriptor list through A6=$E002. Isolate only BC54/BC58 for
-       this call; restore their shared view before f_5DB2 appends P2's body. */
-    p2->a[6] = 0xFFFFE002u;
-    md_coop_p2_hud_begin();
-    if (!md_coop_p2_call_native(p2, 0x00001E64u, 0x00FEEE2Cu)) {
-        md_coop_p2_hud_end();
-        md_coop_p2_abort("P2 HUD/counter update did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_hud_end();
-    md_coop_p2_phase_log("player-counter-HUD-1E64", callback);
-
-    if (!md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE30u)) {
-        md_coop_p2_abort("P2 final per-player callback did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-
-    md_coop_p2_phase_log("descriptor-callbacks-BC3C-BC44-BC4C", callback);
-
-    /* f_3D80 owns BD28/BF08/BF0C and must run independently for P2. */
-    if (!md_coop_p2_call_native(p2, 0x00003D80u, 0x00FEEE30u)) {
-        md_coop_p2_abort("P2 player descriptor update failed", callback);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_phase_log("player-descriptor-3D80", callback);
-
+    /* Initial implementation follows the game's verified native player actor.
+       A different callback is treated as an unsupported state, not guessed. */
     if (callback != 0x0000224Cu) {
         md_coop_p2_abort("P2 callback changed from verified native entry 0x224C", callback);
         md_coop_p2_finish();
         return;
     }
-    /* Inspect f_5DB2's 29-entry input and its real BC54/BC58 output
-       before/after. The old A2-only endpoint assumption was insufficient. */
-    {
-        uint32_t queue_start = RD32(0xFFFFBC54u);
-        uint16_t count_start = RD16(0xFFFFBC58u);
-        md_coop_p2_seed_sprite_parts();
-        md_coop_p2_sprite_diag(p2, "before-f_5DB2-seeded");
-        if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u)) {
-            md_coop_p2_abort("P2 sprite builder failed to restore its private stack", callback);
-            md_coop_p2_finish();
-            return;
-        }
-        {
-            uint32_t queue_end = RD32(0xFFFFBC54u);
-            uint16_t count_end = RD16(0xFFFFBC58u);
-            md_coop_p2_sprite_diag(p2, "after-f_5DB2");
-            md_coop_p2_merge_render_queue(queue_start, queue_end,
-                                           count_start, count_end, callback);
-        }
-    }
-    md_coop_p2_phase_log("sprite-builder-5DB2", callback);
-    /* PC 0x165C loads BC62 into A0 before the original indirect dispatch. */
-    p2->a[0] = callback;
-    if (!md_coop_p2_call_native(p2, callback, 0x00FEEE38u)) {
-        md_coop_p2_abort("P2 sprite builder/player callback failed to restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-
-    md_coop_p2_phase_log("main-player-actor-224C", callback);
-    /* Return to the primary frame with P2 state retained. f_5472 must flush
-       the combined P1/P2 queue before P2's post-contact pass runs. */
-    md_coop_p2_set_active(0);
-}
-
-/* Called after the shared f_5472 queue flush and before P1's f_3BD8/BC20 pass. */
-void md_coop_run_local_p2_post(M68K *primary) {
-    M68K *p2;
-    if (!primary || !md_coop_p2_is_ready()) return;
-    p2 = md_coop_p2_cpu();
-    if (!p2) return;
-
-    md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_native(p2, 0x00003BD8u, 0x00FEEE3Cu) ||
-        !md_coop_p2_call_slot(p2, 0xBC20u, 0x00FEEE40u)) {
-        md_coop_p2_abort("P2 post-contact/state callbacks failed to restore its private stack", 0x224C);
+    if (!md_coop_p2_call_actor(p2, callback)) {
+        md_coop_p2_abort("P2 actor did not restore its CPU stack/return frame", callback);
         md_coop_p2_finish();
         return;
     }
     md_coop_p2_set_active(0);
-    md_coop_p2_phase_log("post-contact-3BD8-BC20", 0x224C);
-    md_coop_p2_actor_complete(p2, 0x224C);
+    md_coop_p2_actor_complete(p2, callback);
     md_coop_p2_finish();
 }
 """
 
 gen = GEN.read_text(encoding="utf-8")
-if "Native Mega Turrican P2 frame slice." not in gen:
+if "First native Mega Turrican P2 actor runner." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# 4) Clone the P2 actor only after the original player-preparation path has
-# completed. L_1658 is the proven post-preparation seam immediately before
-# P1's f_5DB2 render pass. Seeding at L_15D2 is too early: P1's descriptor,
-# animation and motion state has not been prepared yet, producing an invalid
-# initial P2 actor. Capture the current CPU/render context at the same seam.
+# 4) Seed P2 before the sprite-builder seam, then run P2's render/update pass
+# at the callback call site, before P1 enters the same native actor routine.
 replace_once(
     GEN,
-    "L_1658: { RT_POLL(0x1658);",
-    "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); md_coop_p2_capture_render_seed(c);",
-    "P2 post-preparation actor seed and render-context hook",
+    "L_1658: { RT_POLL(0x1658); { uint32_t _r=0x165Cu;",
+    "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); { uint32_t _r=0x165Cu;",
+    "P2 one-time seed hook at player render seam",
 )
 
 line = re.compile(
@@ -815,15 +444,6 @@ if "md_coop_run_local_p2(c,_t);" not in gen:
         raise SystemExit("local co-op patch: verified pre-callback L_1660 seam not found")
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# Insert P2 post-contact processing after the shared output queue is flushed.
-post_hook = (
-    "L_1666: { RT_POLL(0x1666); { uint32_t _r=0x166Au;"
-)
-post_replacement = (
-    "L_1666: { RT_POLL(0x1666); md_coop_run_local_p2_post(c); { uint32_t _r=0x166Au;"
-)
-replace_once(GEN, post_hook, post_replacement, "post-render P2 contact hook")
-
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -834,45 +454,13 @@ checks = {
     "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
-    "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC23)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
-    "P2 owns input sequence state for f_E0C": "md_coop_p2_mark(0xBC7E, 0xBC83)" in h,
-    "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
-    "P2 owns descriptor pointers and DMA slots": "md_coop_p2_mark(0xBC5A, 0xBC5D)" in h and "md_coop_p2_mark(0xBC94, 0xBC9B)" in h,
-    "P2 owns f_1E64 counter/HUD scratch": "md_coop_p2_mark(0xDA1E, 0xDC9D)" in h and "md_coop_p2_mark(0xFCA8, 0xFDCF)" in h,
-    "P2 owns f_5BC animation clear buffer": "md_coop_p2_mark(0xDC9E, 0xDD1D)" in h,
-    "P2 owns both descriptor callback work buffers": "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h,
-    "P2 owns native A6 callback tables": "md_coop_p2_mark(0xDFCE, 0xE035)" in h,
-    "P2 restores descriptor callback A6 contexts": "p2->a[6] = 0xFFFFDFCEu;" in g and "p2->a[6] = 0xFFFFE002u;" in g,
-    "P2 owns motion descriptor RAM": "md_coop_p2_mark(0xBF08, 0xBF29)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h,
-    "P2 resets private multipart scratch every frame": "0x00005D8Au" in g,
-    "P2 mirrors BC70/port-2 state branch": "RD8(0xFFFFBC70u)" in g and "RD8(0xFFFFBC90u) & 0x80u" in g,
-    "P2 mirrors f_5BC A0 input": "p2->a[0] = RD32(0xFFFFBC5Au);" in g,
-    "P2 runs f_E0C input/ground-state update": "0x00000E0Cu" in g,
-    "P2 inherits completed BC85 event handshake instead of polling": "md_coop_p2_sync_handshake();" in g and "md_coop_p2_ram[0xBC85] = ram[0xBC85];" in h and "0x000008BEu" not in g,
-    "P2 reloads BF28 before conditional animation callback": "fl_logic(p2, RD16(0xFFFFBF28u), 16);" in g,
-    "P2 main callback gets its A0 target": "p2->a[0] = callback;" in g,
-    "P2 callback-slot dispatch loads A0": "p2->a[0] = target;" in g,
-    "P2 emits phase diagnostics for crash localization": "md_coop_p2_phase_log(\"player-counter-HUD-1E64\"" in g and "md_coop_p2_phase_log(\"main-player-actor-224C\"" in g and "md_coop_p2_phase_log(\"post-contact-3BD8-BC20\"" in g,
-    "P2 runs native player HUD/counter pass": "md_coop_p2_call_native(p2, 0x00001E64u" in g,
-    "P2 scopes BC54/BC58 away from the shared body queue": "md_coop_p2_hud_begin();" in g and "md_coop_p2_hud_end();" in g,
-    "P2 HUD/counter pass precedes BC1C callback": g.index("md_coop_p2_call_native(p2, 0x00001E64u") < g.index("md_coop_p2_call_slot(p2, 0xBC1Cu"),
-    "P2 renderer retains shared BC54/BC58 body queue": "md_coop_p2_hud_end();" in g and g.index("md_coop_p2_hud_end();") < g.index("md_coop_p2_call_native(p2, 0x00005DB2u"),
-    "P2 runs player-local animation preamble": "0x00003B38u" in g and "0x00001E00u" in g and "0x00002150u" in g,
-    "P2 runs native sprite builder through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
-    "P2 post-contact pass is after shared render flush": "md_coop_run_local_p2_post(c);" in g and "L_1666:" in g,
-    "P2 post pass calls contact/state routines": "md_coop_p2_call_native(p2, 0x00003BD8u" in g and "md_coop_p2_call_slot(p2, 0xBC20u" in g,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
-    "P2 actor is cloned after player preparation, not at frame entry": "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); md_coop_p2_capture_render_seed(c);" in g and "L_15D2: { RT_POLL(0x15D2); md_coop_prepare_p2(c);" not in g,
-    "P2 captures fresh CPU registers at the exact pre-render seam": "void md_coop_p2_capture_render_seed(M68K *primary)" in h and "md_coop_p2_capture_render_seed(c)" in g and "md_coop_p2_frame_seed_valid = 0;" in h and "md_coop_p2_frame_seed_context" in g,
+    "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
-    "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1D=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
-    "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
-    "P2 merges only the appended sprite queue tail into shared RAM": "md_coop_p2_merge_render_queue(queue_start, queue_end" in g and "ram[i] = md_coop_p2_ram[i];" in h,
-    "P2 logs exact f_5DB2 input list and queue state": "md_coop_p2_sprite_diag(p2, \"before-f_5DB2-seeded\");" in g and "p2_sprite_parts_FCE8_FDCF=" in h,
-    "P2 receives only the current native sprite-part descriptor table": "md_coop_p2_seed_sprite_parts();" in g and "memcpy(md_coop_p2_primary_sprite_parts, &ram[0xFCE8]" in h and "memcpy(&md_coop_p2_ram[0xFCE8]" in h,
+    "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
@@ -881,5 +469,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed P2 frame slice: private actor state, callback pointer targets, animation clear/work buffers, exact pre-render CPU context capture, native sprite builder/actor, and post-flush contact callbacks.")
-print("P2 runtime snapshots include CPU registers and private player/scratch state; gameplay still requires in-game verification.")
+print("Installed guarded native P2 actor prototype: independent stack/state, frame-entry register seed, port-2 input, native sprite builder and pre-callback actor scheduling.")
+print("P2 runtime snapshots now include its CPU registers, private player-state bytes and indexed F200-F9FF work area; gameplay still requires in-game verification.")
