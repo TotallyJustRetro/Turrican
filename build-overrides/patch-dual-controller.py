@@ -353,13 +353,13 @@ if 'pad2_up' not in s:
     marker='else if(!strcmp(l, "background"))'
     if s.count(marker)!=1: raise SystemExit("dual-controller patch: config.ini background parser marker not found uniquely")
     marker_pos=s.find(marker)
-    line_start=s.rfind("\\n",0,marker_pos)+1
+    line_start=s.rfind(chr(10),0,marker_pos)+1
     indent=s[line_start:marker_pos]
-    extra="\\n".join(
+    extra=chr(10).join(
         indent+f'else if(!strcmp(l, "pad2_{key}")) pad2_map[{i}] = atoi(v);'
         for i,key in enumerate(MAP_KEYS)
     )
-    s=s[:line_start]+extra+"\\n"+s[line_start:]
+    s=s[:line_start]+extra+chr(10)+s[line_start:]
 
 
 # Make mapping helper device-agnostic and keep the existing P1 function.
