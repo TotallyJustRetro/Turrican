@@ -233,3 +233,17 @@ The old prototype copied P1's upper player RAM window but did not initialize P2 
 6. Extend the sprite path so P2's `f_5DB2` output is appended safely to the shared render queue with separate scratch storage.
 7. Build a guarded P2 render-only experiment using the original `f_5DB2` path after a P2 context exists, and instrument the shared 79-record pool for capacity/overflow.
 8. Then add P2 update/collision using the same callback family under independent context virtualization. Only after that works should we add camera and lives.
+
+
+## First successful runtime trace of the second controller (2026-11-24)
+
+A user-supplied trace from the updated diagnostics build confirms that the second physical controller is detected and that the game's second Genesis port receives input. This separates controller plumbing from the still-unimplemented second character.
+
+- The run used the diagnostic build from GitHub Actions run [#550](https://github.com/TotallyJustRetro/Turrican/actions/runs/45354062167), commit `1292e1a98708b740c338e2cded3c12f6e920d288`. The run succeeded; its Windows package artifact ID is `14902330571`.
+- At every input sample, `p2_connected=1`: SDL kept a valid second controller handle.
+- The sampled P2 live mask changed from `00000000` (idle) to `00000020`, `000000A0`, and `00000028` while the user operated the second controller. It returned to zero when released.
+- The second controller's emulated active-low input bytes at `$FFBC92/$FFBC93` changed in response (for example `FFFF` to `EFFF`, `6FFF`, and `E7FF`). The P1 bytes at `$FFBC90/$FFBC91` remained `FFFF` during this capture, consistent with P1 being idle.
+- Emulated Genesis port-read counters increased continuously for both ports. At the last sample they reached 11,660 reads for port index 0 and 11,464 for port index 1. The stable difference in the counters is an initial offset; both continued advancing throughout the trace.
+- This confirms the physical P2 controller -> SDL P2 mapping -> P2 live mask -> Genesis port-2 active-low RAM bytes -> emulated game port-read chain. Do not spend another diagnostic pass on basic P2 detection or port wiring unless later evidence contradicts this trace.
+- It does **not** confirm a second game actor. The log still contains one player descriptor (`$008E5E`, selector `0000`) and one main player-update callback (`f_224C` at `$00224C`). No second descriptor or second actor update was observed.
+- The next engineering task is therefore inside the game actor model: determine whether the original game has a dormant second-player descriptor/path or implement a true second actor with independently owned player state and CPU context. The old RAM-shadow prototype remains disabled; port-2 availability is not permission to re-enable it.
