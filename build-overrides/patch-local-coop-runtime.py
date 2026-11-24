@@ -137,9 +137,11 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC84, 0xBC8B);
         md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
-        md_coop_p2_mark(0xBCA4, 0xBCA7);
+        md_coop_p2_mark(0xBCA4, 0xBCB4); /* animation/work descriptors */
+        md_coop_p2_mark(0xBCC2, 0xBCC8); /* alternate animation state */
         md_coop_p2_mark(0xBCBC, 0xBD26);
-        md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
+        md_coop_p2_mark(0xBD28, 0xBD29); /* player descriptor base */
+        md_coop_p2_mark(0xBF08, 0xBF29); /* player motion/camera/stats */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
         /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
            records (BCE0 is bounded by 0x7C); f_3650/f_36E0 read the same
@@ -297,7 +299,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_run_local_p2_post(M68K *primary);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -320,7 +322,7 @@ RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 # must return to the exact sentinel/stack pointer before P1 resumes.
 GEN_RUNNER = r"""
 
-/* First native Mega Turrican P2 actor runner. */
+/* Native Mega Turrican P2 frame slice. */
 extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_set_active(int active);
@@ -331,9 +333,8 @@ extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
 extern void md_coop_p2_finish(void);
 
-/* Player state persists in P2 RAM, but the game's callback also receives live
-   per-frame D/A register inputs from its caller. Refresh those inputs for each
-   native call while preserving P2's independent A7 and USP. */
+/* P2 keeps its own A7/USP and player RAM, while receiving the frame-entry
+   non-stack registers from the original player at the same point in the loop. */
 static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
     unsigned i;
     if (!p2 || !primary) return;
@@ -373,6 +374,8 @@ static int md_coop_p2_call_slot(M68K *p2, unsigned slot, uint32_t sentinel) {
     return md_coop_p2_call_native(p2, target, sentinel);
 }
 
+/* Runs before P1's callback and shared render-queue flush. Only player-owned
+   setup, animation and sprite-building routines are repeated here. */
 void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     M68K *p2;
     const M68K *frame_seed;
@@ -386,55 +389,86 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
 
-    /* Mirror the player-specific callbacks surrounding the main actor in
-       f_156A. The world/object-list maintenance and shared VDP queue flush
-       remain P1-only. */
-    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE08u) ||
-        !md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE0Cu) ||
-        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE10u) ||
-        !md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE14u)) {
-        md_coop_p2_abort("P2 pre-actor descriptor callback did not restore its private stack", callback);
+    /* Match f_156A's player-local preamble in its original order. */
+    if (!md_coop_p2_call_native(p2, 0x00005D8Au, 0x00FEEE08u) ||
+        !md_coop_p2_call_native(p2, 0x00003B38u, 0x00FEEE0Cu) ||
+        !md_coop_p2_call_native(p2, 0x00001E00u, 0x00FEEE10u)) {
+        md_coop_p2_abort("P2 per-frame state preamble did not restore its private stack", callback);
         md_coop_p2_finish();
         return;
     }
 
-    /* P1's frame resets all 29 multipart scratch entries before f_5DB2.
-       P2 now has its own bank for FCE8-FDCF and BD24/BD25, so perform the
-       same reset without touching P1's sprite builder state. */
-    if (!md_coop_p2_call_native(p2, 0x00005D8Au, 0x00FEEE18u)) {
-        md_coop_p2_abort("P2 per-frame sprite scratch reset failed", callback);
+    /* f_15DE tests BC88 and conditionally invokes f_5BC. */
+    fl_logic(p2, RD8(0xFFFFBC88u), 8);
+    if (!cond(p2, 6) &&
+        !md_coop_p2_call_native(p2, 0x000005BCu, 0x00FEEE14u)) {
+        md_coop_p2_abort("P2 animation descriptor setup failed", callback);
         md_coop_p2_finish();
         return;
     }
-    if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE1Cu)) {
-        md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", callback);
+    if (!md_coop_p2_call_native(p2, 0x000008BEu, 0x00FEEE18u)) {
+        md_coop_p2_abort("P2 animation state reset failed", callback);
         md_coop_p2_finish();
         return;
     }
 
-    /* Follow the verified native player callback, not a cloned sprite. */
+    /* f_1612 uses f_8BE's flags to decide whether f_2150 is needed. */
+    if (!cond(p2, 6) &&
+        !md_coop_p2_call_native(p2, 0x00002150u, 0x00FEEE1Cu)) {
+        md_coop_p2_abort("P2 alternate animation-state update failed", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
+    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE20u) ||
+        !md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE24u) ||
+        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE28u) ||
+        !md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE2Cu)) {
+        md_coop_p2_abort("P2 descriptor callbacks did not restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
+    /* f_3D80 owns BD28/BF08/BF0C and must run independently for P2. */
+    if (!md_coop_p2_call_native(p2, 0x00003D80u, 0x00FEEE30u)) {
+        md_coop_p2_abort("P2 player descriptor update failed", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
     if (callback != 0x0000224Cu) {
         md_coop_p2_abort("P2 callback changed from verified native entry 0x224C", callback);
         md_coop_p2_finish();
         return;
     }
-    if (!md_coop_p2_call_native(p2, callback, 0x00FEEE20u)) {
-        md_coop_p2_abort("P2 actor did not restore its CPU stack/return frame", callback);
+    if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u) ||
+        !md_coop_p2_call_native(p2, callback, 0x00FEEE38u)) {
+        md_coop_p2_abort("P2 sprite builder/player callback failed to restore its private stack", callback);
         md_coop_p2_finish();
         return;
     }
 
-    /* The original P1 frame calls f_3BD8 and then the BC20 state callback.
-       These process player-local movement/contact flags after the main actor. */
-    if (!md_coop_p2_call_native(p2, 0x00003BD8u, 0x00FEEE24u) ||
-        !md_coop_p2_call_slot(p2, 0xBC20u, 0x00FEEE28u)) {
-        md_coop_p2_abort("P2 post-actor contact/state callback did not restore its private stack", callback);
-        md_coop_p2_finish();
-        return;
-    }
-
+    /* Return to the primary frame with P2 state retained. f_5472 must flush
+       the combined P1/P2 queue before P2's post-contact pass runs. */
     md_coop_p2_set_active(0);
-    md_coop_p2_actor_complete(p2, callback);
+}
+
+/* Called after the shared f_5472 queue flush and before P1's f_3BD8/BC20 pass. */
+void md_coop_run_local_p2_post(M68K *primary) {
+    M68K *p2;
+    if (!primary || !md_coop_p2_is_ready()) return;
+    p2 = md_coop_p2_cpu();
+    if (!p2) return;
+
+    md_coop_p2_set_active(1);
+    if (!md_coop_p2_call_native(p2, 0x00003BD8u, 0x00FEEE3Cu) ||
+        !md_coop_p2_call_slot(p2, 0xBC20u, 0x00FEEE40u)) {
+        md_coop_p2_abort("P2 post-contact/state callbacks failed to restore its private stack", 0x224C);
+        md_coop_p2_finish();
+        return;
+    }
+    md_coop_p2_set_active(0);
+    md_coop_p2_actor_complete(p2, 0x224C);
     md_coop_p2_finish();
 }
 """
@@ -444,13 +478,14 @@ if "First native Mega Turrican P2 actor runner." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# 4) Seed P2 before the sprite-builder seam, then run P2's render/update pass
-# at the callback call site, before P1 enters the same native actor routine.
+# 4) Capture P2's frame-entry registers before the original player preamble.
+# Run P2's actor slice before the P1 actor, then its contact pass after the
+# shared render queue flush and before P1's own contact pass.
 replace_once(
     GEN,
-    "L_1658: { RT_POLL(0x1658); { uint32_t _r=0x165Cu;",
-    "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); { uint32_t _r=0x165Cu;",
-    "P2 one-time seed hook at player render seam",
+    "L_15D2: { RT_POLL(0x15D2); { uint32_t _r=0x15D6u;",
+    "L_15D2: { RT_POLL(0x15D2); md_coop_prepare_p2(c); { uint32_t _r=0x15D6u;",
+    "P2 frame-entry seed hook",
 )
 
 line = re.compile(
@@ -464,6 +499,15 @@ if "md_coop_run_local_p2(c,_t);" not in gen:
         raise SystemExit("local co-op patch: verified pre-callback L_1660 seam not found")
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
+# Insert P2 post-contact processing after the shared output queue is flushed.
+post_hook = (
+    "L_1666: { RT_POLL(0x1666); { uint32_t _r=0x166Au;"
+)
+post_replacement = (
+    "L_1666: { RT_POLL(0x1666); md_coop_run_local_p2_post(c); { uint32_t _r=0x166Au;"
+)
+replace_once(GEN, post_hook, post_replacement, "post-render P2 contact hook")
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -475,8 +519,12 @@ checks = {
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC23)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
-    "P2 resets multipart sprite scratch every frame": "md_coop_p2_call_native(p2, 0x00005D8Au" in g,
-    "P2 runs post-actor contact state": "md_coop_p2_call_native(p2, 0x00003BD8u" in g and "md_coop_p2_call_slot(p2, 0xBC20u" in g,
+    "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
+    "P2 owns motion descriptor RAM": "md_coop_p2_mark(0xBF08, 0xBF29)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h,
+    "P2 runs player-local animation preamble": "0x00003B38u" in g and "0x00001E00u" in g and "0x00002150u" in g,
+    "P2 runs native sprite builder after player preamble": "0x00005DB2u" in g,
+    "P2 post-contact pass is after shared render flush": "md_coop_run_local_p2_post(c);" in g and "L_1666:" in g,
+    "P2 post pass calls contact/state routines": "md_coop_p2_call_native(p2, 0x00003BD8u" in g and "md_coop_p2_call_slot(p2, 0xBC20u" in g,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
@@ -492,5 +540,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded P2 frame slice: private descriptor callbacks, per-frame multipart scratch reset, native renderer/actor, and post-actor contact/state callbacks.")
+print("Installed P2 frame slice: frame-entry context, private animation/motion RAM, native player preamble, sprite builder/actor, and post-flush contact callbacks.")
 print("P2 runtime snapshots include CPU registers and private player/scratch state; gameplay still requires in-game verification.")
