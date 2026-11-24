@@ -151,13 +151,16 @@ if "coop_p2_player_state" not in block:
         for(unsigned int i=0;i<0xB7u;i++)
             coop_p1_ram[i]=(uint8_t)RD8(0xFFFFBC70u+i);
         M68K coop_p1_after_cpu=*c;
+        /* Preserve the live port-2 sample before swapping the entire player
+           RAM window: $FFBC92/$FFBC93 are included in that window. */
+        uint8_t coop_p2_input_a=(uint8_t)RD8(0xFFFFBC92u);
+        uint8_t coop_p2_input_b=(uint8_t)RD8(0xFFFFBC93u);
         *c=coop_player_call_entry;
         for(unsigned int i=0;i<0xB7u;i++)
             WR8(0xFFFFBC70u+i,coop_p2_player_state[i]);
-        /* The ROM polls port 2 into $FFBC92/$FFBC93; the player routine
-           consumes the equivalent port-1 input bytes at $FFBC90/$FFBC91. */
-        WR8(0xFFFFBC90u,RD8(0xFFFFBC92u));
-        WR8(0xFFFFBC91u,RD8(0xFFFFBC93u));
+        /* The player routine consumes the controller sample at $FFBC90/$FFBC91. */
+        WR8(0xFFFFBC90u,coop_p2_input_a);
+        WR8(0xFFFFBC91u,coop_p2_input_b);
         uint32_t _r=0x1662u;
         uint32_t _t=A(0);
         A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r;
