@@ -189,6 +189,15 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-coop-runtime-trace.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing the read-only player descriptor trace failed.' }
 
+      - name: Install guarded native local co-op actor
+        shell: pwsh
+        run: |
+          $patch = Join-Path $PWD 'build-overrides/patch-local-coop-runtime.py'
+          python -m py_compile $patch
+          if ($LASTEXITCODE -ne 0) { throw 'The native local co-op patch failed Python syntax validation.' }
+          python $patch $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the guarded native local co-op actor failed.' }
+
       - name: Generate built-in Maker sprite descriptor index
         shell: pwsh
         run: |
