@@ -222,6 +222,110 @@ void md_coop_trace_input(M68K *c, uint32_t descriptor, unsigned phase) {
     (void)c;
 }
 
+
+/* Sample the compact player context and shared systems without modifying RAM. */
+static unsigned md_coop_player_trace_frame;
+static unsigned md_coop_player_trace_last_lives = 0x100u;
+static unsigned md_coop_player_trace_last_continues = 0x100u;
+
+static uint16_t md_coop_trace_ram16(uint32_t a) {
+    a &= 0xFFFFu;
+    return (uint16_t)(((uint16_t)ram[a] << 8) | ram[(a + 1u) & 0xFFFFu]);
+}
+
+static uint32_t md_coop_trace_ram32(uint32_t a) {
+    a &= 0xFFFFu;
+    return ((uint32_t)ram[a] << 24) |
+           ((uint32_t)ram[(a + 1u) & 0xFFFFu] << 16) |
+           ((uint32_t)ram[(a + 2u) & 0xFFFFu] << 8) |
+           (uint32_t)ram[(a + 3u) & 0xFFFFu];
+}
+
+static void md_coop_trace_player_state(M68K *c, uint32_t descriptor) {
+    ++md_coop_player_trace_frame;
+    if (md_coop_player_trace_frame != 1u &&
+        (md_coop_player_trace_frame % 60u) != 0u) return;
+
+    FILE *f = fopen("MegaTurrican-coop-player-state-trace.txt", "ab");
+    if (!f) return;
+
+    fprintf(f, "\n=== PLAYER STATE frame=%u descriptor=%06X ret=%08X A7=%08X ===\n",
+            md_coop_player_trace_frame, descriptor & 0xFFFFFFu,
+            c ? c->ret : 0u, c ? c->a[7] : 0u);
+    fprintf(f, "selector=%04X state_BC86_89=%02X%02X%02X%02X difficulty_BC69=%02X "
+               "lives_BF26=%02X continues_BF3A=%02X ammo_BD0D=%02X\n",
+            md_coop_trace_ram16(0xBF1Eu),
+            ram[0xBC86], ram[0xBC87], ram[0xBC88], ram[0xBC89],
+            ram[0xBC69], ram[0xBF26], ram[0xBF3A], ram[0xBD0D]);
+    fprintf(f, "input_P1=%02X%02X input_P2=%02X%02X P1_xy=%04X,%04X "
+               "view_xy=%04X,%04X stage_view_xy=%04X,%04X\n",
+            ram[0xBC90], ram[0xBC91], ram[0xBC92], ram[0xBC93],
+            md_coop_trace_ram16(0xBD1Eu), md_coop_trace_ram16(0xBD20u),
+            md_coop_trace_ram16(0xDFD8u), md_coop_trace_ram16(0xDFDAu),
+            md_coop_trace_ram16(0xDFD4u), md_coop_trace_ram16(0xDFD6u));
+    fprintf(f, "callbacks_1C=%08X 20=%08X 3C=%08X 44=%08X 4C=%08X 62=%08X "
+               "sprite_out=%08X/%08X\n",
+            md_coop_trace_ram32(0xBC1Cu), md_coop_trace_ram32(0xBC20u),
+            md_coop_trace_ram32(0xBC3Cu), md_coop_trace_ram32(0xBC44u),
+            md_coop_trace_ram32(0xBC4Cu), md_coop_trace_ram32(0xBC62u),
+            md_coop_trace_ram32(0xBC54u), md_coop_trace_ram32(0xBC58u));
+    fprintf(f, "object_lists_head1=%08X free=%08X head2=%08X aux=%08X/%08X "
+               "sprite_scratch_index=%02X%02X\n",
+            md_coop_trace_ram32(0xBC28u), md_coop_trace_ram32(0xBC2Cu),
+            md_coop_trace_ram32(0xBC30u), md_coop_trace_ram32(0xBC34u),
+            md_coop_trace_ram32(0xBC38u), ram[0xBD24], ram[0xBD25]);
+
+    fputs("player_context_BCC0_to_BD26:\n", f);
+    for (unsigned i = 0; i < 0x67u; ++i) {
+        fprintf(f, "%02X", ram[(0xBCC0u + i) & 0xFFFFu]);
+        if ((i & 15u) == 15u) fputc('\n', f);
+        else fputc(' ', f);
+    }
+    if ((0x67u & 15u) != 0u) fputc('\n', f);
+    fflush(f);
+    fclose(f);
+}
+
+/* Called immediately after the game's original lives/continues write. */
+void md_coop_trace_life_event(M68K *c, uint16_t pc) {
+    unsigned current = ram[0xBF26];
+    unsigned previous = md_coop_player_trace_last_lives;
+    FILE *f = fopen("MegaTurrican-coop-player-state-trace.txt", "ab");
+    if (f) {
+        fprintf(f, "\n=== LIVES WRITE pc=%04X old=", pc);
+        if (previous <= 0xFFu) fprintf(f, "%02X", previous);
+        else fputs("--", f);
+        fprintf(f, " new=%02X continues=%02X selector=%04X descriptor=%08X "
+                   "ret=%08X A7=%08X D0=%08X D1=%08X A0=%08X A1=%08X ===\n",
+                current, ram[0xBF3A], md_coop_trace_ram16(0xBF1Eu),
+                md_coop_trace_ram32(0xBC50u), c ? c->ret : 0u,
+                c ? c->a[7] : 0u, c ? c->d[0] : 0u, c ? c->d[1] : 0u,
+                c ? c->a[0] : 0u, c ? c->a[1] : 0u);
+        fflush(f);
+        fclose(f);
+    }
+    md_coop_player_trace_last_lives = current;
+}
+
+void md_coop_trace_continue_event(M68K *c, uint16_t pc) {
+    unsigned current = ram[0xBF3A];
+    unsigned previous = md_coop_player_trace_last_continues;
+    FILE *f = fopen("MegaTurrican-coop-player-state-trace.txt", "ab");
+    if (f) {
+        fprintf(f, "\n=== CONTINUE WRITE pc=%04X old=", pc);
+        if (previous <= 0xFFu) fprintf(f, "%02X", previous);
+        else fputs("--", f);
+        fprintf(f, " new=%02X lives=%02X selector=%04X descriptor=%08X "
+                   "ret=%08X A7=%08X D0=%08X D1=%08X ===\n",
+                current, ram[0xBF26], md_coop_trace_ram16(0xBF1Eu),
+                md_coop_trace_ram32(0xBC50u), c ? c->ret : 0u,
+                c ? c->a[7] : 0u, c ? c->d[0] : 0u, c ? c->d[1] : 0u);
+        fflush(f);
+        fclose(f);
+    }
+    md_coop_player_trace_last_continues = current;
+}
+
 /* Capture the exact runtime target before descriptor and frame-dispatch calls. */
 void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
     static struct { uint32_t descriptor; uint32_t target; unsigned phase; } seen[96];
@@ -233,6 +337,7 @@ void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
                                       (uint32_t)ram[0xBC53];
         md_coop_trace_selector_sample(current_descriptor, phase);
         md_coop_trace_input(c, current_descriptor, phase);
+        md_coop_trace_player_state(c, current_descriptor);
     }
     uint32_t descriptor = ((uint32_t)ram[0xBC50] << 24) |
                           ((uint32_t)ram[0xBC51] << 16) |
@@ -308,7 +413,7 @@ replace_once(
 replace_once(
     RT_HEADER,
     HEADER_MARKER,
-    "void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase);\nvoid md_coop_trace_call(M68K *c, uint32_t target, unsigned phase);\n\n" + HEADER_MARKER,
+    "void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase);\nvoid md_coop_trace_call(M68K *c, uint32_t target, unsigned phase);\nvoid md_coop_trace_life_event(M68K *c, uint16_t pc);\nvoid md_coop_trace_continue_event(M68K *c, uint16_t pc);\n\n" + HEADER_MARKER,
 )
 replace_once(
     GEN,
@@ -340,4 +445,13 @@ replace_once(GEN, "L_166E: { RT_POLL(0x166E); uint32_t e=A(0); {", "L_166E: { RT
 replace_once(GEN, "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); {", "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); md_coop_trace_call(c,e,307); {")
 replace_once(GEN, "L_2E94: { RT_POLL(0x2E94);", "L_2E94: { RT_POLL(0x2E94); md_coop_trace_call(c,0x2E94u,401);")
 
-print("Installed read-only player-descriptor trace hooks (no gameplay behavior changed).")
+replace_once(GEN, "L_1958: { RT_POLL(0x1958); uint32_t v=0x2u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); }", "L_1958: { RT_POLL(0x1958); uint32_t v=0x2u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); md_coop_trace_life_event(c,0x1958u); }")
+replace_once(GEN, "L_1968: { RT_POLL(0x1968); uint32_t v=0x3u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); }", "L_1968: { RT_POLL(0x1968); uint32_t v=0x3u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); md_coop_trace_life_event(c,0x1968u); }")
+replace_once(GEN, "L_1970: { RT_POLL(0x1970); uint32_t v=0x5u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); }", "L_1970: { RT_POLL(0x1970); uint32_t v=0x5u; uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); md_coop_trace_life_event(c,0x1970u); }")
+replace_once(GEN, "L_1766: { RT_POLL(0x1766); uint32_t v=(D(1)&0xFFu); uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); }", "L_1766: { RT_POLL(0x1766); uint32_t v=(D(1)&0xFFu); uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); md_coop_trace_life_event(c,0x1766u); }")
+replace_once(GEN, "L_657C: { RT_POLL(0x657C); uint32_t v=(D(1)&0xFFu); uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); }", "L_657C: { RT_POLL(0x657C); uint32_t v=(D(1)&0xFFu); uint32_t d=0xFFFFBF26u; WR8(d,v); fl_logic(c,v,8); md_coop_trace_life_event(c,0x657Cu); }")
+replace_once(GEN, "L_1576: { RT_POLL(0x1576); uint32_t e=0xFFFFBF3Au; WR8(e,(cond(c,1)?0xFF:0)); }", "L_1576: { RT_POLL(0x1576); uint32_t e=0xFFFFBF3Au; WR8(e,(cond(c,1)?0xFF:0)); md_coop_trace_continue_event(c,0x1576u); }")
+replace_once(GEN, "L_157C: { RT_POLL(0x157C); uint32_t v=0x3u; uint32_t d=0xFFFFBF3Au; WR8(d,v); fl_logic(c,v,8); }", "L_157C: { RT_POLL(0x157C); uint32_t v=0x3u; uint32_t d=0xFFFFBF3Au; WR8(d,v); fl_logic(c,v,8); md_coop_trace_continue_event(c,0x157Cu); }")
+replace_once(GEN, "L_1934: { RT_POLL(0x1934); uint32_t v=(D(0)&0xFFu); uint32_t d=0xFFFFBF3Au; WR8(d,v); fl_logic(c,v,8); }", "L_1934: { RT_POLL(0x1934); uint32_t v=(D(0)&0xFFu); uint32_t d=0xFFFFBF3Au; WR8(d,v); fl_logic(c,v,8); md_coop_trace_continue_event(c,0x1934u); }")
+
+print("Installed read-only player-state and player-descriptor trace hooks (no gameplay behavior changed).")
