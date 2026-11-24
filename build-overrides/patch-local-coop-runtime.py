@@ -107,16 +107,12 @@ void md_coop_prepare_p2(M68K *primary) {
     unsigned i;
     if (!primary) return;
     md_coop_primary_m68k = primary;
+    /* Each frame must capture a fresh renderer context at the 1658 seam. */
+    md_coop_p2_frame_seed_valid = 0;
     if (md_coop_p2_disabled || !md_player2_connected) {
         md_coop_p2_frame_seed_valid = 0;
         return;
     }
-
-    /* Capture the caller immediately before the original f_5DB2 render pass.
-       P2 starts from this same frame-entry context, runs its own renderer, then
-       carries those renderer-produced registers into its movement callback. */
-    memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
-    md_coop_p2_frame_seed_valid = 1;
 
     callback = ((uint32_t)ram[0xBC62] << 24) |
                ((uint32_t)ram[0xBC63] << 16) |
@@ -181,6 +177,16 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_log("initialized", callback,
                        "one-time P1 state seed; independent CPU and F0FFFC stack");
     }
+}
+
+/* L_1658 is reached after the native player-preparation path and f_3D80,
+   immediately before P1's f_5DB2 sprite builder. The P2 pass runs just after
+   that builder, so preserve the CPU context from this exact pre-render seam. */
+void md_coop_p2_capture_render_seed(M68K *primary) {
+    if (!primary || !md_coop_p2_ready()) return;
+    md_coop_primary_m68k = primary;
+    memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
+    md_coop_p2_frame_seed_valid = 1;
 }
 
 void md_coop_p2_refresh(void) {
@@ -392,6 +398,7 @@ GEN_RUNNER = r"""
 
 /* Native Mega Turrican P2 frame slice. */
 extern void md_coop_prepare_p2(M68K *primary);
+extern void md_coop_p2_capture_render_seed(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_sync_handshake(void);
 extern void md_coop_p2_phase_log(const char *phase, uint32_t callback);
@@ -616,7 +623,8 @@ if "Native Mega Turrican P2 frame slice." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# 4) Capture P2's frame-entry registers before the original player preamble.
+# 4) Initialize P2 at frame entry, then capture the native render context at
+# L_1658 (after player preparation/f_3D80, immediately before P1 f_5DB2).
 # Run P2's actor slice before the P1 actor, then its contact pass after the
 # shared render queue flush and before P1's own contact pass.
 replace_once(
@@ -624,6 +632,13 @@ replace_once(
     "L_15D2: { RT_POLL(0x15D2); { uint32_t _r=0x15D6u;",
     "L_15D2: { RT_POLL(0x15D2); md_coop_prepare_p2(c); { uint32_t _r=0x15D6u;",
     "P2 frame-entry seed hook",
+)
+
+replace_once(
+    GEN,
+    "L_1658: { RT_POLL(0x1658);",
+    "L_1658: { RT_POLL(0x1658); md_coop_p2_capture_render_seed(c);",
+    "P2 exact pre-render register snapshot hook",
 )
 
 line = re.compile(
@@ -686,7 +701,7 @@ checks = {
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
-    "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
+    "P2 captures fresh CPU registers at the exact pre-render seam": "void md_coop_p2_capture_render_seed(M68K *primary)" in h and "md_coop_p2_capture_render_seed(c)" in g and "md_coop_p2_frame_seed_valid = 0;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1D=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
@@ -699,5 +714,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed P2 frame slice: private actor state, callback pointer targets, animation clear/work buffers, native player preamble, sprite builder/actor, and post-flush contact callbacks.")
+print("Installed P2 frame slice: private actor state, callback pointer targets, animation clear/work buffers, exact pre-render CPU context capture, native sprite builder/actor, and post-flush contact callbacks.")
 print("P2 runtime snapshots include CPU registers and private player/scratch state; gameplay still requires in-game verification.")
