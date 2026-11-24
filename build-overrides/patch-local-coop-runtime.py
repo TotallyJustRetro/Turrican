@@ -145,6 +145,14 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBCA4, 0xBCB4); /* animation/work descriptors */
         md_coop_p2_mark(0xBCC2, 0xBCC8); /* alternate animation state */
         md_coop_p2_mark(0xBCBC, 0xBD26);
+        /* Native setup callbacks dereference these P1 RAM pointer targets.
+           f_5BC clears 63 words at DC9E; player descriptor work areas begin at
+           DD1E, DD9E, and DE4E; A6 callback contexts span DFCE through E035. */
+        md_coop_p2_mark(0xDC9E, 0xDD1B);
+        md_coop_p2_mark(0xDD1E, 0xDE1D);
+        md_coop_p2_mark(0xDE4E, 0xDECD);
+        md_coop_p2_mark(0xDFD4, 0xDFDA);
+        md_coop_p2_mark(0xDFCE, 0xE035);
         md_coop_p2_mark(0xBD28, 0xBD29); /* player descriptor base */
         md_coop_p2_mark(0xBF08, 0xBF29); /* player motion/camera/stats */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
@@ -574,6 +582,9 @@ checks = {
     "P2 owns input sequence state for f_E0C": "md_coop_p2_mark(0xBC7E, 0xBC83)" in h,
     "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
     "P2 owns descriptor pointers and DMA slots": "md_coop_p2_mark(0xBC5A, 0xBC5D)" in h and "md_coop_p2_mark(0xBC94, 0xBC9B)" in h,
+    "P2 owns f_5BC animation clear buffer": "md_coop_p2_mark(0xDC9E, 0xDD1B)" in h,
+    "P2 owns both descriptor callback work buffers": "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h,
+    "P2 owns native A6 callback tables": "md_coop_p2_mark(0xDFCE, 0xE035)" in h,
     "P2 restores descriptor callback A6 contexts": "p2->a[6] = 0xFFFFDFCEu;" in g and "p2->a[6] = 0xFFFFE002u;" in g,
     "P2 owns motion descriptor RAM": "md_coop_p2_mark(0xBF08, 0xBF29)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h,
     "P2 resets private multipart scratch every frame": "0x00005D8Au" in g,
@@ -603,5 +614,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed P2 frame slice: frame-entry context, private animation/motion RAM, native player preamble, sprite builder/actor, and post-flush contact callbacks.")
+print("Installed P2 frame slice: private actor state, callback pointer targets, animation clear/work buffers, native player preamble, sprite builder/actor, and post-flush contact callbacks.")
 print("P2 runtime snapshots include CPU registers and private player/scratch state; gameplay still requires in-game verification.")
