@@ -448,7 +448,7 @@ if "extern int md_player2_live_mask;" not in h:
     a,b=func_span(h,r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)","pad_read")
 block=h[a:b]
 if "int b = (p == 1) ? md_player2_live_mask : buttons();" not in block:
-    block2,n=re.subn(r"\\bint\\s+b\\s*=\\s*buttons\\s*\\(\\s*\\)\\s*;",
+    block2,n=re.subn(r"\bint\s+b\s*=\s*buttons\s*\(\s*\)\s*;",
        "int b = (p == 1) ? md_player2_live_mask : buttons();",block,count=1)
     if n!=1: raise SystemExit("dual-controller patch: pad_read buttons() assignment not found")
     h=h[:a]+block2+h[b:]
