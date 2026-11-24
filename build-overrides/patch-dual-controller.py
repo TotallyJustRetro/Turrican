@@ -350,16 +350,18 @@ if "static int pad2_map[8]" not in s:
 
 # Parse P2 map keys from config.ini.
 if 'pad2_up' not in s:
-    marker='else if(!strcmp(l, "background"))'
-    if s.count(marker)!=1: raise SystemExit("dual-controller patch: config.ini background parser marker not found uniquely")
-    marker_pos=s.find(marker)
-    line_start=s.rfind(chr(10),0,marker_pos)+1
-    indent=s[line_start:marker_pos]
-    extra=chr(10).join(
+    lines=s.splitlines()
+    p1_map_lines=[i for i,line in enumerate(lines) if 'pad_map[' in line and 'atoi(' in line]
+    if not p1_map_lines:
+        raise SystemExit('dual-controller patch: could not locate existing P1 pad_map config assignments')
+    insert_at=max(p1_map_lines)+1
+    indent=re.match(r'\\s*',lines[insert_at-1]).group(0)
+    p2_lines=[
         indent+f'else if(!strcmp(l, "pad2_{key}")) pad2_map[{i}] = atoi(v);'
         for i,key in enumerate(MAP_KEYS)
-    )
-    s=s[:line_start]+extra+chr(10)+s[line_start:]
+    ]
+    lines[insert_at:insert_at]=p2_lines
+    s=chr(10).join(lines)+chr(10)
 
 
 # Make mapping helper device-agnostic and keep the existing P1 function.
