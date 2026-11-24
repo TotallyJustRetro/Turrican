@@ -79,7 +79,7 @@ for rel in FILES:
    fn_bodies[name]="\n".join(lines[start:end])
    fn_lines[name]=(start+1,end)
   direct_call=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(\s*c\s*\)")
-  actor_addr=re.compile(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})u",re.I)
+  actor_addr=re.compile(r"0xFFFF([0-9A-Fa-f]{4})u",re.I)
   audit_roots=("f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2")
   for root in audit_roots:
    if root not in fn_bodies:
@@ -114,6 +114,19 @@ for rel in FILES:
    for ix,line in enumerate(bl):
     if any(token in line for token in ("0x1994u","0xFFFFBC50u","0xFFFFBC3Cu","0xFFFFBC40u","0xFFFFBC44u","0xFFFFBC48u","0xFFFFBC4Cu","0xFFFFBC5Au","0xFFFFBC62u","0xFFFFBCC4u")):
      emit(f"PLAYER_DESCRIPTOR_CONTEXT function={name} line={fn_lines[name][0]+ix} {line.strip()[:280]}")
+
+  emit("[PLAYER_ALLOCATOR_AND_RENDERER_HELPERS]")
+  for name in ("f_5300","f_5382","f_5400","f_5D8A","f_5DB2"):
+   body=fn_bodies.get(name)
+   if not body:
+    emit(f"PLAYER_SUPPORT_BODY_MISSING {name}")
+    continue
+   body_lines=body.splitlines()
+   emit(f"PLAYER_SUPPORT_BODY {name} source_lines={fn_lines[name][0]}-{fn_lines[name][1]}")
+   for line in body_lines[:360]:
+    emit("  "+line[:300])
+   if len(body_lines)>360:
+    emit(f"  ... clipped {len(body_lines)-360} lines ...")
 
   # A value loaded from a fixed RAM slot and immediately dispatched through
   # rt_call_addr is a runtime callback candidate. Record the slot and call PC;
