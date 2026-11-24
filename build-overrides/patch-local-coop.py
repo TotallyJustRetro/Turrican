@@ -122,13 +122,15 @@ if "coop_p2_player_state" not in block:
             rt_call_addr(c,_t);
             rt_sp--;
             if(c->ret!=_r && !rt_fix_ret(c,_r)) {
+                coop_p2_player_initialized=0;
+            } else {
+                /* Append was accepted; preserve P2 state after its draw pass. */
                 for(unsigned int i=0;i<0xB7u;i++)
                     coop_p2_player_state[i]=(uint8_t)RD8(0xFFFFBC70u+i);
-                for(unsigned int i=0;i<0xB7u;i++)
-                    WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
-                *c=coop_render_cpu;
-                return;
             }
+            for(unsigned int i=0;i<0xB7u;i++)
+                WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
+            *c=coop_render_cpu;
         }
         /* f_5DB2 appends P2's native multi-part sprite to the shared render queue. */
         for(unsigned int i=0;i<0xB7u;i++)
@@ -174,7 +176,7 @@ if "coop_p2_player_state" not in block:
             WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
         *c=coop_p1_after_cpu;
         coop_player_call_entry_valid=0;
-        if(!coop_player_call_ok)return;
+        if(!coop_player_call_ok)coop_p2_player_initialized=0;
     }
     """
     block=block.replace(update_marker,update_marker+update_code,1)
