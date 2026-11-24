@@ -326,6 +326,15 @@ end=html.find(end_marker,start)
 if end<0: raise SystemExit("dual-controller patch: current controller initialization marker missing")
 end+=len(end_marker)
 html=html[:start]+gamepad_js+html[end:]
+# Keep P2's profile intact in the launch-time settings round trip.
+old_launch_save="await window.GenesisSettings.save({version:PAD_VERSION,padMap:S.padMap});"
+new_launch_save="await window.GenesisSettings.save({version:PAD_VERSION,padMap:S.padMap,pad2Map:S.pad2Map});"
+if old_launch_save in html:
+    html=html.replace(old_launch_save,new_launch_save,1)
+elif new_launch_save not in html:
+    raise SystemExit("dual-controller patch: launch-time controller settings save site not found")
+if "pad2Map:S.pad2Map" not in html:
+    raise SystemExit("dual-controller patch: P2 bindings are not preserved on launch")
 HTML.write_text(html,encoding="utf-8")
 
 # 3. SDL: second controller handle, independent mappings, and live P2 mask.
