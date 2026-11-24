@@ -6,6 +6,13 @@ The first RAM-shadow prototype is disabled and must not be reintroduced.
 
 The user's test confirmed that Player 2 was not controllable, moved out of bounds, corrupted the level, and caused restart crashes.
 
+## Latest safe diagnostics build
+
+- GitHub Actions run `45350837966` completed successfully on 2026-11-24 with the RAM-shadow co-op patch absent and the read-only descriptor/callback trace step enabled.
+- The Windows package includes `MegaTurrican.exe` and `MegaTurricanLauncher-1.0.0-x64.exe`. The executable was checked for the trace filename, callback-target trace format, and both-controller input fields.
+- A normal single-player launch creates/appends `MegaTurrican-coop-runtime-trace.txt` in the launcher's working directory (the launcher sets this to its own folder). No Multiplayer option is exposed in this build. This package is for safe runtime diagnostics only; it is not a P2 gameplay test build.
+- GitHub Actions run: https://github.com/TotallyJustRetro/Turrican/actions/runs/45350837966
+
 ## What the generated recomp report confirms
 
 - The main gameplay player/update path is `f_156A`. The game-state routine `f_200` calls it directly at PCs `0x03EE` and `0x040E`, under separate state branches. `f_156A` selects a descriptor through the ROM table at `0x1994`, indexed by `$FFBF1E`, and calls the setup routine `f_19FA`. It conditionally calls `f_1BDE` as a secondary setup/respawn path. The exact cadence of `f_156A` relative to rendered video frames still needs to be proven from the outer game-state flow.
