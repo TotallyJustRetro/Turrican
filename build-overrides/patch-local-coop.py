@@ -65,7 +65,7 @@ if "extern int md_local_coop_enabled;" not in r:
         raise SystemExit("local co-op patch: generated recomp include section not found")
     r=r[:m.end()]+decls+r[m.end():]
 
-a,b=func_span(r,r"static\s+void\s+f_156A\s*\(\s*M68K\s*\*\s*c\s*\)","f_156A")
+a,b=func_span(r,r"(?m)^static\s+void\s+f_156A\s*\(\s*M68K\s*\*\s*c\s*\)(?=\s*\{)","f_156A")
 block=r[a:b]
 if "coop_p2_player_state" not in block:
     sig=re.search(r"static\s+void\s+f_156A\s*\(\s*M68K\s*\*\s*c\s*\)\s*\{",block)
