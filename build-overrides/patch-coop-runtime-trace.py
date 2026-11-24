@@ -101,6 +101,47 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
     fflush(f);
     fclose(f);
 }
+
+/* Capture the exact runtime target before descriptor and frame-dispatch calls. */
+void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
+    static struct { uint32_t descriptor; uint32_t target; unsigned phase; } seen[96];
+    static unsigned seen_count;
+    uint32_t descriptor = ((uint32_t)ram[0xBC50] << 24) |
+                          ((uint32_t)ram[0xBC51] << 16) |
+                          ((uint32_t)ram[0xBC52] << 8) |
+                          (uint32_t)ram[0xBC53];
+    target &= 0xFFFFFFu;
+    for (unsigned i = 0; i < seen_count; ++i) {
+        if (seen[i].descriptor == descriptor &&
+            seen[i].target == target &&
+            seen[i].phase == phase) return;
+    }
+    if (seen_count >= 96) return;
+    seen[seen_count].descriptor = descriptor;
+    seen[seen_count].target = target;
+    seen[seen_count].phase = phase;
+    ++seen_count;
+
+    FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
+    if (!f) return;
+    fprintf(f, "\n=== CALLBACK TARGET phase=%u descriptor=%06X target=%06X ret=%08X ===\n",
+            phase, descriptor & 0xFFFFFFu, target, c ? c->ret : 0u);
+    if (c) {
+        for (unsigned i = 0; i < 8; ++i)
+            fprintf(f, "D%u=%08X%s", i, c->d[i], (i == 7u) ? "\n" : " ");
+        for (unsigned i = 0; i < 8; ++i)
+            fprintf(f, "A%u=%08X%s", i, c->a[i], (i == 7u) ? "\n" : " ");
+    }
+    fprintf(f, "selector=%04X player_state=%02X input=%02X%02X pos=%04X,%04X view=%04X,%04X\n",
+            (uint16_t)(((uint16_t)ram[0xBF1E] << 8) | ram[0xBF1F]),
+            ram[0xBC87], ram[0xBC90], ram[0xBC91],
+            (uint16_t)(((uint16_t)ram[0xBD1E] << 8) | ram[0xBD1F]),
+            (uint16_t)(((uint16_t)ram[0xBD20] << 8) | ram[0xBD21]),
+            (uint16_t)(((uint16_t)ram[0xDFD8] << 8) | ram[0xDFD9]),
+            (uint16_t)(((uint16_t)ram[0xDFDA] << 8) | ram[0xDFDB]));
+    fflush(f);
+    fclose(f);
+}
 '''
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -123,7 +164,7 @@ replace_once(
 replace_once(
     RT_HEADER,
     HEADER_MARKER,
-    "void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase);\n\n" + HEADER_MARKER,
+    "void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase);\nvoid md_coop_trace_call(M68K *c, uint32_t target, unsigned phase);\n\n" + HEADER_MARKER,
 )
 replace_once(
     GEN,
@@ -139,5 +180,19 @@ replace_once(
         1,
     ),
 )
+
+replace_once(GEN, "L_1AF0: { RT_POLL(0x1AF0); uint32_t e=A(5); {", "L_1AF0: { RT_POLL(0x1AF0); uint32_t e=A(5); md_coop_trace_call(c,e,101); {")
+replace_once(GEN, "L_1B32: { RT_POLL(0x1B32); uint32_t e=A(5); {", "L_1B32: { RT_POLL(0x1B32); uint32_t e=A(5); md_coop_trace_call(c,e,102); {")
+replace_once(GEN, "L_1B56: { RT_POLL(0x1B56); uint32_t e=A(0); {", "L_1B56: { RT_POLL(0x1B56); uint32_t e=A(0); md_coop_trace_call(c,e,103); {")
+replace_once(GEN, "L_1C60: { RT_POLL(0x1C60); uint32_t e=A(5); {", "L_1C60: { RT_POLL(0x1C60); uint32_t e=A(5); md_coop_trace_call(c,e,201); {")
+replace_once(GEN, "L_1CA2: { RT_POLL(0x1CA2); uint32_t e=A(5); {", "L_1CA2: { RT_POLL(0x1CA2); uint32_t e=A(5); md_coop_trace_call(c,e,202); {")
+replace_once(GEN, "L_1CAC: { RT_POLL(0x1CAC); uint32_t e=A(0); {", "L_1CAC: { RT_POLL(0x1CAC); uint32_t e=A(0); md_coop_trace_call(c,e,203); {")
+replace_once(GEN, "L_1620: { RT_POLL(0x1620); uint32_t e=A(0); {", "L_1620: { RT_POLL(0x1620); uint32_t e=A(0); md_coop_trace_call(c,e,301); {")
+replace_once(GEN, "L_162A: { RT_POLL(0x162A); uint32_t e=A(0); {", "L_162A: { RT_POLL(0x162A); uint32_t e=A(0); md_coop_trace_call(c,e,302); {")
+replace_once(GEN, "L_1630: { RT_POLL(0x1630); uint32_t e=A(0); {", "L_1630: { RT_POLL(0x1630); uint32_t e=A(0); md_coop_trace_call(c,e,303); {")
+replace_once(GEN, "L_163E: { RT_POLL(0x163E); uint32_t e=A(0); {", "L_163E: { RT_POLL(0x163E); uint32_t e=A(0); md_coop_trace_call(c,e,304); {")
+replace_once(GEN, "L_1660: { RT_POLL(0x1660); uint32_t e=A(0); {", "L_1660: { RT_POLL(0x1660); uint32_t e=A(0); md_coop_trace_call(c,e,305); {")
+replace_once(GEN, "L_166E: { RT_POLL(0x166E); uint32_t e=A(0); {", "L_166E: { RT_POLL(0x166E); uint32_t e=A(0); md_coop_trace_call(c,e,306); {")
+replace_once(GEN, "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); {", "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); md_coop_trace_call(c,e,307); {")
 
 print("Installed read-only player-descriptor trace hooks (no gameplay behavior changed).")
