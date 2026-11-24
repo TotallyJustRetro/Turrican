@@ -161,8 +161,9 @@ old_controller_preserve='if (!savedNativeConfig.has(key)) return entry;'
 new_controller_preserve='if (!savedNativeConfig.has(key) || key.startsWith("pad_") || key.startsWith("pad2_")) return entry;'
 if old_controller_preserve in main:
     main=main.replace(old_controller_preserve,new_controller_preserve,1)
-append_anchor="for (const [key, value] of savedNativeConfig) {\\n        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);\\n      }"
-append_new="for (const [key, value] of savedNativeConfig) {\\n        if (key.startsWith('pad_') || key.startsWith('pad2_')) continue;\\n        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);\\n      }"
+nl=chr(10)
+append_anchor="for (const [key, value] of savedNativeConfig) {"+nl+"        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);"+nl+"      }"
+append_new="for (const [key, value] of savedNativeConfig) {"+nl+"        if (key.startsWith('pad_') || key.startsWith('pad2_')) continue;"+nl+"        if (!retainedKeys.has(key)) mergedConfig.push(key + '=' + value);"+nl+"      }"
 if append_anchor in main:
     main=main.replace(append_anchor,append_new,1)
 else:
