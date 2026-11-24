@@ -2,6 +2,7 @@
 """Install a read-only runtime trace for Mega Turrican's player descriptors."""
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
