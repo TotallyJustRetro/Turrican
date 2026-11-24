@@ -42,6 +42,31 @@ static void md_coop_trace_bytes(FILE *f, uint32_t a, unsigned count) {
     if ((count & 15u) != 0u) fputc('\n', f);
 }
 
+/* Dump the first eight longwords at the selector base once. Address 0x1994
+   is also a generated code entry, so keep this explicitly labeled as raw
+   candidates until the ROM's code/data overlap is resolved. */
+static void md_coop_trace_dump_selector_words(void) {
+    static int dumped;
+    if (dumped) return;
+    dumped = 1;
+    FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
+    if (!f) return;
+    fprintf(f, "\\n=== RAW SELECTOR WORDS base=001994 count=8 (not yet classified) ===\\n");
+    for (unsigned i = 0; i < 8u; ++i) {
+        uint32_t address = 0x1994u + i * 4u;
+        uint32_t candidate = md_coop_trace_rom32(address);
+        fprintf(f, "selector=%u source=%06X raw_long=%08X", i, address, candidate);
+        if (candidate != 0xFFFFFFFFu && rom && candidate < romlen && romlen - candidate >= 64u) {
+            fprintf(f, " candidate_bytes_00_to_3F:\\n");
+            md_coop_trace_bytes(f, candidate, 64u);
+        } else {
+            fputs(" candidate_outside_rom_or_truncated\\n", f);
+        }
+    }
+    fflush(f);
+    fclose(f);
+}
+
 void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
     static struct { uint32_t descriptor; uint16_t selector; unsigned phase; } seen[32];
     static unsigned seen_count;
