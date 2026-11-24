@@ -293,3 +293,33 @@ The strongest player-lives candidate is now `$FFBF26`:
 - By contrast, `$FFBF3A` is initialized separately and decremented at PC `0x1932`; it remains the continue-stock candidate, not the player-life field.
 
 The init values, decrement path, and increment path together make `$FFBF26` a high-confidence P1 lives counter. It is still a single global RAM byte today, so it is not yet separate per player. A read-only trace of the three write sites should be added before making any life-system changes, so a later run can confirm exactly when the decrement and award paths execute. The P2 implementation must preserve independent P1/P2 values while keeping `$FFBF3A` as a shared continue stock until the requested co-op continue rules are implemented deliberately.
+
+
+## Selector-table decode: code/data overlap is deliberate (2026-11-24)
+
+The generated-code listing resolves why the selector base looked suspicious. `f_156A` reads 32-bit entries from `0x1994 + selector*4`, and the same addresses are decoded as 68000 immediate-byte instructions in the translated function:
+
+- At `0x1994`, the generated instruction is `ORI.B #$5E,D0`; the four ROM bytes are simultaneously read by the selector path as a longword. The runtime trace for selector 0 resolves that longword to descriptor `0x008E5E`.
+- At `0x1998`, the instruction is `ORI.B #$BA,D0`, so the ignored high byte of its immediate extension can carry part of another descriptor address.
+- The same pattern continues at `0x199C`, `0x19A0`, `0x19A4`, `0x19A8`, and `0x19AC`. The translated code shows byte immediates `BA`, `86`, `F2`, `BC`, and `82` at those sites. Because an 8-bit immediate occupies the low byte of a 16-bit extension word, the high byte is still present in ROM and is included when the selector routine reads the full 32-bit instruction as data.
+
+This is a genuine code/data overlap used to hide/store the descriptor pointer values inside otherwise valid instructions, not evidence that the table read is accidental. The generated C preserves the instruction behavior, while the runtime ROM still supplies the full pointer values.
+
+The selector logic compares `$FFBF1E` against `6`, so indexes 0 through 6 are the key candidate range. The current read-only trace build dumps the first eight raw longwords at `0x1994 + index*4`, and dumps 64 bytes at any in-ROM candidate. That will show whether the other entries point to coherent descriptor records, and whether entries are unique or intentionally shared. Do not assume that a valid descriptor means a second player: it could describe alternate animation, a state, or a resource variant. We need to compare its callback/resource fields to selector 0 before deciding.
+
+### Latest diagnostic package
+
+- Build #552 completed successfully on 2026-11-24: https://github.com/TotallyJustRetro/Turrican/actions/runs/45356482306
+- Commit: `f73057ed0d5c39151db851792dcb8219e9cf5b81`
+- Windows package artifact: `MegaTurrican-Windows-x64` (artifact ID `14903122280`)
+- The package contains the raw selector dump. It changes no gameplay behavior and does not enable multiplayer.
+
+## Player-life evidence refinement
+
+The generated code gives a strong static identification of `$FFBF26` as the lives byte:
+
+- `f_1944` initializes it to 2, 3, or 5 based on the selected difficulty/settings byte `$FFBC69`.
+- `f_156A` tests it for zero and has a BCD decrement path at PCs `0x175A-0x1766`.
+- `f_6566` has a BCD increment path at `0x6574-0x657C` through wrapper `f_6500`.
+
+The initialization and death/continue decision path support the lives interpretation strongly; the increment path is a plausible life-award route. Its gameplay trigger still needs to be associated with its caller/event before we label it an extra-life pickup. This is enough to preserve `$FFBF26` as P1's lives field in the actor-ownership map, but not enough to alter it or implement P2 lives yet.
