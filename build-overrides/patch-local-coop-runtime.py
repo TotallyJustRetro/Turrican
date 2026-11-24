@@ -136,6 +136,7 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC5E, 0xBC61); /* player transition callback */
         md_coop_p2_mark(0xBC68, 0xBC68); /* player contact/weapon state */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
+        md_coop_p2_mark(0xBC7E, 0xBC83); /* per-player input sequence pointer/state */
         md_coop_p2_mark(0xBC70, 0xBC70);
         md_coop_p2_mark(0xBC84, 0xBC8B);
         md_coop_p2_mark(0xBC90, 0xBC91);
@@ -375,6 +376,8 @@ static int md_coop_p2_call_slot(M68K *p2, unsigned slot, uint32_t sentinel) {
     if (!p2 || slot > 0xFFFCu) return 0;
     target = RD32(0xFFFF0000u + (uint32_t)slot);
     if (!target) return 1;
+    /* The original dispatch loads the function pointer into A0 before calling. */
+    p2->a[0] = target;
     return md_coop_p2_call_native(p2, target, sentinel);
 }
 
@@ -402,13 +405,17 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
 
-    /* f_15DE tests BC88 and conditionally invokes f_5BC. */
+    /* Mirror PCs 0x15DE-0x1614, including the conditional input/state
+       branch. The old P2 pass skipped it, leaving BD26 and BC82/83 stale. */
     fl_logic(p2, RD8(0xFFFFBC88u), 8);
-    if (!cond(p2, 6) &&
-        !md_coop_p2_call_native(p2, 0x000005BCu, 0x00FEEE14u)) {
-        md_coop_p2_abort("P2 animation descriptor setup failed", callback);
-        md_coop_p2_finish();
-        return;
+    if (!cond(p2, 6)) {
+        p2->d[0] = 2u;
+        p2->a[0] = RD32(0xFFFFBC5Au);
+        if (!md_coop_p2_call_native(p2, 0x000005BCu, 0x00FEEE14u)) {
+            md_coop_p2_abort("P2 animation descriptor setup failed", callback);
+            md_coop_p2_finish();
+            return;
+        }
     }
     if (!md_coop_p2_call_native(p2, 0x000008BEu, 0x00FEEE18u)) {
         md_coop_p2_abort("P2 animation state reset failed", callback);
@@ -416,9 +423,28 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
 
-    /* f_1612 uses f_8BE's flags to decide whether f_2150 is needed. */
+    /* The original checks BC70, then port-1 START in bit 7 (P2's BC90 is
+       fed from controller port 2). Keep the same conditional BD26/BC70
+       writes and invoke f_E0C with P2's own BC7E cursor and BC82/83 bytes. */
+    fl_logic(p2, RD8(0xFFFFBC70u), 8);
+    if (!cond(p2, 7)) {
+        p2->z = (RD8(0xFFFFBC90u) & 0x80u) == 0u;
+        if (!cond(p2, 6)) {
+            WR8(0xFFFFBD26u, cond(p2, 0) ? 0xFFu : 0u);
+            WR8(0xFFFFBC70u, 1u);
+        }
+        if (!md_coop_p2_call_native(p2, 0x00000E0Cu, 0x00FEEE1Cu)) {
+            md_coop_p2_abort("P2 input/ground-state update failed", callback);
+            md_coop_p2_finish();
+            return;
+        }
+    }
+
+    /* PC 0x160E reloads BF28 before testing whether the alternate animation
+       state callback f_2150 should run. */
+    fl_logic(p2, RD16(0xFFFFBF28u), 16);
     if (!cond(p2, 6) &&
-        !md_coop_p2_call_native(p2, 0x00002150u, 0x00FEEE1Cu)) {
+        !md_coop_p2_call_native(p2, 0x00002150u, 0x00FEEE20u)) {
         md_coop_p2_abort("P2 alternate animation-state update failed", callback);
         md_coop_p2_finish();
         return;
@@ -453,8 +479,14 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
-    if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u) ||
-        !md_coop_p2_call_native(p2, callback, 0x00FEEE38u)) {
+    if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u)) {
+        md_coop_p2_abort("P2 sprite builder failed to restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+    /* PC 0x165C loads BC62 into A0 before the original indirect dispatch. */
+    p2->a[0] = callback;
+    if (!md_coop_p2_call_native(p2, callback, 0x00FEEE38u)) {
         md_coop_p2_abort("P2 sprite builder/player callback failed to restore its private stack", callback);
         md_coop_p2_finish();
         return;
@@ -531,11 +563,18 @@ checks = {
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC23)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
+    "P2 owns input sequence state for f_E0C": "md_coop_p2_mark(0xBC7E, 0xBC83)" in h,
     "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
     "P2 owns descriptor pointers and DMA slots": "md_coop_p2_mark(0xBC5A, 0xBC5D)" in h and "md_coop_p2_mark(0xBC94, 0xBC9B)" in h,
     "P2 restores descriptor callback A6 contexts": "p2->a[6] = 0xFFFFDFCEu;" in g and "p2->a[6] = 0xFFFFE002u;" in g,
     "P2 owns motion descriptor RAM": "md_coop_p2_mark(0xBF08, 0xBF29)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h,
     "P2 resets private multipart scratch every frame": "0x00005D8Au" in g,
+    "P2 mirrors BC70/port-2 state branch": "RD8(0xFFFFBC70u)" in g and "RD8(0xFFFFBC90u) & 0x80u" in g,
+    "P2 mirrors f_5BC A0 input": "p2->a[0] = RD32(0xFFFFBC5Au);" in g,
+    "P2 runs f_E0C input/ground-state update": "0x00000E0Cu" in g,
+    "P2 reloads BF28 before conditional animation callback": "fl_logic(p2, RD16(0xFFFFBF28u), 16);" in g,
+    "P2 main callback gets its A0 target": "p2->a[0] = callback;" in g,
+    "P2 callback-slot dispatch loads A0": "p2->a[0] = target;" in g,
     "P2 runs player-local animation preamble": "0x00003B38u" in g and "0x00001E00u" in g and "0x00002150u" in g,
     "P2 runs native sprite builder through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 post-contact pass is after shared render flush": "md_coop_run_local_p2_post(c);" in g and "L_1666:" in g,
