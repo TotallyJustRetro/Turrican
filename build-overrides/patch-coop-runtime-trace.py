@@ -51,16 +51,16 @@ static void md_coop_trace_dump_selector_words(void) {
     dumped = 1;
     FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
     if (!f) return;
-    fprintf(f, "\\n=== RAW SELECTOR WORDS base=001994 count=8 (not yet classified) ===\\n");
+    fprintf(f, "\n=== RAW SELECTOR WORDS base=001994 count=8 (not yet classified) ===\n");
     for (unsigned i = 0; i < 8u; ++i) {
         uint32_t address = 0x1994u + i * 4u;
         uint32_t candidate = md_coop_trace_rom32(address);
         fprintf(f, "selector=%u source=%06X raw_long=%08X", i, address, candidate);
         if (candidate != 0xFFFFFFFFu && rom && candidate < romlen && romlen - candidate >= 64u) {
-            fprintf(f, " candidate_bytes_00_to_3F:\\n");
+            fprintf(f, " candidate_bytes_00_to_3F:\n");
             md_coop_trace_bytes(f, candidate, 64u);
         } else {
-            fputs(" candidate_outside_rom_or_truncated\\n", f);
+            fputs(" candidate_outside_rom_or_truncated\n", f);
         }
     }
     fflush(f);
@@ -68,6 +68,7 @@ static void md_coop_trace_dump_selector_words(void) {
 }
 
 void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
+    md_coop_trace_dump_selector_words();
     static struct { uint32_t descriptor; uint16_t selector; unsigned phase; } seen[32];
     static unsigned seen_count;
     uint16_t selector = ((uint16_t)ram[0xBF1E] << 8) | ram[0xBF1F];
