@@ -395,10 +395,10 @@ if "void md_coop_p2_capture_render_seed(M68K *primary);" not in header:
         raise SystemExit("local co-op patch: header declaration insertion anchor missing")
     header = header.replace(
         marker,
-        "void md_coop_p2_capture_render_seed(M68K *primary);\\n" + marker,
+        "void md_coop_p2_capture_render_seed(M68K *primary);\n" + marker,
         1,
     )
-RT_HEADER.write_text(header, encoding="utf-8", newline="\\n")
+RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 
 # 3) Add native actor execution in the generated translation unit, where the
 # static f_5DB2() renderer is visible. Every call gets a private stack frame and
