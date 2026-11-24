@@ -104,6 +104,18 @@ The recovery build's runtime-state report provides a narrower, safer scheduling 
 6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
 7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
 
+## ROM descriptor selector behavior
+
+The selector at `$FFBF1E` is not simply copied as a character ID. The initializer feeds it through several ROM-table helpers before installing its callbacks:
+
+- `f_B0A` multiplies D0 by four, selects a longword through the table rooted at ROM `0xB1C+12`, then follows another offset table and reads a word.
+- `f_B38` similarly indexes a longword table rooted at ROM `0xB3E-34`, follows the selected pointer, and copies a count-controlled block.
+- `f_AD2` preserves A0, computes D0=`selector*4`, computes D1 as an eight-byte stride, indexes the table rooted at ROM `0xB1C`, follows a second offset table, loads register data, and restores A0.
+- `f_19FA` uses the resulting values to populate the first nested callback/resource structure and calls the selected target at `0x1AF0`. The direct `descriptor+2` bytes are therefore not enough to identify that callback; the target recorded at phase `101` is the correct value.
+- The second nested chain and the descriptor `+38` callback are also captured after their actual runtime setup at phases `102` and `103`. This avoids treating raw descriptor fields as callable pointers when the game performs additional indexed lookup first.
+
+The selector may distinguish character or animation/resource variants, but that meaning is not proven yet. The runtime capture will reveal the exact selector and the callable targets for the title/level state we test.
+
 ## Exact runtime callback trace points
 
 The diagnostic hook now records the actual 68000 target address immediately before each selected indirect call. Phase IDs are fixed in the trace output:
