@@ -80,7 +80,7 @@ for rel in FILES:
    fn_lines[name]=(start+1,end)
   direct_call=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(\s*c\s*\)")
   actor_addr=re.compile(r"0xFFFF([0-9A-Fa-f]{4})u",re.I)
-  audit_roots=("f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2")
+  audit_roots=("f_200","f_468","f_1D10","f_1D54","f_1944","f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2")
   for root in audit_roots:
    if root not in fn_bodies:
     emit(f"PLAYER_GRAPH_ROOT_MISSING {root}")
@@ -146,6 +146,32 @@ for rel in FILES:
     context=" ".join(bl[max(0,ix-5):ix+1])
     slots=sorted(set(m.group(1).upper() for m in re.finditer(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})u",context,re.I)))
     emit(f"PLAYER_CALLBACK_DISPATCH function={root} line={fn_lines[root][0]+ix} slots={','.join('$FF'+s for s in slots) or 'dynamic'} code={line.strip()[:240]}")
+  emit("[PLAYER_ENTRY_CALLER_AUDIT]")
+  for target in ("f_156A","f_19FA","f_1BDE","f_224C"):
+   found=[]
+   for caller,body in fn_bodies.items():
+    for m in re.finditer(r"\b"+re.escape(target)+r"\s*\(\s*c\s*\)",body):
+     before=body[:m.start()].splitlines()
+     local="\n".join(before[-8:])
+     found.append((caller,fn_lines[caller][0]+len(before)-1,local,body[m.start():m.end()]))
+   emit(f"PLAYER_DIRECT_CALLERS target={target} count={len(found)}")
+   for caller,line_no,context,call in found[:80]:
+    emit(f"PLAYER_CALLER target={target} caller={caller} line={line_no} call={call} preceding={context[-900:].replace(chr(10),' | ')}")
+  emit("[PLAYER_ADDRESS_LITERAL_REFERENCES]")
+  for n,line in enumerate(lines,1):
+   if re.search(r"(?<![0-9A-Fa-f])0x0*156A(?:u|\\b)",line,re.I):
+    emit(f"PLAYER_ADDRESS_LITERAL line={n} {line.strip()[:320]}")
+  emit("[PLAYER_DYNAMIC_CALL_CONTEXTS_IN_ENTRY_CANDIDATES]")
+  for name in ("f_200","f_468","f_1D10","f_1D54","f_1944","f_156A"):
+   body=fn_bodies.get(name)
+   if not body: continue
+   bl=body.splitlines()
+   emit(f"PLAYER_ENTRY_CANDIDATE {name} source_lines={fn_lines[name][0]}-{fn_lines[name][1]}")
+   for ix,line in enumerate(bl):
+    if "rt_call_addr" not in line: continue
+    lo=max(0,ix-10); hi=min(len(bl),ix+4)
+    for q in range(lo,hi):
+     emit(f"  ENTRY_INDIRECT_CONTEXT {name} line={fn_lines[name][0]+q} {bl[q].strip()[:320]}")
   emit("[PLAYER_CONTEXT_DESCRIPTOR_SETUP]")
   for name in ("f_156A","f_1994","f_19FA","f_1BDE","f_2150","f_224C"):
    body=fn_bodies.get(name)
@@ -1463,7 +1489,7 @@ if gen.exists():
   if re.search(r"#\s*define\s+(?:RD|WR)(?:8|16|32)|rt_shadow|rt_sp|rt_call_addr|rt_fix_ret|extern\s+M68K|static\s+uint32_t",line):
    emit(f"RECOMP_RUNTIME_DECL line={n} {line[:320]}")
  emit("[PLAYER_FRAME_AND_CALLBACK_BODIES]")
- for name,limit in (("f_156A",420),("f_19FA",220),("f_1BDE",180),("f_224C",960),("f_2150",120),("f_5DB2",200)):
+ for name,limit in (("f_200",220),("f_468",220),("f_1D10",220),("f_1D54",220),("f_1944",120),("f_156A",420),("f_19FA",220),("f_1BDE",180),("f_224C",960),("f_2150",120),("f_5DB2",200)):
   body=fn_bodies.get(name) if "fn_bodies" in locals() else None
   if not body:
    emit(f"PLAYER_FRAME_BODY_MISSING {name}")
