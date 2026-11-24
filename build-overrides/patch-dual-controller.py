@@ -128,50 +128,33 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
 '''
 main=main[:settings_start]+settings_block+main[launch_marker:]
 
-cfg_start=main.find("  const cfg = [")
-if cfg_start<0: raise SystemExit("dual-controller patch: launcher cfg array not found")
-# Replace whichever legacy P1 map declaration the current launcher bundle uses.
-# The controller-menu patch can encounter an older main.js with slightly different
-# whitespace/formatting, so anchor on the final padMap declaration before cfg.
-for name in ("pad2Map", "padMap"):
-    prefix=main[:cfg_start]
-    matches=list(re.finditer(r"(?m)^[ \t]*(?:const|let|var)\s+"+name+r"\s*=",prefix))
-    if matches:
-        match=matches[-1]
-        semicolon=main.find(";",match.start())
-        if semicolon<0 or semicolon>=cfg_start:
-            raise SystemExit("dual-controller patch: malformed existing "+name+" declaration")
-        main=main[:match.start()]+main[semicolon+1:]
-        cfg_start=main.find("  const cfg = [")
-# Add normalized maps immediately before the launch config array.
-norm_code="""  const controllerSettings = normalizeControllerSettings(settings);
-  const padMap = controllerSettings.padMap;
-  const pad2Map = controllerSettings.pad2Map;
+# Add the two binding sets immediately before the generated config.ini is written.
+# This avoids depending on the formatting or closing syntax of the existing cfg array.
+write_anchor="fs.writeFileSync(configPath,"
+if main.count(write_anchor)!=1:
+    raise SystemExit("dual-controller patch: config.ini write site not found uniquely")
+inject=r"""
+  // Dual-controller settings are injected after the legacy cfg array is built.
+  const dualControllerSettingsForLaunch = normalizeControllerSettings(settings);
+  const dualPadConfigForLaunch = [];
+  const dualPadKeysForLaunch = new Set();
+  const dualPadActionsForLaunch = [
+    ['up',0],['down',1],['left',2],['right',3],
+    ['a',4],['b',5],['c',6],['start',7]
+  ];
+  for (const [key,index] of dualPadActionsForLaunch) {
+    dualPadConfigForLaunch.push('pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
+    dualPadConfigForLaunch.push('pad2_' + key + '=' + dualControllerSettingsForLaunch.pad2Map[index]);
+  }
+  for (const entry of dualPadConfigForLaunch) dualPadKeysForLaunch.add(entry.slice(0, entry.indexOf('=')));
+  for (let i = cfg.length - 1; i >= 0; i--) {
+    const entry = String(cfg[i]);
+    const at = entry.indexOf('=');
+    if (at > 0 && dualPadKeysForLaunch.has(entry.slice(0, at))) cfg.splice(i, 1);
+  }
+  cfg.push(...dualPadConfigForLaunch);
 """
-main=main[:cfg_start]+norm_code+main[cfg_start:]
-cfg_start=main.find("  const cfg = [")
-cfg_end=main.find("\n  ];",cfg_start)
-if cfg_start<0 or cfg_end<0: raise SystemExit("dual-controller patch: could not locate end of launcher cfg array")
-cfg_end+=len("\n  ];")
-pad_keys = [
-    ("up",0),("down",1),("left",2),("right",3),
-    ("a",4),("b",5),("c",6),("start",7)
-]
-extra_lines=["", "  // Keep the two physical Genesis controller profiles independent."]
-extra_lines.append("  const dualPadConfig = [];")
-for key,index in pad_keys:
-    extra_lines.append(f"  dualPadConfig.push('pad_{key}=' + padMap[{index}]);")
-    extra_lines.append(f"  dualPadConfig.push('pad2_{key}=' + pad2Map[{index}]);")
-extra_lines += [
-    "  const dualPadKeys = new Set(dualPadConfig.map(line => line.slice(0, line.indexOf('='))));",
-    "  for (let i = cfg.length - 1; i >= 0; i--) {",
-    "    const line = String(cfg[i]);",
-    "    const at = line.indexOf('=');",
-    "    if (at > 0 && dualPadKeys.has(line.slice(0, at))) cfg.splice(i, 1);",
-    "  }",
-    "  cfg.push(...dualPadConfig);"
-]
-main=main[:cfg_end]+"\n"+"\n".join(extra_lines)+main[cfg_end:]
+main=main.replace(write_anchor,inject+"\n  "+write_anchor,1)
 MAIN.write_text(main,encoding="utf-8")
 
 # 2. Launcher profile switch and JS keep the two maps independent.
