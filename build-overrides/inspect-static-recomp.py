@@ -403,8 +403,9 @@ if gen.exists():
   block_lines=block.splitlines()
   support_emitted.add(name)
   emit(f"TRANSFER_SUPPORT_BODY {name} source_lines={source.count(chr(10),0,hit.start())+1}-{source.count(chr(10),0,end)+1}")
-  for line in block_lines[:220]: emit("  "+line[:280])
-  if len(block_lines)>220: emit(f"  ... clipped {len(block_lines)-220} further lines ...")
+  body_limit=460 if name=="f_156A" else 220
+  for line in block_lines[:body_limit]: emit("  "+line[:280])
+  if len(block_lines)>body_limit: emit(f"  ... clipped {len(block_lines)-body_limit} further lines ...")
 
  # For transfer helper/support functions, list fixed ROM pointers and static
  # RAM buffers used as sources or destinations.
