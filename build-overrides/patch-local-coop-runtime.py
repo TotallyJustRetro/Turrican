@@ -368,7 +368,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_native_init_seed(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -582,6 +582,7 @@ checks = {
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 captures pre-f_19FA register/template context": "md_coop_p2_capture_native_init_seed(c)" in g and "md_coop_p2_native_init_seed_valid" in h,
+    "P2 capture hook has a prototype before f_156A": "void md_coop_p2_capture_native_init_seed(M68K *primary);" in r,
     "P2 builds native callback/resource state through f_19FA": "f_19FA(p2);" in g and "md_coop_p2_call_native_19fa(p2)" in g,
     "P2 keeps f_19FA callback buffers private": "md_coop_p2_mark(0xBC3C, 0xBC50)" in h and "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h and "md_coop_p2_mark(0xDFCE, 0xE036)" in h,
     "P2 restores only the native sprite-part input after f_19FA": "md_coop_p2_restore_sprite_parts();" in g and "memcpy(&md_coop_p2_ram[0xFCE8], md_coop_p2_primary_sprite_parts" in h,
