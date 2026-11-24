@@ -128,27 +128,39 @@ ipcMain.handle('controller-settings-save', async (_event, settings = {}) => {
 '''
 main=main[:settings_start]+settings_block+main[launch_marker:]
 
-old_norm="""  const padMap = Array.isArray(settings.padMap) && settings.padMap.length === 8
-    ? settings.padMap.map(Number) : defaultControllerSettings.padMap;
-"""
-if main.count(old_norm)!=1:
-    raise SystemExit("dual-controller patch: launcher P1 config-map normalization anchor missing")
-main=main.replace(old_norm,
-"""  const controllerSettings = normalizeControllerSettings(settings);
+cfg_start=main.find("  const cfg = [")
+if cfg_start<0: raise SystemExit("dual-controller patch: launcher cfg array not found")
+# Inject normalized P1/P2 mappings after the config array has been assembled.
+# Remove any previous pad_* entries first, then append exactly one of each.
+norm_code="""  const controllerSettings = normalizeControllerSettings(settings);
   const padMap = controllerSettings.padMap;
   const pad2Map = controllerSettings.pad2Map;
-""",1)
-for i,key in enumerate(MAP_KEYS):
-    line=f"    'pad_{key}=' + padMap[{i}],"
-    # The original cfg array uses template strings; accept either exact style or convert the mapping line.
-    template_line="    " + chr(96) + "pad_"+key+"="+chr(36)+"{padMap["+str(i)+"]}" + chr(96) + ","
-    if main.count(template_line)==1:
-        p2_line="    " + chr(96) + "pad2_"+key+"="+chr(36)+"{pad2Map["+str(i)+"]}" + chr(96) + ","
-        main=main.replace(template_line,template_line+"\n"+p2_line,1)
-    elif main.count(line)==1:
-        main=main.replace(line,line+"\n"+f"    'pad2_{key}=' + pad2Map[{i}],",1)
-    else:
-        raise SystemExit(f"dual-controller patch: config.ini mapping line for pad_{key} not found uniquely")
+"""
+if "const controllerSettings = normalizeControllerSettings(settings);" not in main:
+    main=main[:cfg_start]+norm_code+main[cfg_start:]
+cfg_start=main.find("  const cfg = [")
+cfg_end=main.find("\n  ];",cfg_start)
+if cfg_start<0 or cfg_end<0: raise SystemExit("dual-controller patch: could not locate end of launcher cfg array")
+cfg_end+=len("\n  ];")
+pad_keys = [
+    ("up",0),("down",1),("left",2),("right",3),
+    ("a",4),("b",5),("c",6),("start",7)
+]
+extra_lines=["", "  // Keep the two physical Genesis controller profiles independent."]
+extra_lines.append("  const dualPadConfig = [];")
+for key,index in pad_keys:
+    extra_lines.append(f"  dualPadConfig.push('pad_{key}=' + padMap[{index}]);")
+    extra_lines.append(f"  dualPadConfig.push('pad2_{key}=' + pad2Map[{index}]);")
+extra_lines += [
+    "  const dualPadKeys = new Set(dualPadConfig.map(line => line.slice(0, line.indexOf('='))));",
+    "  for (let i = cfg.length - 1; i >= 0; i--) {",
+    "    const line = String(cfg[i]);",
+    "    const at = line.indexOf('=');",
+    "    if (at > 0 && dualPadKeys.has(line.slice(0, at))) cfg.splice(i, 1);",
+    "  }",
+    "  cfg.push(...dualPadConfig);"
+]
+main=main[:cfg_end]+"\n"+"\n".join(extra_lines)+main[cfg_end:]
 MAIN.write_text(main,encoding="utf-8")
 
 # 2. Launcher profile switch and JS keep the two maps independent.
@@ -235,9 +247,12 @@ $("resetPad").addEventListener("click",()=>{
 function getPads(){try{return [...(navigator.getGamepads?.()||[])].filter(Boolean);}catch(_){return [];}}
 function refreshPadChoices(pads){
  const signature=pads.map(p=>p.index+":"+p.id).join("|");
- if(signature===lastPadSignature&&$("controllerSelect").options.length)return;
- lastPadSignature=signature;
  const select=$("controllerSelect"),previous=selectedGamepadIndex[activePadProfile];
+ if(signature===lastPadSignature&&select.options.length){
+  select.value=String(previous);
+  return;
+ }
+ lastPadSignature=signature;
  select.replaceChildren();
  if(!pads.length){
   const option=document.createElement("option");option.value="-1";option.textContent="No controller detected";select.append(option);
@@ -248,7 +263,7 @@ function refreshPadChoices(pads){
   option.textContent=(n+1)+" · "+pad.id.slice(0,58);select.append(option);
  });
  const fallback=activePadProfile===1?pads[0]:(pads[1]||null);
- selectedGamepadIndex[activePadProfile]=pads.some(p=>p.index===previous)?previous:(fallback?fallback.index:pads[0].index);
+ selectedGamepadIndex[activePadProfile]=pads.some(p=>p.index===previous)?previous:(fallback?fallback.index:-1);
  select.value=String(selectedGamepadIndex[activePadProfile]);
 }
 $("controllerSelect").addEventListener("change",()=>{
