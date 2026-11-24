@@ -216,37 +216,46 @@ if "Mega Turrican local co-op: isolated P2 actor memory view." not in HARNESS.re
 # Route only explicit P2-private RAM and the synthetic P2 stack through the bank.
 # rd8_raw() and vdp_dma_read() are intentionally untouched: DMA still sees
 # the real shared RAM image.
-replace_once(
+def insert_after_ram_mask(path: Path, signature: str, injected: str, label: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    if injected.strip() in source:
+        return
+    pattern = re.compile(
+        r"(" + signature + r"\s*\{\s*a\s*&=\s*0xFFFFFF\s*;\s*)",
+        re.MULTILINE,
+    )
+    source, count = pattern.subn(lambda match: match.group(1) + injected, source, count=1)
+    if count != 1:
+        raise SystemExit(f"local co-op patch: could not find {label} signature/24-bit mask in {path}")
+    path.write_text(source, encoding="utf-8", newline="\n")
+
+insert_after_ram_mask(
     HARNESS,
-    "uint8_t bus_rd8(uint32_t a){ a &= 0xFFFFFF;\n",
-    "uint8_t bus_rd8(uint32_t a){ a &= 0xFFFFFF;\n"
+    r"uint8_t\s+bus_rd8\s*\(\s*uint32_t\s+a\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u) return md_coop_p2_stack[a & 0xFFFFu];\n"
     "  if(md_coop_p2_active && a >= 0xE00000u && md_coop_p2_private[a & 0xFFFFu]) return md_coop_p2_ram[a & 0xFFFFu];\n",
-    "bus_rd8 P2 mapping",
+    "bus_rd8",
 )
-replace_once(
+insert_after_ram_mask(
     HARNESS,
-    "uint16_t bus_rd16(uint32_t a){ a &= 0xFFFFFF;\n",
-    "uint16_t bus_rd16(uint32_t a){ a &= 0xFFFFFF;\n"
+    r"uint16_t\s+bus_rd16\s*\(\s*uint32_t\s+a\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ unsigned o=a&0xFFFFu; return (uint16_t)(((uint16_t)md_coop_p2_stack[o]<<8)|md_coop_p2_stack[(o+1u)&0xFFFFu]); }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u){ unsigned o=a&0xFFFFu, n=(o+1u)&0xFFFFu; uint8_t h=md_coop_p2_private[o]?md_coop_p2_ram[o]:ram[o]; uint8_t l=md_coop_p2_private[n]?md_coop_p2_ram[n]:ram[n]; return (uint16_t)(((uint16_t)h<<8)|l); }\n",
-    "bus_rd16 P2 mapping",
+    "bus_rd16",
 )
-replace_once(
+insert_after_ram_mask(
     HARNESS,
-    "void bus_wr8(uint32_t a, uint8_t v){ a &= 0xFFFFFF;\n",
-    "void bus_wr8(uint32_t a, uint8_t v){ a &= 0xFFFFFF;\n"
+    r"void\s+bus_wr8\s*\(\s*uint32_t\s+a\s*,\s*uint8_t\s+v\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ md_coop_p2_stack[a & 0xFFFFu]=v; return; }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u && md_coop_p2_private[a & 0xFFFFu]){ md_coop_p2_ram[a & 0xFFFFu]=v; return; }\n",
-    "bus_wr8 P2 mapping",
+    "bus_wr8",
 )
-replace_once(
+insert_after_ram_mask(
     HARNESS,
-    "void bus_wr16(uint32_t a, uint16_t v){ a &= 0xFFFFFF;\n",
-    "void bus_wr16(uint32_t a, uint16_t v){ a &= 0xFFFFFF;\n"
+    r"void\s+bus_wr16\s*\(\s*uint32_t\s+a\s*,\s*uint16_t\s+v\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ unsigned o=a&0xFFFFu; md_coop_p2_stack[o]=(uint8_t)(v>>8); md_coop_p2_stack[(o+1u)&0xFFFFu]=(uint8_t)v; return; }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u){ unsigned o=a&0xFFFFu, n=(o+1u)&0xFFFFu; if(md_coop_p2_private[o]) md_coop_p2_ram[o]=(uint8_t)(v>>8); else ram[o]=(uint8_t)(v>>8); if(md_coop_p2_private[n]) md_coop_p2_ram[n]=(uint8_t)v; else ram[n]=(uint8_t)v; return; }\n",
-    "bus_wr16 P2 mapping",
+    "bus_wr16",
 )
 
 # 2) Let generated RT_POLL service the global VDP/IRQ side using the primary CPU.
