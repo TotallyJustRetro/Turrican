@@ -241,8 +241,10 @@ static void maker_prepare_log()
     g_log_file = std::fopen(g_log_path.c_str(), "ab");
     if (g_log_file) {
         std::setvbuf(g_log_file, nullptr, _IOLBF, 0);
-        if (rotation_failed)
-            maker_log("Log rotation could not rename the previous log; continuing with append mode.");
+        if (rotation_failed) {
+            std::fputs("WARNING: log rotation could not rename the previous log; continuing with append mode.\n", g_log_file);
+            std::fflush(g_log_file);
+        }
     }
 }
 
