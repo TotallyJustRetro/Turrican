@@ -168,6 +168,9 @@ inject=r"""
   cfg.push(...dualPadConfigForLaunch);
   process.env.MEGATURRICAN_PAD2_MAP = dualControllerSettingsForLaunch.pad2Map.join(',');
 """# Ensure newly selected controller maps win over stale values retained from config.ini.
+if inject not in main:
+    main=main.replace(write_anchor,inject+"\n"+write_anchor,1)
+
 old_controller_preserve='if (!savedNativeConfig.has(key)) return entry;'
 new_controller_preserve='if (!savedNativeConfig.has(key) || key.startsWith("pad_") || key.startsWith("pad2_")) return entry;'
 if old_controller_preserve in main:
