@@ -372,3 +372,8 @@ The next read-only trace build adds a one-time entry record for `f_2E94` (phase 
 The 306-line user-supplied file contains two appended game sessions. In the first (the longer session), P2 was connected and its input mask/active-low port bytes changed as the user pressed buttons. The sampled player selector remained `0` through the 720 main-player update samples; the active descriptor stayed `0x008E5E`. The second appended session recorded P2 disconnected and also showed selector `0`.
 
 Therefore, while descriptors 1-6 are valid ROM candidates, they were not selected during the captured ordinary play session. They may correspond to special forms, transitions, equipment, animation/resource profiles, or less-common gameplay branches. The next trace logs selector changes and probes the alternate `f_2E94` player-state entry; those are the remaining read-only checks before we decide whether a dormant actor path exists.
+
+
+### Shared player update entry across descriptors
+
+The current `f_19FA` setup analysis shows it installs the same main player update callback, `f_224C`, in `$FFBC62`. The descriptor selector changes the surrounding callback/resource tables and associated player setup fields, but not this core movement entry. This further supports treating selectors 0-6 as profiles/states for the same player actor until contrary runtime evidence appears. A P2 actor would still require a second independent player context and update pass; choosing selector 1 or another descriptor is not, by itself, a P2 implementation.
