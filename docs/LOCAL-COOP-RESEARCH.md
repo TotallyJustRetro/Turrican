@@ -26,6 +26,22 @@ The user's test confirmed that Player 2 was not controllable, moved out of bound
 - The 79-record shared pool is a real capacity constraint. The renderer may request up to 29 records for one character; two complete characters could request up to 58 before projectiles and effects. We need an allocator high-water/remaining-count check and graceful part/effect omission rather than allowing pool exhaustion to corrupt linked-list state.
 - The main player renderer is a strong candidate for reuse once P2's state and scratch inputs are isolated, but the generic object allocator still does not create P2's movement, collision, damage or life state by itself.
 
+## Runtime memory and CPU-context boundary
+
+The generated runtime report shows a potential, more disciplined isolation seam:
+
+- The emulator owns one 64 KB main RAM array, `ram[0x10000]`.
+- `rd8_raw` masks the 68000 address to 24 bits, then returns `ram[a & 0xFFFF]` for work-RAM addresses at or above `0xE00000`.
+- `bus_rd8` and `bus_rd16` special-case VDP ports, then read ordinary memory through `rd8_raw`.
+- `bus_wr8` handles VDP, PSG and Z80 special regions, then writes ordinary work RAM to `ram[a & 0xFFFF]`; `bus_wr16` similarly handles VDP and writes normal RAM bytes.
+- This suggests a central banked-RAM translation layer could isolate a *verified set* of P2-owned RAM addresses while leaving stage state, camera, VDP and shared object lists single-copy. This remains a hypothesis until the generated `RD8/RD16/RD32/WR8/WR16/WR32` macros are verified to pass every relevant access through these bus functions, and the direct plus indirect RAM reference sets have been classified.
+- The M68K context is not just a program counter: `M68K` stores D0-D7, A0-A7, `ret`, `usp`, X/N/Z/V/C and `sr_sys`. P2 needs its own persistent instance; copying the active P1 registers before every P2 callback is specifically forbidden.
+- Generated nested calls also use shared `rt_shadow` / `rt_sp` return bookkeeping. We must inspect how that bookkeeping behaves when callbacks are invoked with a second M68K context, and make it safe for sequential P1/P2 updates.
+- Port 2 is sampled independently by the runtime into the emulated controller bytes `$FFBC92/$FFBC93`; the player callback currently reads `$FFBC90/$FFBC91`. A P2 memory-bank pass can potentially present P2's input at those expected addresses without overwriting P1's input state, but this must be implemented at a verified point in the memory-bus context switch.
+- A banked P2 pass would also need its own player-local scratch such as the 29-entry sprite descriptor buffer at `$FFFFFCE8), while keeping the shared render-record pool and its list heads single-copy.
+
+The key engineering task is now to classify the full player callback's direct and pointer-indirect memory accesses, then define a narrow P2 RAM view and persistent CPU context. Do not bank the whole 64 KB RAM: many addresses in it are shared world, VDP, audio, object-pool, timer and stage state.
+  
 ## Why the previous attempt was unsafe
 
 The old prototype copied P1's upper player RAM window but did not initialize P2 through the game's own descriptor/setup path. It also copied P1's live CPU register context before each P2 callback instead of preserving an independent P2 execution context. That mixed state and caused the observed out-of-bounds movement and corruption.
