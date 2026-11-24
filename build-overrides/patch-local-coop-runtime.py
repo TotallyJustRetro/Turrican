@@ -792,22 +792,16 @@ if "Native Mega Turrican P2 frame slice." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# 4) Initialize P2 at frame entry, then capture the native render context at
-# L_1658 (after player preparation/f_3D80, immediately before P1 f_5DB2).
-# Run P2's actor slice before the P1 actor, then its contact pass after the
-# shared render queue flush and before P1's own contact pass.
-replace_once(
-    GEN,
-    "L_15D2: { RT_POLL(0x15D2); { uint32_t _r=0x15D6u;",
-    "L_15D2: { RT_POLL(0x15D2); md_coop_prepare_p2(c); { uint32_t _r=0x15D6u;",
-    "P2 frame-entry seed hook",
-)
-
+# 4) Clone the P2 actor only after the original player-preparation path has
+# completed. L_1658 is the proven post-preparation seam immediately before
+# P1's f_5DB2 render pass. Seeding at L_15D2 is too early: P1's descriptor,
+# animation and motion state has not been prepared yet, producing an invalid
+# initial P2 actor. Capture the current CPU/render context at the same seam.
 replace_once(
     GEN,
     "L_1658: { RT_POLL(0x1658);",
-    "L_1658: { RT_POLL(0x1658); md_coop_p2_capture_render_seed(c);",
-    "P2 exact pre-render register snapshot hook",
+    "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); md_coop_p2_capture_render_seed(c);",
+    "P2 post-preparation actor seed and render-context hook",
 )
 
 line = re.compile(
@@ -870,6 +864,7 @@ checks = {
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
+    "P2 actor is cloned after player preparation, not at frame entry": "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); md_coop_p2_capture_render_seed(c);" in g and "L_15D2: { RT_POLL(0x15D2); md_coop_prepare_p2(c);" not in g,
     "P2 captures fresh CPU registers at the exact pre-render seam": "void md_coop_p2_capture_render_seed(M68K *primary)" in h and "md_coop_p2_capture_render_seed(c)" in g and "md_coop_p2_frame_seed_valid = 0;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
