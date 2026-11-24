@@ -45,6 +45,9 @@ static uint8_t md_coop_p2_private[0x10000];
 static uint8_t md_coop_p2_stack[0x10000];
 static M68K md_coop_p2_m68k;
 static M68K md_coop_p2_frame_seed;
+static uint8_t md_coop_p2_primary_sprite_parts[0xE8];
+static int md_coop_p2_primary_sprite_parts_valid = 0;
+static unsigned md_coop_p2_primary_sprite_parts_nonzero = 0;
 static M68K *md_coop_primary_m68k = NULL;
 static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
@@ -109,6 +112,8 @@ void md_coop_prepare_p2(M68K *primary) {
     md_coop_primary_m68k = primary;
     /* Each frame must capture a fresh renderer context at the 1658 seam. */
     md_coop_p2_frame_seed_valid = 0;
+    md_coop_p2_primary_sprite_parts_valid = 0;
+    md_coop_p2_primary_sprite_parts_nonzero = 0;
     if (md_coop_p2_disabled || !md_player2_connected) {
         md_coop_p2_frame_seed_valid = 0;
         return;
@@ -183,10 +188,52 @@ void md_coop_prepare_p2(M68K *primary) {
    immediately before P1's f_5DB2 sprite builder. The P2 pass runs just after
    that builder, so preserve the CPU context from this exact pre-render seam. */
 void md_coop_p2_capture_render_seed(M68K *primary) {
+    unsigned i;
+    uint32_t first;
+    FILE *f;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_primary_m68k = primary;
     memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
+
+    /* At this exact native seam P1 has prepared the current 29-part sprite
+       descriptor list, but its f_5DB2 renderer has not consumed/cleared it.
+       Preserve only those descriptors for P2's independent renderer pass. */
+    memcpy(md_coop_p2_primary_sprite_parts, &ram[0xFCE8],
+           sizeof md_coop_p2_primary_sprite_parts);
+    md_coop_p2_primary_sprite_parts_nonzero = 0;
+    for (i = 0; i < 29u; ++i) {
+        unsigned o = i * 8u;
+        if (md_coop_p2_primary_sprite_parts[o] ||
+            md_coop_p2_primary_sprite_parts[o + 1u] ||
+            md_coop_p2_primary_sprite_parts[o + 2u] ||
+            md_coop_p2_primary_sprite_parts[o + 3u])
+            ++md_coop_p2_primary_sprite_parts_nonzero;
+    }
+    md_coop_p2_primary_sprite_parts_valid = 1;
+    first = ((uint32_t)md_coop_p2_primary_sprite_parts[0] << 24) |
+            ((uint32_t)md_coop_p2_primary_sprite_parts[1] << 16) |
+            ((uint32_t)md_coop_p2_primary_sprite_parts[2] << 8) |
+            (uint32_t)md_coop_p2_primary_sprite_parts[3];
+
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (f) {
+        fprintf(f, "event=primary-sprite-parts frame=%lu nonzero=%u first=%08X valid=%d\\n",
+                md_coop_p2_frame_count, md_coop_p2_primary_sprite_parts_nonzero,
+                (unsigned)first, md_coop_p2_primary_sprite_parts_valid);
+        fclose(f);
+    }
     md_coop_p2_frame_seed_valid = 1;
+}
+
+/* f_5D8A clears P2's FCE8 table at frame entry. Restore the current frame's
+   prepared part descriptors captured from P1 immediately before P1's own
+   f_5DB2 consumes them. Player position/physics/state remain P2-private. */
+void md_coop_p2_seed_sprite_parts(void) {
+    if (!md_coop_p2_is_ready() || !md_coop_p2_primary_sprite_parts_valid)
+        return;
+    memcpy(&md_coop_p2_ram[0xFCE8],
+           md_coop_p2_primary_sprite_parts,
+           sizeof md_coop_p2_primary_sprite_parts);
 }
 
 void md_coop_p2_refresh(void) {
@@ -510,6 +557,7 @@ extern void md_coop_p2_hud_begin(void);
 extern void md_coop_p2_hud_end(void);
 extern void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint16_t count_before, uint16_t count_after, uint32_t callback);
 extern void md_coop_p2_sprite_diag(const M68K *cpu, const char *phase);
+extern void md_coop_p2_seed_sprite_parts(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
@@ -688,7 +736,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     {
         uint32_t queue_start = RD32(0xFFFFBC54u);
         uint16_t count_start = RD16(0xFFFFBC58u);
-        md_coop_p2_sprite_diag(p2, "before-f_5DB2");
+        md_coop_p2_seed_sprite_parts();
+        md_coop_p2_sprite_diag(p2, "before-f_5DB2-seeded");
         if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u)) {
             md_coop_p2_abort("P2 sprite builder failed to restore its private stack", callback);
             md_coop_p2_finish();
@@ -827,7 +876,8 @@ checks = {
     "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1D=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
     "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 merges only the appended sprite queue tail into shared RAM": "md_coop_p2_merge_render_queue(queue_start, queue_end" in g and "ram[i] = md_coop_p2_ram[i];" in h,
-    "P2 logs exact f_5DB2 input list and queue state": "md_coop_p2_sprite_diag(p2, \"before-f_5DB2\");" in g and "p2_sprite_parts_FCE8_FDCF=" in h,
+    "P2 logs exact f_5DB2 input list and queue state": "md_coop_p2_sprite_diag(p2, \"before-f_5DB2-seeded\");" in g and "p2_sprite_parts_FCE8_FDCF=" in h,
+    "P2 receives only the current native sprite-part descriptor table": "md_coop_p2_seed_sprite_parts();" in g and "memcpy(md_coop_p2_primary_sprite_parts, &ram[0xFCE8]" in h and "memcpy(&md_coop_p2_ram[0xFCE8]" in h,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
