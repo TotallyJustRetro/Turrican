@@ -205,6 +205,13 @@ void md_coop_p2_sync_handshake(void) {
         md_coop_p2_ram[0xBC85] = ram[0xBC85];
 }
 
+/* Emit a compact trace marker after each player-only phase. Avoid a huge log:
+   capture every phase for the first 12 P2 frames, then once per second. */
+void md_coop_p2_phase_log(const char *phase, uint32_t callback) {
+    if (md_coop_p2_frame_count <= 12u || (md_coop_p2_frame_count % 60u) == 0u)
+        md_coop_p2_log("phase", callback, phase ? phase : "-");
+}
+
 /* f_1E64 builds player-specific counter records through BC54/BC58. Give it
    P2's E002 work table without redirecting the later native P2 body renderer:
    hud_end() restores shared BC54/BC58 visibility before f_5DB2 runs. */
@@ -387,6 +394,7 @@ GEN_RUNNER = r"""
 extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_sync_handshake(void);
+extern void md_coop_p2_phase_log(const char *phase, uint32_t callback);
 extern void md_coop_p2_hud_begin(void);
 extern void md_coop_p2_hud_end(void);
 extern void md_coop_p2_set_active(int active);
@@ -464,6 +472,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_phase_log("player-preamble-5D8A-3B38-1E00", callback);
 
     /* Mirror PCs 0x15DE-0x1614, including the conditional input/state
        branch. The old P2 pass skipped it, leaving BD26 and BC82/83 stale. */
@@ -477,6 +486,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
             return;
         }
     }
+    md_coop_p2_phase_log("animation-descriptor-5BC", callback);
     /* f_8BE is intentionally not rerun: its BC85 wait is serviced by the
        original event path. P2 received the completed BC85 latch above. */
 
@@ -497,6 +507,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         }
     }
 
+    md_coop_p2_phase_log("input-ground-state-E0C", callback);
     /* PC 0x160E reloads BF28 before testing whether the alternate animation
        state callback f_2150 should run. */
     fl_logic(p2, RD16(0xFFFFBF28u), 16);
@@ -536,6 +547,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
     md_coop_p2_hud_end();
+    md_coop_p2_phase_log("player-counter-HUD-1E64", callback);
 
     if (!md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE30u)) {
         md_coop_p2_abort("P2 final per-player callback did not restore its private stack", callback);
@@ -543,12 +555,15 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
 
+    md_coop_p2_phase_log("descriptor-callbacks-BC3C-BC44-BC4C", callback);
+
     /* f_3D80 owns BD28/BF08/BF0C and must run independently for P2. */
     if (!md_coop_p2_call_native(p2, 0x00003D80u, 0x00FEEE30u)) {
         md_coop_p2_abort("P2 player descriptor update failed", callback);
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_phase_log("player-descriptor-3D80", callback);
 
     if (callback != 0x0000224Cu) {
         md_coop_p2_abort("P2 callback changed from verified native entry 0x224C", callback);
@@ -560,6 +575,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_phase_log("sprite-builder-5DB2", callback);
     /* PC 0x165C loads BC62 into A0 before the original indirect dispatch. */
     p2->a[0] = callback;
     if (!md_coop_p2_call_native(p2, callback, 0x00FEEE38u)) {
@@ -568,6 +584,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
 
+    md_coop_p2_phase_log("main-player-actor-224C", callback);
     /* Return to the primary frame with P2 state retained. f_5472 must flush
        the combined P1/P2 queue before P2's post-contact pass runs. */
     md_coop_p2_set_active(0);
@@ -588,6 +605,7 @@ void md_coop_run_local_p2_post(M68K *primary) {
         return;
     }
     md_coop_p2_set_active(0);
+    md_coop_p2_phase_log("post-contact-3BD8-BC20", 0x224C);
     md_coop_p2_actor_complete(p2, 0x224C);
     md_coop_p2_finish();
 }
@@ -656,6 +674,7 @@ checks = {
     "P2 reloads BF28 before conditional animation callback": "fl_logic(p2, RD16(0xFFFFBF28u), 16);" in g,
     "P2 main callback gets its A0 target": "p2->a[0] = callback;" in g,
     "P2 callback-slot dispatch loads A0": "p2->a[0] = target;" in g,
+    "P2 emits phase diagnostics for crash localization": "md_coop_p2_phase_log(\"player-counter-HUD-1E64\"" in g and "md_coop_p2_phase_log(\"main-player-actor-224C\"" in g and "md_coop_p2_phase_log(\"post-contact-3BD8-BC20\"" in g,
     "P2 runs native player HUD/counter pass": "md_coop_p2_call_native(p2, 0x00001E64u" in g,
     "P2 scopes BC54/BC58 away from the shared body queue": "md_coop_p2_hud_begin();" in g and "md_coop_p2_hud_end();" in g,
     "P2 HUD/counter pass precedes BC1C callback": g.index("md_coop_p2_call_native(p2, 0x00001E64u") < g.index("md_coop_p2_call_slot(p2, 0xBC1Cu"),
