@@ -532,7 +532,7 @@ checks = {
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
-    "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
+    "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
