@@ -80,6 +80,30 @@ The depth-six generated-code audit rooted at `f_224C` gives a more specific sepa
 - This is consistent with the coordinate model: `$FFBD1E/$FFBD20) are screen-space coordinates; the camera is represented separately. The shared-camera condition must be based on both screen-space player positions, not a second copy of world scroll state.
 - The callback also touches `$FFBC54/$FFBC58`, `$FFBF20/$FFBF21/$FFBF23), `$FFF226), and `$FFFA00). These fields have mixed cross-routine use, so they remain unclassified; do not bank them merely because they appear under the player call graph.
 
+## Descriptor initialization and player-loop boundary (latest report audit)
+
+The recovery build's runtime-state report provides a narrower, safer scheduling boundary:
+
+- In `f_156A`, the game reads the selector at `$FFBF1E`, scales it by four, reads a longword from the table beginning at ROM address `0x1994`, and passes that selected descriptor pointer to `f_19FA`. The descriptor variants and their exact meaning still need decoding; this does **not** establish that a second table entry is a P2 descriptor.
+- `f_19FA` stores that descriptor pointer in `$FFBC50` and uses descriptor fields to populate several player-context callback/resource slots. Confirmed destinations include `$FFBC1C`, `$FFBC20`, `$FFBC24`, `$FFBC3C`, `$FFBC44`, `$FFBC4C`, and `$FFBC5A`. It installs `f_224C` at `$FFBC62`.
+- The setup routine also initializes two resource chains using the fixed resource roots `$FFDFCE/$FFDD1E/$FF5C00` and `$FFE002/$FFDE4E/$FF9400`. Their ownership is not yet classified: they may be player-specific resource state, shared VDP/resource state, or a mixture. Do not clone or redirect them until their callback effects are traced.
+- A critical detail is now explicit in the initializer body: `f_19FA` calls both `f_5232` and `f_5D8A`. The first rebuilds the shared 79-record object list; the second clears the fixed 29-entry sprite-part scratch table and resets sprite state. A second call to `f_19FA` during a live level would therefore reset shared live state. A future P2 initializer must split player-context setup from one-time shared-pool/sprite initialization rather than simply invoking `f_19FA` twice.
+- The conditional `f_1BDE` path is also unsuitable as a P2 constructor: it calls `f_5578`, `f_5232`, and `f_5D8A` before restoring/rebinding state from saved fields. Its role is a secondary setup/restore path for the existing player, not evidence of a second-player slot.
+- The actual `f_156A` path is broader than player movement. In its main gameplay sequence it dispatches descriptor-supplied callbacks through `$FFBC3C`, `$FFBC44`, `$FFBC4C`, and `$FFBC1C`; runs shared helper stages; calls `f_5DB2` to append the current player's multipart sprite; reads `$FFBC62` and dispatches `f_224C`; then runs post-player helpers and dispatches `$FFBC20`. A further conditional path dispatches the `$FFBC5E` callback. These slots need individual ownership/side-effect classification before any are duplicated.
+- The order matters: the existing loop calls `f_5DB2` immediately before the `$FFBC62` movement callback. P2 rendering should be inserted at a deliberately chosen point in this sequence, not by calling all of `f_156A` again.
+- `f_224C` reaches player input, movement, collision/state helpers and projectile creation. Its child graph includes `f_3284`, `f_2640`, `f_26A2`, `f_2150`, `f_3222`, and `f_31E4). `f_26A2` reaches the camera helper `f_3430`; `f_4992` allocates from the shared object pool; and `f_5B02` returns objects to that pool. This confirms the required split: duplicate only proven player-local state/logic, while camera, world collision data, object lists, and allocation stay shared.
+- `f_2150` selects one of the code/state values `0x2230` or `0x223E` and stores it at `$FFBCC4`. The movement body also contains an indirect call at PC `0x288E` through A6. The complete dataflow between these pieces still needs to be resolved; retain this as an explicit dynamic-call audit item rather than assuming `$FFBCC4` is a heap pointer.
+
+## Updated implementation sequence
+
+1. Finish the per-slot audit for `$FFBC3C/$FFBC44/$FFBC4C/$FFBC1C/$FFBC62/$FFBC20/$FFBC5E`: identify each target, all reads/writes, whether it runs once or conditionally, and which side effects are shared.
+2. Decode the descriptor table at `0x1994` and every field consumed by `f_19FA`; identify which pieces are immutable ROM resources, player-local state, and shared resource/VDP state.
+3. Resolve the A6 indirect call at `0x288E` and all pointer-indirect accesses beneath `f_224C`. The direct-address list alone is not sufficient for a safe RAM allowlist.
+4. Produce a byte/word-level RAM ownership map and reserve an independent P2 stack/context. Do not choose a synthetic RAM region until all fixed and pointer-derived uses of that region have been checked.
+5. Split one-time shared initialization from player-context initialization. Keep `f_5232`, `f_5578`, and the shared reset part of `f_5D8A` single-instance; give P2 an isolated sprite-part scratch table and append its parts to the common object/render queue with overflow guards.
+6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
+7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
+
 ## Why the previous attempt was unsafe
 
 The old prototype copied P1's upper player RAM window but did not initialize P2 through the game's own descriptor/setup path. It also copied P1's live CPU register context before each P2 callback instead of preserving an independent P2 execution context. That mixed state and caused the observed out-of-bounds movement and corruption.
