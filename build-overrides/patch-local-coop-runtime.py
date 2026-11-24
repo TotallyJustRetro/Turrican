@@ -239,7 +239,9 @@ void md_coop_p2_hud_end(void) {
 /* f_5DB2 appends sprite records through BC54/BC58. Its destination can
    resolve into DA1E-DC9D, which is banked for P2 HUD work. Merge only the
    newly appended span back to shared RAM before the primary VDP queue flush. */
-void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint32_t callback) {
+void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end,
+                                      uint16_t count_before, uint16_t count_after,
+                                      uint32_t callback) {
     uint32_t s24 = start & 0x00FFFFFFu;
     uint32_t e24 = end & 0x00FFFFFFu;
     unsigned s = s24 & 0xFFFFu;
@@ -272,16 +274,61 @@ void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint32_t callba
     f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (f) {
         fprintf(f,
-                "event=render-queue-merge frame=%lu connected=%d callback=%06X start=%06X end=%06X bytes=%u status=%s first=%02X%02X%02X%02X\\n",
+                "event=render-queue-merge frame=%lu connected=%d callback=%06X start=%06X end=%06X count=%u->%u bytes=%u status=%s\n",
                 md_coop_p2_frame_count, md_player2_connected, callback,
-                (unsigned)start, (unsigned)end, copied,
-                valid ? "merged" : "skipped",
-                valid && copied > 0 ? (unsigned)md_coop_p2_ram[s] : 0u,
-                valid && copied > 1 ? (unsigned)md_coop_p2_ram[s + 1u] : 0u,
-                valid && copied > 2 ? (unsigned)md_coop_p2_ram[s + 2u] : 0u,
-                valid && copied > 3 ? (unsigned)md_coop_p2_ram[s + 3u] : 0u);
+                (unsigned)start, (unsigned)end, (unsigned)count_before,
+                (unsigned)count_after, copied,
+                valid ? "merged" : "skipped");
         fclose(f);
     }
+}
+
+/* f_5D8A clears 29 eight-byte sprite-part entries at FCE8; f_5DB2 then
+   consumes them. Dump the exact input list and the renderer queue registers
+   around the builder so an empty-list/early-filter case is distinguishable
+   from a queue-buffer visibility problem. */
+void md_coop_p2_sprite_diag(const M68K *cpu, const char *phase) {
+    FILE *f;
+    unsigned i;
+    uint32_t qptr = ((uint32_t)ram[0xBC54] << 24) |
+                    ((uint32_t)ram[0xBC55] << 16) |
+                    ((uint32_t)ram[0xBC56] << 8) |
+                    (uint32_t)ram[0xBC57];
+    uint16_t qcount = (uint16_t)(((uint16_t)ram[0xBC58] << 8) |
+                                 (uint16_t)ram[0xBC59]);
+
+    if (!cpu || (md_coop_p2_frame_count > 12u &&
+                 (md_coop_p2_frame_count % 60u) != 0u))
+        return;
+
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f) return;
+    fprintf(f, "event=sprite-builder-diag frame=%lu phase=%s queue=%08X/%04X",
+            md_coop_p2_frame_count, phase ? phase : "-", (unsigned)qptr,
+            (unsigned)qcount);
+    fprintf(f, " regs_d:");
+    for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->d[i]);
+    fprintf(f, " regs_a:");
+    for (i = 0; i < 7u; ++i) fprintf(f, " %08X", (unsigned)cpu->a[i]);
+    fprintf(f, " state_BD1E_22=%02X%02X%02X%02X%02X%02X",
+            (unsigned)md_coop_p2_ram[0xBD1E],
+            (unsigned)md_coop_p2_ram[0xBD1F],
+            (unsigned)md_coop_p2_ram[0xBD20],
+            (unsigned)md_coop_p2_ram[0xBD21],
+            (unsigned)md_coop_p2_ram[0xBD22],
+            (unsigned)md_coop_p2_ram[0xBD23]);
+    fprintf(f, " flags_BC86_BD00_BD02_BD16_BCC0=%02X%02X%02X%02X%02X%02X",
+            (unsigned)md_coop_p2_ram[0xBC86],
+            (unsigned)md_coop_p2_ram[0xBD00],
+            (unsigned)md_coop_p2_ram[0xBD02],
+            (unsigned)md_coop_p2_ram[0xBD16],
+            (unsigned)md_coop_p2_ram[0xBCC0],
+            (unsigned)md_coop_p2_ram[0xBCC1]);
+    fprintf(f, "\np2_sprite_parts_FCE8_FDCF=");
+    for (i = 0xFCE8u; i <= 0xFDCFu; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\n");
+    fclose(f);
 }
 
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
@@ -461,7 +508,8 @@ extern void md_coop_p2_sync_handshake(void);
 extern void md_coop_p2_phase_log(const char *phase, uint32_t callback);
 extern void md_coop_p2_hud_begin(void);
 extern void md_coop_p2_hud_end(void);
-extern void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint32_t callback);
+extern void md_coop_p2_merge_render_queue(uint32_t start, uint32_t end, uint16_t count_before, uint16_t count_after, uint32_t callback);
+extern void md_coop_p2_sprite_diag(const M68K *cpu, const char *phase);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
@@ -635,17 +683,24 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
-    /* Capture the primary queue tail before P2's native multipart builder.
-       f_5DB2 returns its updated queue cursor in A2 and BC54. Its writes to
-       the banked DA1E-DC9D destination are merged into shared RAM afterwards. */
+    /* Inspect f_5DB2's 29-entry input and its real BC54/BC58 output
+       before/after. The old A2-only endpoint assumption was insufficient. */
     {
         uint32_t queue_start = RD32(0xFFFFBC54u);
+        uint16_t count_start = RD16(0xFFFFBC58u);
+        md_coop_p2_sprite_diag(p2, "before-f_5DB2");
         if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE34u)) {
             md_coop_p2_abort("P2 sprite builder failed to restore its private stack", callback);
             md_coop_p2_finish();
             return;
         }
-        md_coop_p2_merge_render_queue(queue_start, p2->a[2], callback);
+        {
+            uint32_t queue_end = RD32(0xFFFFBC54u);
+            uint16_t count_end = RD16(0xFFFFBC58u);
+            md_coop_p2_sprite_diag(p2, "after-f_5DB2");
+            md_coop_p2_merge_render_queue(queue_start, queue_end,
+                                           count_start, count_end, callback);
+        }
     }
     md_coop_p2_phase_log("sprite-builder-5DB2", callback);
     /* PC 0x165C loads BC62 into A0 before the original indirect dispatch. */
@@ -771,7 +826,8 @@ checks = {
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1D=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
     "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
-    "P2 merges only the appended sprite queue tail into shared RAM": "md_coop_p2_merge_render_queue(queue_start, p2->a[2], callback);" in g and "ram[i] = md_coop_p2_ram[i];" in h,
+    "P2 merges only the appended sprite queue tail into shared RAM": "md_coop_p2_merge_render_queue(queue_start, queue_end" in g and "ram[i] = md_coop_p2_ram[i];" in h,
+    "P2 logs exact f_5DB2 input list and queue state": "md_coop_p2_sprite_diag(p2, \"before-f_5DB2\");" in g and "p2_sprite_parts_FCE8_FDCF=" in h,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
