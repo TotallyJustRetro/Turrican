@@ -365,3 +365,10 @@ The read-only trace patch now logs `LIVE SELECTOR CHANGE` records at the main pl
 The generated runtime report identifies `f_2E94` as a second entry point containing player-position, collision/motion, and camera-follow logic. It shares the movement/camera helper `f_3368` with `f_224C`, but the static caller audit has not established which runtime path invokes it. It also reads the current selector at `$FFBF1E`, so it may be an alternate player state or movement path rather than a second actor.
 
 The next read-only trace build adds a one-time entry record for `f_2E94` (phase 401). If the routine runs during ordinary single-player gameplay, its register and current-player context will be recorded. If it never appears, we still need to resolve its indirect caller before deciding whether it can be reused for P2. No gameplay changes are made by this hook.
+
+
+### Runtime result from the two-session selector trace
+
+The 306-line user-supplied file contains two appended game sessions. In the first (the longer session), P2 was connected and its input mask/active-low port bytes changed as the user pressed buttons. The sampled player selector remained `0` through the 720 main-player update samples; the active descriptor stayed `0x008E5E`. The second appended session recorded P2 disconnected and also showed selector `0`.
+
+Therefore, while descriptors 1-6 are valid ROM candidates, they were not selected during the captured ordinary play session. They may correspond to special forms, transitions, equipment, animation/resource profiles, or less-common gameplay branches. The next trace logs selector changes and probes the alternate `f_2E94` player-state entry; those are the remaining read-only checks before we decide whether a dormant actor path exists.
