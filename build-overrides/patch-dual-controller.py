@@ -130,14 +130,25 @@ main=main[:settings_start]+settings_block+main[launch_marker:]
 
 cfg_start=main.find("  const cfg = [")
 if cfg_start<0: raise SystemExit("dual-controller patch: launcher cfg array not found")
-# Inject normalized P1/P2 mappings after the config array has been assembled.
-# Remove any previous pad_* entries first, then append exactly one of each.
+# Replace whichever legacy P1 map declaration the current launcher bundle uses.
+# The controller-menu patch can encounter an older main.js with slightly different
+# whitespace/formatting, so anchor on the final padMap declaration before cfg.
+for name in ("pad2Map", "padMap"):
+    prefix=main[:cfg_start]
+    matches=list(re.finditer(r"(?m)^[ \\t]*(?:const|let|var)\\s+"+name+r"\\s*=",prefix))
+    if matches:
+        match=matches[-1]
+        semicolon=main.find(";",match.start())
+        if semicolon<0 or semicolon>=cfg_start:
+            raise SystemExit("dual-controller patch: malformed existing "+name+" declaration")
+        main=main[:match.start()]+main[semicolon+1:]
+        cfg_start=main.find("  const cfg = [")
+# Add normalized maps immediately before the launch config array.
 norm_code="""  const controllerSettings = normalizeControllerSettings(settings);
   const padMap = controllerSettings.padMap;
   const pad2Map = controllerSettings.pad2Map;
 """
-if "const controllerSettings = normalizeControllerSettings(settings);" not in main:
-    main=main[:cfg_start]+norm_code+main[cfg_start:]
+main=main[:cfg_start]+norm_code+main[cfg_start:]
 cfg_start=main.find("  const cfg = [")
 cfg_end=main.find("\n  ];",cfg_start)
 if cfg_start<0 or cfg_end<0: raise SystemExit("dual-controller patch: could not locate end of launcher cfg array")
