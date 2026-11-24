@@ -168,7 +168,7 @@ void md_coop_prepare_p2(M68K *primary) {
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
         md_coop_p2_mark(0xBC14, 0xBC24); /* native state/callback pointers */
-        md_coop_p2_mark(0xBC3C, 0xBC50); /* resource callback table */
+        md_coop_p2_mark(0xBC3C, 0xBC53); /* resource callback table + full BC50 pointer */
         md_coop_p2_mark(0xBC5A, 0xBC65); /* resource pointer + main actor */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
@@ -584,7 +584,8 @@ checks = {
     "P2 captures pre-f_19FA register/template context": "md_coop_p2_capture_native_init_seed(c)" in g and "md_coop_p2_native_init_seed_valid" in h,
     "P2 capture hook has a prototype before f_156A": "void md_coop_p2_capture_native_init_seed(M68K *primary);" in r,
     "P2 builds native callback/resource state through f_19FA": "f_19FA(p2);" in g and "md_coop_p2_call_native_19fa(p2)" in g,
-    "P2 keeps f_19FA callback buffers private": "md_coop_p2_mark(0xBC3C, 0xBC50)" in h and "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h and "md_coop_p2_mark(0xDFCE, 0xE036)" in h,
+    "P2 keeps the full f_19FA resource pointer private": "md_coop_p2_mark(0xBC3C, 0xBC53)" in h,
+    "P2 keeps f_19FA callback buffers private": "md_coop_p2_mark(0xBC3C, 0xBC53)" in h and "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h and "md_coop_p2_mark(0xDFCE, 0xE036)" in h,
     "P2 restores only the native sprite-part input after f_19FA": "md_coop_p2_restore_sprite_parts();" in g and "memcpy(&md_coop_p2_ram[0xFCE8], md_coop_p2_primary_sprite_parts" in h,
     "P2 applies its side-by-side offset after native setup": "md_coop_p2_apply_spawn_offset();" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
