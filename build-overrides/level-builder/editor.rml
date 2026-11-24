@@ -112,8 +112,48 @@
           <button class="filter-button import-button" data-action="import-model">＋ IMPORT</button>
         </div>
         <div id="folder-scroll" class="folder-scroll">
-          <div class="folder expanded" id="folder-tiles">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="tiles"><span class="folder-arrow">▾</span> TILES / VDP LIBRARY</div>
+          <div class="folder expanded" id="folder-review">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▾</span> ROM SPRITES / NEEDS REVIEW</div>
+            <div id="folder-content-review" class="folder-content">
+              <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
+              <div id="asset-list-review" class="asset-card-grid"></div>
+              <div id="asset-list-3d-review" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-character">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="character"><span class="folder-arrow">▸</span> CHARACTER / PLAYER</div>
+            <div id="folder-content-character" class="folder-content">
+              <div class="folder-subheading">PLAYER / PLAYER ANIMATIONS</div>
+              <div id="asset-list-character" class="asset-card-grid"></div>
+              <div id="asset-list-3d-character" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-items">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="items"><span class="folder-arrow">▸</span> ITEMS / PICKUPS</div>
+            <div id="folder-content-items" class="folder-content">
+              <div class="folder-subheading">WEAPONS / POWERUPS / HEALTH / EXTRAS</div>
+              <div id="asset-list-items" class="asset-card-grid"></div>
+              <div id="asset-list-3d-items" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-enemies">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="enemies"><span class="folder-arrow">▸</span> ENEMIES / HAZARDS</div>
+            <div id="folder-content-enemies" class="folder-content">
+              <div class="folder-subheading">STANDARD ENEMIES / HAZARDS</div>
+              <div id="asset-list-enemies" class="asset-card-grid"></div>
+              <div id="asset-list-3d-enemies" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-bosses">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="bosses"><span class="folder-arrow">▸</span> BOSSES / MULTI-PART</div>
+            <div id="folder-content-bosses" class="folder-content">
+              <div class="folder-subheading">BOSS / MULTI-PART / PHASED</div>
+              <div id="asset-list-bosses" class="asset-card-grid"></div>
+              <div id="asset-list-3d-bosses" class="asset-card-grid"></div>
+            </div>
+          </div>
+          <div class="folder collapsed" id="folder-tiles">
+            <div class="folder-heading" data-action="folder-toggle" data-folder="tiles"><span class="folder-arrow">▸</span> RAW VDP TILES / 8×8 CELLS</div>
             <div id="folder-content-tiles" class="folder-content">
               <div class="folder-subheading">RAW 8×8 VDP CELLS · NOT FULL SPRITES · SELECT TO LOAD A BRUSH</div>
               <div id="asset-list-tiles" class="asset-card-grid tile-card-grid"></div>
@@ -122,46 +162,6 @@
                 <span id="asset-page-label">PAGE 1 / 1</span>
                 <button class="tiny-button" data-action="asset-page" data-dir="1">NEXT ▸</button>
               </div>
-            </div>
-          </div>
-          <div class="folder collapsed" id="folder-review">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="review"><span class="folder-arrow">▾</span> Needs_Review/</div>
-            <div id="folder-content-review" class="folder-content">
-              <div class="folder-subheading">UNCLASSIFIED ROM SPRITES / IMPORTS</div>
-              <div id="asset-list-review" class="asset-card-grid"></div>
-              <div id="asset-list-3d-review" class="asset-card-grid"></div>
-            </div>
-          </div>
-          <div class="folder collapsed" id="folder-character">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="character"><span class="folder-arrow">▸</span> Character/</div>
-            <div id="folder-content-character" class="folder-content">
-              <div class="folder-subheading">PLAYER / PLAYER ANIMATIONS</div>
-              <div id="asset-list-character" class="asset-card-grid"></div>
-              <div id="asset-list-3d-character" class="asset-card-grid"></div>
-            </div>
-          </div>
-          <div class="folder collapsed" id="folder-items">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="items"><span class="folder-arrow">▸</span> Items_Pickups/</div>
-            <div id="folder-content-items" class="folder-content">
-              <div class="folder-subheading">WEAPONS / POWERUPS / HEALTH / EXTRAS</div>
-              <div id="asset-list-items" class="asset-card-grid"></div>
-              <div id="asset-list-3d-items" class="asset-card-grid"></div>
-            </div>
-          </div>
-          <div class="folder collapsed" id="folder-enemies">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="enemies"><span class="folder-arrow">▸</span> Enemies/</div>
-            <div id="folder-content-enemies" class="folder-content">
-              <div class="folder-subheading">STANDARD ENEMIES / HAZARDS</div>
-              <div id="asset-list-enemies" class="asset-card-grid"></div>
-              <div id="asset-list-3d-enemies" class="asset-card-grid"></div>
-            </div>
-          </div>
-          <div class="folder collapsed" id="folder-bosses">
-            <div class="folder-heading" data-action="folder-toggle" data-folder="bosses"><span class="folder-arrow">▸</span> Bosses/</div>
-            <div id="folder-content-bosses" class="folder-content">
-              <div class="folder-subheading">BOSS / MULTI-PART / PHASED</div>
-              <div id="asset-list-bosses" class="asset-card-grid"></div>
-              <div id="asset-list-3d-bosses" class="asset-card-grid"></div>
             </div>
           </div>
         </div>
