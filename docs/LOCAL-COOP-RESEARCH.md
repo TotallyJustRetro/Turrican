@@ -400,3 +400,17 @@ Build #555 adds read-only sampling of $FFBCC0–$FFBD26, position, camera, callb
 
 The next co-op runtime should use an independent M68K register/stack context and a selective P2 bank for genuinely player-local fields, while leaving camera, object records, VDP output, stage state, and other shared world data global. The bank must include callback/state slots as well as the compact $BCC0–$BD26 block; only copying that block would be incomplete. P2's input must be presented to the P2 bank as its $BC90/$BC91 input pair. P2 lives must be separately tracked, while $BF3A remains the shared continue flow controlled by P1 after both players are out. The old full-RAM shadow experiment remains disabled.
 
+
+## P2 execution boundary — bus and interrupt constraints
+
+The generated-code runtime uses RD8/RD16/RD32 and WR8/WR16/WR32 macros backed by the shared bus functions. Work RAM accesses pass through bus_rd8, bus_rd16, bus_wr8, and bus_wr16, while the 32-bit helpers are composed from the 16-bit functions. VDP DMA reads use rd8_raw directly, intentionally bypassing the normal CPU bus accessors. A player-local remap must therefore be scoped to CPU-originated bus accesses and must not redirect DMA source reads, VDP operations, Z80 memory, or controller I/O.
+
+More importantly, RT_POLL can call both rt_event(c) and rt_irq_service(c) while the generated player routine is executing. IRQ dispatch pushes its exception frame using the same M68K *c passed to the currently executing routine and then invokes the interrupt vector through rt_call_addr(c, ...). rt_event(c) can also execute the host frame hook and video/audio work. A global current-player-bank left enabled across these polls would therefore expose P2-local fields to shared video/interrupt handlers and could put interrupt frames on a colliding stack.
+
+Do not implement P2 by simply switching a global RAM pointer around f_224C. A viable execution design must either:
+1. add an explicit, nest-safe execution-context owner to the bus layer and suspend local remapping for every event/IRQ/exception/host callback boundary, restoring it only after the boundary returns; or
+2. restructure P2 scheduling so the runtime can safely defer service until the P2 callback returns, after proving that delayed IRQ/event service does not break game timing or VDP behavior.
+
+The P2 CPU context also needs its own valid emulated A7 stack range, while shared object lists, stage state, camera, renderer output, VDP/Z80 state, and DMA source RAM remain global. The existing global rt_shadow/rt_sp call/return bookkeeping must be audited for per-CPU nesting before a second M68K context is introduced. The first option is more general, but it is not ready to code until every event, interrupt, exception, and host callback entry/exit can be covered and tested.
+
+This is an architectural stop condition, not a reason to re-enable the failed RAM-shadow experiment. Build #555 is read-only instrumentation only.
