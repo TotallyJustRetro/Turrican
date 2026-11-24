@@ -17,6 +17,12 @@ GEN_F1BDE = "L_1BDE: { RT_POLL(0x1BDE); uint32_t e=0xFFFFBC88u; uint32_t v=RD8(e
 
 TRACE_HELPER = r'''
 /* Read-only co-op research trace. This does not alter emulated RAM or CPU state. */
+/* These values are sampled by the existing SDL controller backend. */
+extern int md_player2_live_mask;
+extern int md_player2_connected;
+
+/* Read-only trace of how often the emulated game reads Genesis controller ports. */
+
 static uint32_t md_coop_trace_rom32(uint32_t a) {
     a &= 0xFFFFFFu;
     if (!rom || a > romlen || romlen - a < 4) return 0xFFFFFFFFu;
@@ -102,10 +108,57 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
     fclose(f);
 }
 
+
+/* Sample host P2 detection, the live SDL mask, and the game's emulated port reads.
+   This runs alongside the main player callback and only writes a text log. */
+void md_coop_trace_input(M68K *c, uint32_t descriptor, unsigned phase) {
+    static unsigned sample_count;
+    static int previous_connected = -1;
+    static unsigned previous_mask = 0xFFFFFFFFu;
+    static unsigned previous_ram[4] = {0x100u, 0x100u, 0x100u, 0x100u};
+    ++sample_count;
+
+    int connected = md_player2_connected;
+    unsigned mask = (unsigned)md_player2_live_mask;
+    unsigned current_ram[4] = {
+        ram[0xBC90], ram[0xBC91], ram[0xBC92], ram[0xBC93]
+    };
+    int changed = connected != previous_connected || mask != previous_mask;
+    for (unsigned i = 0; i < 4; ++i) {
+        if (current_ram[i] != previous_ram[i]) changed = 1;
+    }
+
+    if (sample_count == 1u || changed || (sample_count % 60u) == 0u) {
+        FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
+        if (f) {
+            fprintf(f, "\\n=== INPUT SAMPLE n=%u phase=%u descriptor=%06X ===\\n",
+                    sample_count, phase, descriptor & 0xFFFFFFu);
+            fprintf(f, "p2_connected=%d p2_live_mask=%08X emulated_pad_reads_port0=%u port1=%u\\n",
+                    connected, mask, md_coop_pad_read_count[0], md_coop_pad_read_count[1]);
+            fprintf(f, "ram_BC90_91=%02X%02X ram_BC92_93=%02X%02X\\n",
+                    ram[0xBC90], ram[0xBC91], ram[0xBC92], ram[0xBC93]);
+            fflush(f);
+            fclose(f);
+        }
+    }
+
+    previous_connected = connected;
+    previous_mask = mask;
+    for (unsigned i = 0; i < 4; ++i) previous_ram[i] = current_ram[i];
+    (void)c;
+}
+
 /* Capture the exact runtime target before descriptor and frame-dispatch calls. */
 void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
     static struct { uint32_t descriptor; uint32_t target; unsigned phase; } seen[96];
     static unsigned seen_count;
+    if (phase == 305u) {
+        uint32_t current_descriptor = ((uint32_t)ram[0xBC50] << 24) |
+                                      ((uint32_t)ram[0xBC51] << 16) |
+                                      ((uint32_t)ram[0xBC52] << 8) |
+                                      (uint32_t)ram[0xBC53];
+        md_coop_trace_input(c, current_descriptor, phase);
+    }
     uint32_t descriptor = ((uint32_t)ram[0xBC50] << 24) |
                           ((uint32_t)ram[0xBC51] << 16) |
                           ((uint32_t)ram[0xBC52] << 8) |
@@ -155,6 +208,22 @@ def replace_once(path: Path, old: str, new: str) -> None:
 for path in (GEN, HARNESS, RT_HEADER):
     if not path.is_file():
         raise SystemExit(f"Missing expected source file: {path}")
+
+# Add a read-only counter at the real Genesis pad_read boundary. p==0 is
+# controller port 1; p==1 is controller port 2. The counter is declared at
+# file scope before pad_read so it is available regardless of source order.
+harness_source = HARNESS.read_text(encoding="utf-8")
+if "md_coop_pad_read_count[2]" not in harness_source:
+    harness_source = "static unsigned int md_coop_pad_read_count[2];\\n" + harness_source
+    pad_read_match = re.search(
+        r"(static\\s+uint8_t\\s+pad_read\\s*\\(\\s*int\\s+p\\s*\\)\\s*\\{)",
+        harness_source,
+    )
+    if not pad_read_match:
+        raise SystemExit("Could not find the emulated Genesis pad_read(int p) function for diagnostics.")
+    counter_line = "\\n    if (p >= 0 && p < 2) ++md_coop_pad_read_count[p];"
+    harness_source = harness_source[:pad_read_match.end()] + counter_line + harness_source[pad_read_match.end():]
+    HARNESS.write_text(harness_source, encoding="utf-8", newline="\\n")
 
 replace_once(
     HARNESS,
