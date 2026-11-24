@@ -85,9 +85,9 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
             md_coop_trace_rom32(descriptor + 46u),
             (rom && descriptor + 48u < romlen) ? rom[descriptor + 48u] : 0xFFu,
             (rom && descriptor + 50u < romlen) ? rom[descriptor + 50u] : 0xFFu);
-    fprintf(f, "nested+02 table_ptr=%08X callback_at+00=%08X slot_BC3C=%08X\n",
+    fprintf(f, "nested+02 table_ptr=%08X raw_long_00=%08X raw_long_04=%08X\n",
             table2, callback1, slot3c);
-    fprintf(f, "nested+06 table_ptr=%08X callback_at+00=%08X slot_BC44=%08X\n",
+    fprintf(f, "nested+06 table_ptr=%08X raw_long_00=%08X raw_long_04=%08X\n",
             table6, callback2, slot44);
     fprintf(f, "descriptor_bytes_00_to_3F:\n");
     md_coop_trace_bytes(f, descriptor, 64u);
