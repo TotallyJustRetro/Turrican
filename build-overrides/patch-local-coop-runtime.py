@@ -186,6 +186,15 @@ void md_coop_p2_refresh(void) {
     ++md_coop_p2_frame_count;
 }
 
+/* f_8BE is an event-driven poll on BC85. Its completion flag is produced by
+   the main frame/event path, which services interrupts with the primary RAM
+   view. Copy the already-completed P1 latch rather than polling inside the
+   isolated P2 bank where the event cannot update it. */
+void md_coop_p2_sync_handshake(void) {
+    if (md_coop_p2_ready && !md_coop_p2_disabled)
+        md_coop_p2_ram[0xBC85] = ram[0xBC85];
+}
+
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     unsigned i;
     FILE *f;
@@ -330,6 +339,7 @@ GEN_RUNNER = r"""
 /* Native Mega Turrican P2 frame slice. */
 extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
+extern void md_coop_p2_sync_handshake(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
@@ -394,6 +404,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     if (!p2 || !frame_seed) return;
 
     md_coop_p2_sync_call_context(p2, frame_seed);
+    md_coop_p2_sync_handshake();
     md_coop_p2_set_active(1);
 
     /* Match f_156A's player-local preamble in its original order. */
@@ -417,11 +428,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
             return;
         }
     }
-    if (!md_coop_p2_call_native(p2, 0x000008BEu, 0x00FEEE18u)) {
-        md_coop_p2_abort("P2 animation state reset failed", callback);
-        md_coop_p2_finish();
-        return;
-    }
+    /* f_8BE is intentionally not rerun: its BC85 wait is serviced by the
+       original event path. P2 received the completed BC85 latch above. */
 
     /* The original checks BC70, then port-1 START in bit 7 (P2's BC90 is
        fed from controller port 2). Keep the same conditional BD26/BC70
@@ -572,6 +580,7 @@ checks = {
     "P2 mirrors BC70/port-2 state branch": "RD8(0xFFFFBC70u)" in g and "RD8(0xFFFFBC90u) & 0x80u" in g,
     "P2 mirrors f_5BC A0 input": "p2->a[0] = RD32(0xFFFFBC5Au);" in g,
     "P2 runs f_E0C input/ground-state update": "0x00000E0Cu" in g,
+    "P2 inherits completed BC85 event handshake instead of polling": "md_coop_p2_sync_handshake();" in g and "md_coop_p2_ram[0xBC85] = ram[0xBC85];" in h and "0x000008BEu" not in g,
     "P2 reloads BF28 before conditional animation callback": "fl_logic(p2, RD16(0xFFFFBF28u), 16);" in g,
     "P2 main callback gets its A0 target": "p2->a[0] = callback;" in g,
     "P2 callback-slot dispatch loads A0": "p2->a[0] = target;" in g,
