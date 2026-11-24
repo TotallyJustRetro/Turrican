@@ -104,6 +104,18 @@ The recovery build's runtime-state report provides a narrower, safer scheduling 
 6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
 7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
 
+## Runtime actor-context and event/interrupt rules
+
+The runtime audit confirms that the P2 execution context must be isolated at the emulator layer, not only by copying game RAM:
+
+- `M68K` contains D0-D7, A0-A7, `ret`, `usp`, condition flags, and `sr_sys`. The runtime currently owns one static CPU in `md_boot` and exposes it through the global `CPU` pointer. P2 requires a second persistent `M68K` instance with an independent valid A7 stack; copying P1's registers each frame is not acceptable.
+- Generated code accesses memory through `RD8/RD16/RD32` and `WR8/WR16/WR32`, which route through `bus_rd8/bus_rd16/bus_wr8/bus_wr16`. However, `vdp_dma_read` calls `rd8_raw` directly. The actor-aware work-RAM view must therefore be applied in `rd8_raw` as well as the bus writers, or DMA reads during P2 would see the wrong memory.
+- `RT_POLL` decrements the single global `rt_budget`; if it goes negative it calls `rt_event(c)`, and if an IRQ is pending it calls `rt_irq_service(c)`. `rt_event` advances the VDP line, renders, advances sound, and can call `md_frame_hook`. `rt_irq_service` dispatches interrupt handlers using the exact `M68K *c` passed to it. A P2 callback must never accidentally service the game's VBlank/HBlank handlers on P2's CPU state.
+- The call/return repair path also relies on one global `rt_shadow[65536]` and `rt_sp`. P2 needs a separate return-shadow stack (or an equivalent strict context switch) so dynamic calls and return repair for one actor cannot unwind the other actor's frames.
+- A robust actor switch should preserve the P2 CPU, sparse player-local RAM view, P2 return-shadow stack, and actor tag. When `RT_POLL` needs a VDP event or IRQ during a P2 pass, temporarily restore the shared RAM view and P1 CPU/return-shadow context, execute the event/interrupt there, then restore P2 and resume. This keeps DMA, frame hooks, and interrupts on the single shared system context without skipping frame time.
+- Simply setting `rt_budget` to a huge value and deferring all events/IRQs is not the preferred final solution: it would make P2 execution effectively free in the frame budget and delay interrupts. The event/IRQ wrapper should charge P2's poll count to the same budget and service any resulting events on P1.
+- The global `rt_trace/rt_ti` instrumentation can remain shared initially, but P2's save-state data must eventually include its CPU context, private actor bytes, sprite scratch, and return stack. The current save-state structure serializes only the single `CPU`, main RAM, and one `rt_shadow`; co-op save/load is therefore a later required integration, not automatically supported by a second actor.
+
 ## Descriptor initializer: three dynamic callback phases
 
 The newest expanded report shows that `f_19FA` has three distinct indirect calls. The full initializer therefore cannot be treated as one generic player-state constructor:
