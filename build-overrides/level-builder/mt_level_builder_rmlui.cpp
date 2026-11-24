@@ -1580,8 +1580,13 @@ static void maker_place_asset_at(int px,int py)
     }
     if(g_drag_asset_type=="2d_tile"){
         const int tile=mtlb_editor_tile_entry(g_drag_asset_id,g_maker_palette);
+        maker_log("Tile drop resolved: catalog=%d VDP-entry=$%04X.",g_drag_asset_id,tile);
         if(tile){
-            mtlb_editor_push_undo();mtlb_map_set(x,y,tile);g_stage_batch_dirty=true;
+            mtlb_editor_push_undo();
+            maker_log("Tile undo snapshot complete; writing cell %d,%d.",x,y);
+            mtlb_map_set(x,y,tile);
+            maker_log("Tile cell write complete.");
+            g_stage_batch_dirty=true;
             select_brush(tile);g_maker_mode=MAKER_TILES;g_maker_tool=1;
             set_status("Cartridge tile snapped to the stage grid.");
         }
@@ -1589,7 +1594,9 @@ static void maker_place_asset_at(int px,int py)
         maker_log("Place ROM sprite asset %d at cell %d,%d.",g_drag_asset_id,x,y);
         const int role=mtlb_editor_sprite_asset_category(g_drag_asset_id);
         const int type=std::max(0,std::min(4,role));
+        maker_log("Creating ROM sprite entity: catalog=%d role=%d.",g_drag_asset_id,type);
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
+        maker_log("ROM sprite entity create returned %d.",index);
         if(index>=0){
             g_ui_selected_entity=index;
             if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
@@ -1598,7 +1605,9 @@ static void maker_place_asset_at(int px,int py)
     }else if(g_drag_asset_type=="enemy"||g_drag_asset_type=="boss"){
         maker_log("Place 2D %s asset %d at cell %d,%d.",g_drag_asset_type.c_str(),g_drag_asset_id,x,y);
         const int type=(g_drag_asset_type=="boss")?4:3;
+        maker_log("Creating %s entity: catalog=%d role=%d.",g_drag_asset_type.c_str(),g_drag_asset_id,type);
         const int index=mtlb_editor_place_entity((x+0.5f)/(float)g_map_cols,(y+0.5f)/(float)g_map_rows,type,g_drag_asset_id);
+        maker_log("%s entity create returned %d.",g_drag_asset_type.c_str(),index);
         if(index>=0){
             g_ui_selected_entity=index;
             if(g_model_handle)g_model_handle.DirtyVariable("selected_entity");
@@ -1654,6 +1663,7 @@ static void maker_begin_asset_drag(int px,int py)
     g_drag_asset_id=element->GetAttribute<int>("data-asset-id",-1);
     g_drag_asset_type=element->GetAttribute<Rml::String>("data-asset-type","");
     if(g_drag_asset_id<0||g_drag_asset_type.empty())return;
+    maker_log("Asset drag start: type=%s id=%d at %d,%d.",g_drag_asset_type.c_str(),g_drag_asset_id,px,py);
     if(g_drag_asset_type=="3d_model"&&!g_maker_modern){
         set_status("Modern Mode Required: this imported model is locked in Vanilla 1994.");
         return;
@@ -1669,7 +1679,10 @@ static void maker_end_asset_drag(int px,int py)
 {
     if(!g_asset_drag_active)return;
     int grid_x=0,grid_y=0;
-    if(maker_stage_cell_at(px,py,grid_x,grid_y))maker_place_asset_at(px,py);
+    const bool inside_stage=maker_stage_cell_at(px,py,grid_x,grid_y);
+    maker_log("Asset drag release: type=%s id=%d at %d,%d stage=%d cell=%d,%d.",
+        g_drag_asset_type.c_str(),g_drag_asset_id,px,py,inside_stage?1:0,grid_x,grid_y);
+    if(inside_stage)maker_place_asset_at(px,py);
     g_asset_drag_active=false;
     g_drag_asset_id=-1;g_drag_asset_type="";
     if(Rml::Element *ghost=g_document->GetElementById("drop-ghost"))ghost->SetClass("hidden",true);
@@ -1758,6 +1771,8 @@ extern "C" void mtlbr_process_event(const SDL_Event *event)
 
     SDL_Event copy=*event;
     RmlSDL::InputEventHandler(g_context,g_window,copy);
+    if(event->type==SDL_MOUSEBUTTONUP&&event->button.button==SDL_BUTTON_LEFT)
+        maker_log("RmlUi received left mouse release after Maker drag processing.");
     }catch(const std::bad_alloc&){
         maker_log("SDL Maker event failed: memory allocation exhausted.");
         set_status("The event was cancelled because available memory is exhausted.");
@@ -1968,25 +1983,65 @@ static void draw_stage_entities(SDL_Renderer *renderer)
     const Rml::Vector2f origin=g_stage_grid->GetAbsoluteOffset();
     const float width=g_stage_grid->GetClientWidth(),height=g_stage_grid->GetClientHeight();
     const float cell_w=width/(float)g_map_cols,cell_h=height/(float)g_map_rows;
+    const float pixel_scale=std::min(cell_w/8.0f,cell_h/8.0f);
     SDL_Rect clip{(int)origin.x,(int)origin.y,(int)width,(int)height};
     SDL_RenderSetClipRect(renderer,&clip);
     for(int i=0;i<entity_count;i++){
-        float x=0,y=0;int type=0,hp=0,w=0,h=0;uint16_t attr=0;
-        if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&attr,&w,&h))continue;
-        const int safe_w=std::max(1,std::min(4,w));
-        const int safe_h=std::max(1,std::min(4,h));
-        SDL_Texture *texture=maker_stage_sprite_texture(renderer,attr,safe_w,safe_h);
+        float x=0,y=0;int type=0,hp=0,legacy_w=0,legacy_h=0;uint16_t legacy_attr=0;
+        if(!mtlb_editor_entity_info(i,&x,&y,&type,&hp,&legacy_attr,&legacy_w,&legacy_h))continue;
+        const int sprite_asset=mtlb_editor_entity_sprite_asset(i);
+        if(i==entity_count-1)maker_log("Stage entity draw reached entity %d (sprite catalog index %d).",i,sprite_asset);
+        if(sprite_asset>=0&&sprite_asset<mtlb_editor_sprite_asset_count()){
+            uint32_t owner=0,descriptor=0;uint16_t frames=0,part_count=0;
+            if(mtlb_editor_sprite_asset_info(sprite_asset,&owner,&descriptor,&frames,&part_count)&&part_count>0){
+                int part_x[64]={},part_y[64]={},part_w[64]={},part_h[64]={};
+                uint16_t part_attr[64]={};bool valid[64]={};
+                int min_x=32767,min_y=32767,max_x=-32768,max_y=-32768,valid_parts=0;
+                for(int p=0;p<std::min(64,(int)part_count);p++){
+                    if(!mtlb_editor_sprite_asset_part(sprite_asset,p,&part_x[p],&part_y[p],&part_w[p],&part_h[p],&part_attr[p]))continue;
+                    if(part_w[p]<1||part_w[p]>4||part_h[p]<1||part_h[p]>4)continue;
+                    valid[p]=true;
+                    min_x=std::min(min_x,part_x[p]);min_y=std::min(min_y,part_y[p]);
+                    max_x=std::max(max_x,part_x[p]+part_w[p]*8);
+                    max_y=std::max(max_y,part_y[p]+part_h[p]*8);
+                    valid_parts++;
+                }
+                if(valid_parts>0&&max_x>min_x&&max_y>min_y){
+                    const float sprite_w=(float)(max_x-min_x)*pixel_scale;
+                    const float sprite_h=(float)(max_y-min_y)*pixel_scale;
+                    const float left=origin.x+x*width-sprite_w*0.5f;
+                    const float top=origin.y+y*height-sprite_h*0.5f;
+                    for(int p=0;p<std::min(64,(int)part_count);p++){
+                        if(!valid[p])continue;
+                        SDL_Texture *texture=maker_stage_sprite_texture(renderer,part_attr[p],part_w[p],part_h[p]);
+                        if(!texture)continue;
+                        SDL_Rect destination{
+                            (int)std::lround(left+(part_x[p]-min_x)*pixel_scale),
+                            (int)std::lround(top+(part_y[p]-min_y)*pixel_scale),
+                            std::max(1,(int)std::lround(part_w[p]*8.0f*pixel_scale)),
+                            std::max(1,(int)std::lround(part_h[p]*8.0f*pixel_scale))
+                        };
+                        if(SDL_RenderCopy(renderer,texture,nullptr,&destination)!=0)
+                            maker_log("Stage ROM sprite %d part %d draw failed: %s",sprite_asset,p,SDL_GetError());
+                    }
+                    continue;
+                }
+            }
+        }
+        // Compatibility rendering for old v1/v2 map entities without catalog IDs.
+        const int safe_w=std::max(1,std::min(4,legacy_w));
+        const int safe_h=std::max(1,std::min(4,legacy_h));
+        if(legacy_attr==0)continue;
+        SDL_Texture *texture=maker_stage_sprite_texture(renderer,legacy_attr,safe_w,safe_h);
         if(!texture)continue;
-        const float pixel_scale=std::min(cell_w/8.0f,cell_h/8.0f);
         const int sprite_w=std::max(1,(int)std::lround(safe_w*8.0f*pixel_scale));
         const int sprite_h=std::max(1,(int)std::lround(safe_h*8.0f*pixel_scale));
         SDL_Rect destination{
             (int)std::lround(origin.x+x*width-sprite_w*0.5f),
-            (int)std::lround(origin.y+y*height-sprite_h*0.5f),
-            sprite_w,sprite_h
+            (int)std::lround(origin.y+y*height-sprite_h*0.5f),sprite_w,sprite_h
         };
         if(SDL_RenderCopy(renderer,texture,nullptr,&destination)!=0)
-            maker_log("Stage sprite draw failed for entity %d: %s",i,SDL_GetError());
+            maker_log("Legacy stage sprite draw failed for entity %d: %s",i,SDL_GetError());
     }
     SDL_RenderSetClipRect(renderer,nullptr);
 }

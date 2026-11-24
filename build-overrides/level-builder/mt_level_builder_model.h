@@ -35,6 +35,7 @@ uint32_t mtlb_editor_vdp_art_hash(void);
 int mtlb_editor_entity_count(void);
 int mtlb_editor_place_entity(float x,float y,int type,int sprite_asset_index);
 int mtlb_editor_entity_info(int index,float *x,float *y,int *type,int *hp,uint16_t *tile_attr,int *width_tiles,int *height_tiles);
+int mtlb_editor_entity_sprite_asset(int index);
 #ifdef __cplusplus
 }
 #endif

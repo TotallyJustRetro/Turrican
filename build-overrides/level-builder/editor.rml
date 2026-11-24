@@ -115,7 +115,7 @@
           <div class="folder expanded" id="folder-tiles">
             <div class="folder-heading" data-action="folder-toggle" data-folder="tiles"><span class="folder-arrow">▾</span> TILES / VDP LIBRARY</div>
             <div id="folder-content-tiles" class="folder-content">
-              <div class="folder-subheading">SELECT A TILE TO LOAD IT INTO THE BRUSH · CLICK THE STAGE TO PAINT</div>
+              <div class="folder-subheading">RAW 8×8 VDP CELLS · NOT FULL SPRITES · SELECT TO LOAD A BRUSH</div>
               <div id="asset-list-tiles" class="asset-card-grid tile-card-grid"></div>
               <div class="tile-pager">
                 <button class="tiny-button" data-action="asset-page" data-dir="-1">◂ PREVIOUS</button>

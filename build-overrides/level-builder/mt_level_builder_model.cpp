@@ -50,7 +50,20 @@ static bool g_document_dirty = false;
 static int g_selected_x = 0, g_selected_y = 0, g_brush_tile = 1;
 static int g_undo_count = 0, g_redo_count = 0;
 static uint16_t g_undo_stack[12][64*32] = {}, g_redo_stack[12][64*32] = {};
-struct EditorEntity { float x,y; int type,hp; uint16_t tile_attr; uint8_t width_tiles,height_tiles; };
+struct EditorEntity {
+    float x,y;
+    int type,hp;
+    uint16_t tile_attr;
+    uint8_t width_tiles,height_tiles;
+    int sprite_asset_index;
+};
+struct EditorEntityV2 {
+    float x,y;
+    int type,hp;
+    uint16_t tile_attr;
+    uint8_t width_tiles,height_tiles;
+};
+static_assert(sizeof(EditorEntityV2)==20,"Version 2 level entity layout changed");
 static std::vector<EditorEntity> g_entities;
 static int g_selected_entity = -1;
 
@@ -465,8 +478,9 @@ extern "C" int mtlb_map_save(void)
 {
     char path[4096];if(!mtlb_level_document_path(path,sizeof(path)))return 0;
     FILE *file=std::fopen(path,"wb");if(!file)return 0;
-    const char magic[8]={'M','T','L','B','L','V','L',2};
+    const char magic[8]={'M','T','L','B','L','V','L',3};
     const std::uint32_t cols=kEditorMapCols,rows=kEditorMapRows;
+    if(g_entities.size()>UINT32_MAX){std::fclose(file);return 0;}
     const std::uint32_t entityCount=(std::uint32_t)g_entities.size();
     bool ok=std::fwrite(magic,1,sizeof(magic),file)==sizeof(magic)&&
         std::fwrite(&cols,sizeof(cols),1,file)==1&&std::fwrite(&rows,sizeof(rows),1,file)==1&&
@@ -486,12 +500,13 @@ extern "C" int mtlb_map_load(void)
     std::uint16_t loaded[kEditorMapCols*kEditorMapRows]={};
     bool ok=std::fread(magic,1,sizeof(magic),file)==sizeof(magic)&&
         std::memcmp(magic,"MTLBLVL",7)==0&&
-        ((unsigned char)magic[7]==1||(unsigned char)magic[7]==2)&&
+        ((unsigned char)magic[7]==1||(unsigned char)magic[7]==2||(unsigned char)magic[7]==3)&&
         std::fread(&cols,sizeof(cols),1,file)==1&&std::fread(&rows,sizeof(rows),1,file)==1&&
         cols==(std::uint32_t)kEditorMapCols&&rows==(std::uint32_t)kEditorMapRows&&
         std::fread(loaded,sizeof(loaded),1,file)==1;
     std::vector<EditorEntity> loaded_entities;
-    if(ok&&(unsigned char)magic[7]==2){
+    const unsigned version=(unsigned char)magic[7];
+    if(ok&&(version==2||version==3)){
         std::uint32_t entity_count=0;
         ok=std::fread(&entity_count,sizeof(entity_count),1,file)==1;
         if(ok){
@@ -499,18 +514,36 @@ extern "C" int mtlb_map_load(void)
             if(payload_start<0||std::fseek(file,0,SEEK_END)!=0)ok=false;
             else{
                 const long file_end=std::ftell(file);
+                const size_t record_size=version==3?sizeof(EditorEntity):sizeof(EditorEntityV2);
                 if(file_end<payload_start)ok=false;
                 else{
                     const unsigned long long available=(unsigned long long)(file_end-payload_start);
-                    const unsigned long long required=(unsigned long long)entity_count*sizeof(EditorEntity);
+                    const unsigned long long required=(unsigned long long)entity_count*(unsigned long long)record_size;
                     if(required>available)ok=false;
                     else if(std::fseek(file,payload_start,SEEK_SET)!=0)ok=false;
                 }
             }
-            if(ok){
+            if(ok&&version==3){
                 loaded_entities.resize((size_t)entity_count);
                 if(entity_count>0)
                     ok=std::fread(loaded_entities.data(),sizeof(EditorEntity),entity_count,file)==entity_count;
+            }else if(ok&&version==2){
+                std::vector<EditorEntityV2> old_entities((size_t)entity_count);
+                if(entity_count>0)
+                    ok=std::fread(old_entities.data(),sizeof(EditorEntityV2),entity_count,file)==entity_count;
+                if(ok){
+                    loaded_entities.resize((size_t)entity_count);
+                    for(size_t i=0;i<old_entities.size();i++){
+                        const EditorEntityV2 &old=old_entities[i];
+                        EditorEntity &entity=loaded_entities[i];
+                        entity.x=old.x;entity.y=old.y;
+                        entity.type=old.type;entity.hp=old.hp;
+                        entity.tile_attr=old.tile_attr;
+                        entity.width_tiles=old.width_tiles;
+                        entity.height_tiles=old.height_tiles;
+                        entity.sprite_asset_index=-1;
+                    }
+                }
             }
         }
     }
@@ -672,12 +705,14 @@ extern "C" int mtlb_editor_place_entity(float x,float y,int type,int sprite_asse
     entity.y=std::max(0.0f,std::min(1.0f,y));
     entity.type=std::max(0,std::min(5,type));
     entity.hp=100;
+    entity.sprite_asset_index=-1;
     if(sprite_asset_index>=0&&sprite_asset_index<mtlb_editor_sprite_asset_count()){
         int px=0,py=0,w=0,h=0;uint16_t attr=0;
         if(mtlb_editor_sprite_asset_part(sprite_asset_index,0,&px,&py,&w,&h,&attr)){
             entity.tile_attr=attr;
             entity.width_tiles=(uint8_t)w;
             entity.height_tiles=(uint8_t)h;
+            entity.sprite_asset_index=sprite_asset_index;
         }
     }
     try{
@@ -699,6 +734,11 @@ extern "C" int mtlb_editor_entity_info(int index,float *x,float *y,int *type,int
     if(tile_attr)*tile_attr=entity.tile_attr;
     if(width_tiles)*width_tiles=entity.width_tiles;if(height_tiles)*height_tiles=entity.height_tiles;
     return 1;
+}
+extern "C" int mtlb_editor_entity_sprite_asset(int index)
+{
+    if(index<0||(size_t)index>=g_entities.size())return -1;
+    return g_entities[(size_t)index].sprite_asset_index;
 }
 
 
