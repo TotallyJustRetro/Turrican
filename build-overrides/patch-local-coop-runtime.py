@@ -254,7 +254,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
