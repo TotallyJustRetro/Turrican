@@ -159,9 +159,30 @@ void md_coop_p2_refresh(void) {
     ++md_coop_p2_frame_count;
 }
 
-void md_coop_p2_actor_complete(uint32_t callback) {
-    if ((md_coop_p2_frame_count % 60u) == 0u)
-        md_coop_p2_log("actor-frame", callback, "P2 callback and render builder returned");
+void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
+    unsigned i;
+    FILE *f;
+    if (md_coop_p2_frame_count > 10u && (md_coop_p2_frame_count % 60u) != 0u)
+        return;
+    md_coop_p2_log("actor-frame", callback, "P2 renderer and actor callback returned");
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f || !cpu) { if (f) fclose(f); return; }
+    fprintf(f, "p2_cpu d:");
+    for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->d[i]);
+    fprintf(f, " a:");
+    for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->a[i]);
+    fprintf(f, " ret=%08X usp=%08X flags=%u%u%u%u%u sr=%04X\\n",
+            (unsigned)cpu->ret, (unsigned)cpu->usp,
+            (unsigned)cpu->x, (unsigned)cpu->n, (unsigned)cpu->z,
+            (unsigned)cpu->v, (unsigned)cpu->c, (unsigned)cpu->sr_sys);
+    fprintf(f, "p2_state_BC62_BD26=");
+    for (i = 0xBC62u; i <= 0xBD26u; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\\np2_camera_DFD8_DFDA=%02X%02X%02X scratch_F226=%02X sprite_FD24_25=%02X%02X\\n",
+            (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
+            (unsigned)md_coop_p2_ram[0xDFDA], (unsigned)md_coop_p2_ram[0xF226],
+            (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25]);
+    fclose(f);
 }
 
 void md_coop_p2_abort(const char *reason, uint32_t callback) {
@@ -253,7 +274,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -282,9 +303,25 @@ extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern int md_coop_p2_is_ready(void);
-extern void md_coop_p2_actor_complete(uint32_t callback);
+extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
 extern void md_coop_p2_finish(void);
+
+/* Player state persists in P2 RAM, but the game's callback also receives live
+   per-frame D/A register inputs from its caller. Refresh those inputs for each
+   native call while preserving P2's independent A7 and USP. */
+static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
+    unsigned i;
+    if (!p2 || !primary) return;
+    for (i = 0; i < 8u; ++i) p2->d[i] = primary->d[i];
+    for (i = 0; i < 7u; ++i) p2->a[i] = primary->a[i];
+    p2->x = primary->x;
+    p2->n = primary->n;
+    p2->z = primary->z;
+    p2->v = primary->v;
+    p2->c = primary->c;
+    p2->sr_sys = primary->sr_sys;
+}
 
 static int md_coop_p2_call_renderer(M68K *p2) {
     const uint32_t sentinel = 0x00FEEE00u;
@@ -324,15 +361,15 @@ static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
     return ok;
 }
 
-void md_coop_run_local_p2(M68K *primary) {
+void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     M68K *p2;
-    uint32_t callback;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
     p2 = md_coop_p2_cpu();
     if (!p2) return;
 
+    md_coop_p2_sync_call_context(p2, primary);
     md_coop_p2_set_active(1);
     if (!md_coop_p2_call_renderer(p2)) {
         md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
@@ -340,7 +377,6 @@ void md_coop_run_local_p2(M68K *primary) {
         return;
     }
 
-    callback = RD32(0xFFFFBC62u);
     /* Initial implementation follows the game's verified native player actor.
        A different callback is treated as an unsupported state, not guessed. */
     if (callback != 0x0000224Cu) {
@@ -348,13 +384,14 @@ void md_coop_run_local_p2(M68K *primary) {
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_sync_call_context(p2, primary);
     if (!md_coop_p2_call_actor(p2, callback)) {
         md_coop_p2_abort("P2 actor did not restore its CPU stack/return frame", callback);
         md_coop_p2_finish();
         return;
     }
     md_coop_p2_set_active(0);
-    md_coop_p2_actor_complete(callback);
+    md_coop_p2_actor_complete(p2, callback);
     md_coop_p2_finish();
 }
 """
@@ -364,8 +401,8 @@ if "First native Mega Turrican P2 actor runner." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
-# 4) Hook immediately before P1's sprite builder (one-time P2 seed) and after
-# P1's dynamic actor callback (P2 render + update before shared queue flush).
+# 4) Seed P2 before the sprite-builder seam, then run P2's render/update pass
+# at the callback call site, before P1 enters the same native actor routine.
 replace_once(
     GEN,
     "L_1658: { RT_POLL(0x1658); { uint32_t _r=0x165Cu;",
@@ -374,14 +411,14 @@ replace_once(
 )
 
 line = re.compile(
-    r"(L_1660:\s*\{[^\n]*?rt_call_addr\(c,_t\);\s*rt_sp--;\s*"
-    r"if\(c->ret!=_r && !rt_fix_ret\(c,_r\)\)\s*return;\s*)\}\s*\}"
+    r"(L_1660:\s*\{[^\n]*?rt_shadow\[rt_sp\+\+\]=_r;\s*)"
+    r"rt_call_addr\(c,_t\);"
 )
 gen = GEN.read_text(encoding="utf-8")
-if "md_coop_run_local_p2(c);" not in gen:
-    gen, count = line.subn(r"\1} md_coop_run_local_p2(c); }", gen, count=1)
+if "md_coop_run_local_p2(c,_t);" not in gen:
+    gen, count = line.subn(r"\1md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);", gen, count=1)
     if count != 1:
-        raise SystemExit("local co-op patch: verified L_1660 callback return seam not found")
+        raise SystemExit("local co-op patch: verified pre-callback L_1660 seam not found")
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
 # 5) Static contract checks. These do not prove gameplay; they ensure the
@@ -395,7 +432,9 @@ checks = {
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
-    "P2 actor is run before shared flush": "md_coop_run_local_p2(c);" in g and "L_1662:" in g,
+    "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
+    "P2 refreshes live caller registers": "md_coop_p2_sync_call_context(p2, primary);" in g,
+    "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
@@ -405,5 +444,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: persistent M68K context, private CPU bus bank/stack, port-2 input, native sprite builder and actor callback.")
-print("This build is an experimental actor milestone, not a verified finished co-op release.")
+print("Installed guarded native P2 actor prototype: independent stack/state, live callback registers, port-2 input, native sprite builder and pre-callback actor scheduling.")
+print("P2 runtime snapshots now include its CPU registers and private player-state bytes; gameplay still requires in-game verification.")
