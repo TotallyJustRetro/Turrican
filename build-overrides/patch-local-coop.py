@@ -223,7 +223,7 @@ RECOMP.write_text(r,encoding="utf-8")
 # B. Require both local players to reach the same screen edge before scrolling.
 if "md_player2_camera_x" not in r:
     raise SystemExit("local co-op patch: shared P2 camera coordinate declaration is missing")
-cam_a,cam_b=func_span(r,r"(?m)^static\\s+void\\s+f_932A\\s*\\(\\s*M68K\\s*\\*\\s*c\\s*\\)(?=\\s*\\{)","f_932A")
+cam_a,cam_b=func_span(r,r"(?m)^static\s+void\s+f_932A\s*\(\s*M68K\s*\*\s*c\s*\)(?=\s*\{)","f_932A")
 cam=r[cam_a:cam_b]
 left_marker="L_9336: { RT_POLL(0x9336);"
 right_marker="L_935E: { RT_POLL(0x935E);"
@@ -250,8 +250,8 @@ if "coop_shared_left_edge" not in cam:
         DSET(0,16,coop_shared_right_edge);
     }
     """
-    cam=cam.replace(left_marker,left_code+"\\n    "+left_marker,1)
-    cam=cam.replace(right_marker,right_code+"\\n    "+right_marker,1)
+    cam=cam.replace(left_marker,left_code+"\n    "+left_marker,1)
+    cam=cam.replace(right_marker,right_code+"\n    "+right_marker,1)
     r=r[:cam_a]+cam+r[cam_b:]
     RECOMP.write_text(r,encoding="utf-8")
 
