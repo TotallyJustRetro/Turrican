@@ -228,19 +228,22 @@ static void maker_prepare_log()
     g_log_path = current.string();
 
     std::error_code ec;
+    bool rotation_failed = false;
     const std::uintmax_t existing_size = std::filesystem::file_size(current, ec);
     if (!ec && existing_size > 8u * 1024u * 1024u) {
         ec.clear();
         std::filesystem::remove(previous, ec);
         ec.clear();
         std::filesystem::rename(current, previous, ec);
-        if (ec) {
-            maker_log("Log rotation could not rename the previous log: %s", ec.message().c_str());
-        }
+        rotation_failed = (bool)ec;
     }
 
     g_log_file = std::fopen(g_log_path.c_str(), "ab");
-    if (g_log_file) std::setvbuf(g_log_file, nullptr, _IOLBF, 0);
+    if (g_log_file) {
+        std::setvbuf(g_log_file, nullptr, _IOLBF, 0);
+        if (rotation_failed)
+            maker_log("Log rotation could not rename the previous log; continuing with append mode.");
+    }
 }
 
 static void maker_log(const char *format, ...)
