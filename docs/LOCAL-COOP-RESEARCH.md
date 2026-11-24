@@ -104,6 +104,18 @@ The recovery build's runtime-state report provides a narrower, safer scheduling 
 6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
 7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
 
+## Descriptor initializer: three dynamic callback phases
+
+The newest expanded report shows that `f_19FA` has three distinct indirect calls. The full initializer therefore cannot be treated as one generic player-state constructor:
+
+- At PC `0x1AF0`, it calls the function pointer obtained from the structure at descriptor offset `+2`. The same pointer is saved in `$FFBC40`. The call is prepared with resource/transfer roots `$FFDFCE`, `$FFBC94`, `$FFDD1E`, and `$FF5C00` in A6/A4/A3/A1 respectively. This strongly suggests the first resource setup phase, but the exact callback target and side effects still depend on the runtime descriptor contents.
+- At PC `0x1B32`, it calls the function pointer obtained from the nested structure reached through descriptor offset `+6`; the pointer is saved in `$FFBC48`. This call is prepared with a second resource chain: A6=`$FFE002`, A4=`$FFBC96`, A3=`$FFDE4E`, A2=`0x2000`, and A1=`$FF9400`. Treat this as a separate resource/setup phase until its target is resolved.
+- Immediately after the second call, `f_19FA` invokes `f_5232` and `f_5D8A`. `f_5232` resets the global 79-record object lists and auxiliary record list; `f_5D8A` clears the single 29-part renderer scratch list and sprite phase bytes. These are explicit shared one-instance side effects.
+- At PC `0x1B56`, it calls the longword stored at descriptor offset `+38`. This happens after those resets. It then snapshots shared view state `$FFDFD4` into `$FFBF0E`, copies the current player position `$FFBD1E` into `$FFBF12`, copies player size/state `$FFBD22/$FFBC87` into `$FFBF17/$FFBF16`, resets/sets player flags, and installs `f_224C` at `$FFBC62`. This is the strongest candidate for the descriptor's player-specific runtime initialization callback, but its target still must be read from the real descriptor.
+- The alternate `f_1BDE` setup/restore path also has three indirect calls. It walks existing active-list state, runs `f_5578`, `f_5232`, and `f_5D8A`, then invokes descriptor-derived callbacks. It is therefore not a safe shortcut for creating P2 either.
+- A plausible future split is: resolve and share immutable character/animation resources from the first two phases; run player-specific setup separately for P1 and P2; and run shared list/scratch resets exactly once. This remains a design hypothesis until the live descriptor callback addresses and the effects of each target are captured.
+
+
 ## Expanded generated-callgraph and ownership audit
 
 The extended report now traces the direct player update graph to depth six instead of relying only on the top-level callback body:
