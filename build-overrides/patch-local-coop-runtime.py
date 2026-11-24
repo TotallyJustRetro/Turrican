@@ -129,10 +129,12 @@ void md_coop_prepare_p2(M68K *primary) {
         if (callback != 0x0000224Cu) return;
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
+        md_coop_p2_mark(0xBC1C, 0xBC20); /* pre/post actor callbacks */
+        md_coop_p2_mark(0xBC3C, 0xBC4F); /* descriptor setup callbacks */
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
-        md_coop_p2_mark(0xBC84, 0xBC89);
+        md_coop_p2_mark(0xBC84, 0xBC8B);
         md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCA7);
@@ -345,31 +347,11 @@ static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
     p2->sr_sys = primary->sr_sys;
 }
 
-static int md_coop_p2_call_renderer(M68K *p2) {
-    const uint32_t sentinel = 0x00FEEE00u;
+static int md_coop_p2_call_native(M68K *p2, uint32_t target, uint32_t sentinel) {
     uint32_t original_sp;
     int original_rt_sp;
     int ok;
-    if (!p2 || rt_sp < 0 || rt_sp >= 65534) return 0;
-    original_sp = p2->a[7];
-    if (original_sp < 0x00F00008u || original_sp > 0x00F0FFFCu) return 0;
-    original_rt_sp = rt_sp;
-    p2->a[7] -= 4;
-    WR32(p2->a[7], sentinel);
-    rt_shadow[rt_sp++] = sentinel;
-    f_5DB2(p2);
-    ok = (p2->ret == sentinel && p2->a[7] == original_sp &&
-          rt_sp == original_rt_sp + 1);
-    rt_sp = original_rt_sp;
-    return ok;
-}
-
-static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
-    const uint32_t sentinel = 0x00FEEE04u;
-    uint32_t original_sp;
-    int original_rt_sp;
-    int ok;
-    if (!p2 || rt_sp < 0 || rt_sp >= 65534) return 0;
+    if (!p2 || !target || rt_sp < 0 || rt_sp >= 65534) return 0;
     original_sp = p2->a[7];
     if (original_sp < 0x00F00008u || original_sp > 0x00F0FFFCu) return 0;
     original_rt_sp = rt_sp;
@@ -381,6 +363,14 @@ static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
           rt_sp == original_rt_sp + 1);
     rt_sp = original_rt_sp;
     return ok;
+}
+
+static int md_coop_p2_call_slot(M68K *p2, unsigned slot, uint32_t sentinel) {
+    uint32_t target;
+    if (!p2 || slot > 0xFFFCu) return 0;
+    target = md_coop_p2_long(slot);
+    if (!target) return 1;
+    return md_coop_p2_call_native(p2, target, sentinel);
 }
 
 void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
@@ -395,24 +385,54 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
 
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_renderer(p2)) {
-        md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
+
+    /* Mirror the player-specific callbacks surrounding the main actor in
+       f_156A. The world/object-list maintenance and shared VDP queue flush
+       remain P1-only. */
+    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE08u) ||
+        !md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE0Cu) ||
+        !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE10u) ||
+        !md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE14u)) {
+        md_coop_p2_abort("P2 pre-actor descriptor callback did not restore its private stack", callback);
         md_coop_p2_finish();
         return;
     }
 
-    /* Initial implementation follows the game's verified native player actor.
-       A different callback is treated as an unsupported state, not guessed. */
+    /* P1's frame resets all 29 multipart scratch entries before f_5DB2.
+       P2 now has its own bank for FCE8-FDCF and BD24/BD25, so perform the
+       same reset without touching P1's sprite builder state. */
+    if (!md_coop_p2_call_native(p2, 0x00005D8Au, 0x00FEEE18u)) {
+        md_coop_p2_abort("P2 per-frame sprite scratch reset failed", callback);
+        md_coop_p2_finish();
+        return;
+    }
+    if (!md_coop_p2_call_native(p2, 0x00005DB2u, 0x00FEEE1Cu)) {
+        md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
+    /* Follow the verified native player callback, not a cloned sprite. */
     if (callback != 0x0000224Cu) {
         md_coop_p2_abort("P2 callback changed from verified native entry 0x224C", callback);
         md_coop_p2_finish();
         return;
     }
-    if (!md_coop_p2_call_actor(p2, callback)) {
+    if (!md_coop_p2_call_native(p2, callback, 0x00FEEE20u)) {
         md_coop_p2_abort("P2 actor did not restore its CPU stack/return frame", callback);
         md_coop_p2_finish();
         return;
     }
+
+    /* The original P1 frame calls f_3BD8 and then the BC20 state callback.
+       These process player-local movement/contact flags after the main actor. */
+    if (!md_coop_p2_call_native(p2, 0x00003BD8u, 0x00FEEE24u) ||
+        !md_coop_p2_call_slot(p2, 0xBC20u, 0x00FEEE28u)) {
+        md_coop_p2_abort("P2 post-actor contact/state callback did not restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+
     md_coop_p2_set_active(0);
     md_coop_p2_actor_complete(p2, callback);
     md_coop_p2_finish();
@@ -454,6 +474,9 @@ checks = {
     "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
+    "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC20)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
+    "P2 resets multipart sprite scratch every frame": "md_coop_p2_call_native(p2, 0x00005D8Au" in g,
+    "P2 runs post-actor contact state": "md_coop_p2_call_native(p2, 0x00003BD8u" in g and "md_coop_p2_call_slot(p2, 0xBC20u" in g,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
@@ -469,5 +492,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: independent stack/state, frame-entry register seed, port-2 input, native sprite builder and pre-callback actor scheduling.")
-print("P2 runtime snapshots now include its CPU registers, private player-state bytes and indexed F200-F9FF work area; gameplay still requires in-game verification.")
+print("Installed guarded P2 frame slice: private descriptor callbacks, per-frame multipart scratch reset, native renderer/actor, and post-actor contact/state callbacks.")
+print("P2 runtime snapshots include CPU registers and private player/scratch state; gameplay still requires in-game verification.")
