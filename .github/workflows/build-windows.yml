@@ -177,6 +177,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-rmlui-level-builder.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Installing the RmlUi-only Level Builder failed.' }
 
+      - name: Install opt-in local co-op player foundation
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-local-coop.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the local co-op player foundation failed.' }
+
       - name: Inspect static recomp gameplay hooks
         shell: pwsh
         run: |
