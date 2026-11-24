@@ -182,12 +182,26 @@ if "coop_p2_player_state" not in block:
     for required in (
         "coop_p2_player_state[0xB7]",
         "rt_call_addr(c,_t);",
-        "WR8(0xFFFFBC90u,RD8(0xFFFFBC92u));",
         "uint32_t _t=0x5DB2u;",
-        "uint32_t _t=A(0);"
+        "uint32_t _t=A(0);",
+        "uint8_t coop_p2_input_a=(uint8_t)RD8(0xFFFFBC92u);",
+        "uint8_t coop_p2_input_b=(uint8_t)RD8(0xFFFFBC93u);",
+        "WR8(0xFFFFBC90u,coop_p2_input_a);",
+        "WR8(0xFFFFBC91u,coop_p2_input_b);"
     ):
         if required not in block:
             raise SystemExit("local co-op patch: expected P2 actor hook missing: "+required)
+    input_a=block.find("uint8_t coop_p2_input_a=(uint8_t)RD8(0xFFFFBC92u);")
+    input_b=block.find("uint8_t coop_p2_input_b=(uint8_t)RD8(0xFFFFBC93u);")
+    swap=block.find("WR8(0xFFFFBC70u+i,coop_p2_player_state[i]);",block.find("if(coop_player_call_entry_valid)"))
+    write_a=block.find("WR8(0xFFFFBC90u,coop_p2_input_a);")
+    write_b=block.find("WR8(0xFFFFBC91u,coop_p2_input_b);")
+    p2_capture=block.find("coop_p2_player_state[i]=(uint8_t)RD8(0xFFFFBC70u+i);")
+    p1_restore=block.find("WR8(0xFFFFBC70u+i,coop_p1_ram[i]);")
+    if not (input_a>=0 and input_b>input_a and swap>input_b and write_a>swap and write_b>write_a):
+        raise SystemExit("local co-op patch: P2 live input must be captured before the P2 RAM swap and restored into port 1.")
+    if not (p2_capture>=0 and p1_restore>p2_capture):
+        raise SystemExit("local co-op patch: P2 state must be captured before restoring P1 RAM.")
     r=r[:a]+block+r[b:]
 RECOMP.write_text(r,encoding="utf-8")
 
