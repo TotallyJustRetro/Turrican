@@ -146,7 +146,7 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBCC2, 0xBCC8); /* alternate animation state */
         md_coop_p2_mark(0xBCBC, 0xBD26);
         /* Native setup callbacks dereference these P1 RAM pointer targets.
-           f_5BC clears 63 words at DC9E; player descriptor work areas begin at
+           f_5BC clears 64 words (128 bytes) at DC9E; player descriptor work areas begin at
            DD1E, DD9E, and DE4E; A6 callback contexts span DFCE through E035. */
         md_coop_p2_mark(0xDC9E, 0xDD1D);
         md_coop_p2_mark(0xDD1E, 0xDE1D);
@@ -225,7 +225,7 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f, "\np2_player_scratch_F200_F9FF=");
     for (i = 0xF200u; i <= 0xF9FFu; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\np2_animation_clear_DC9E_DD1B=");
+    fprintf(f, "\np2_animation_clear_DC9E_DD1D=");
     for (i = 0xDC9Eu; i <= 0xDD1Du; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_descriptor_work_DD1E_DE1D=");
@@ -617,7 +617,7 @@ checks = {
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
-    "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1B=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
+    "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1D=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
     "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
