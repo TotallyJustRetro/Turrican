@@ -104,6 +104,19 @@ The recovery build's runtime-state report provides a narrower, safer scheduling 
 6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
 7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
 
+## Expanded generated-callgraph and ownership audit
+
+The extended report now traces the direct player update graph to depth six instead of relying only on the top-level callback body:
+
+- `f_224C` reaches 41 generated functions in the audited direct-call graph. Its own body references 52 distinct RAM addresses; the deeper graph exposes additional player, sprite, allocator, VDP-command, and camera/view state. It also has one indirect call site, the A6 action dispatch at PC `0x288E`, whose selected code targets were separately resolved to `f_4B58` and `f_4B74`.
+- The movement graph's obvious player-state candidates include control/status fields around `$FFBC84-$FFBC91`, movement/animation fields across `$FFBCBC-$FFBCFE`, and position/actor fields across `$FFBD00-$FFBD22`. `$FFBC54/$FFBC58`, `$FFBF1E/$FFBF20/$FFBF23`, and several status/resource fields have mixed use across setup, rendering, and movement; they are not yet approved for a blind private-bank allowlist.
+- The graph also touches shared list heads and records through `$FFBC28/$FFBC2C/$FFBC30` and `$FFBF3C`; these belong to the global object system. The allocator's free records begin at `$FFBF7A` and use a 62-byte stride for 79 entries. Player projectiles, effects, and multipart sprite parts must all continue to use this one allocator.
+- The player graph reaches the VDP command queue through `f_6DE -> f_6E6 -> f_71C`, which reads/writes `$FFBCA4/$FFBCA6` and `$FFD2DA`. Resource transfer state around `$FFBC94/$FFBC96/$FFBCA8-$FFBCB4/$FFDC9E`, plus descriptor-linked DMA roots `$FFDFCE/$FFE002`, is also shared or mixed. These must not be copied into P2's local view.
+- The `f_5DB2` renderer graph contains eight functions. It reads player sprite/resource state, the 29-entry scratch area `$FFFFFCE8`, the shared view offset `$FFDFD8`, and camera transform fields; then it allocates from the shared object pool. Its helper `f_2660` also touches animation/status flags, so a render-only pass still needs more than just independent X/Y coordinates.
+- The theoretical maximum is 29 sprite-part records per character. Two fully populated characters could reserve up to 58 of the 79 shared records before enemies, player-fired objects, and effects. This is a capacity warning, not a claim that every frame consumes all 29; the eventual renderer needs a measured high-water mark and an overflow-safe fallback.
+- The `f_156A` root reaches 103 functions in the same depth-six audit and contains the descriptor setup, shared transfers, sprite preparation, player update, and post-update phases. Its two direct callers are both in `f_200` under separate game-state branches. This reinforces the boundary: duplicate a classified player context and its player-owned phases, never the entire `f_156A` entry.
+- The current audit is still not a complete ownership proof: direct-call graph limits do not resolve every pointer-indirect read, runtime callback value, DMA access, or nested event/interrupt. Until those are classified, no RAM range should be called a safe P2 bank.
+
 ## Shared camera-follow writer
 
 The camera audit has now found the player-driven shared write path, which is more specific than the earlier scroll-helper hypothesis:
