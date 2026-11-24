@@ -8,7 +8,8 @@ The user's test confirmed that Player 2 was not controllable, moved out of bound
 
 ## What the generated recomp report confirms
 
-- The main gameplay loop is `f_156A`. It selects a descriptor through the ROM table at `0x1994`, indexed by `$FFBF1E`, and calls the setup routine `f_19FA`. It conditionally calls `f_1BDE` as a secondary setup path.
+- The main gameplay player/update path is `f_156A`. The game-state routine `f_200` calls it directly at PCs `0x03EE` and `0x040E`, under separate state branches. `f_156A` selects a descriptor through the ROM table at `0x1994`, indexed by `$FFBF1E`, and calls the setup routine `f_19FA`. It conditionally calls `f_1BDE` as a secondary setup/respawn path. The exact cadence of `f_156A` relative to rendered video frames still needs to be proven from the outer game-state flow.
+- The game-state routine `f_200` installs `f_468` in the primary callback slot `$FFBC14` at PCs `0x03AA` and `0x044E`. It calls `f_156A` at `0x03EE` and `0x040E` and then continues its own state machine. This is the first confirmed caller chain into the player update path; it means P2 must be scheduled relative to the existing `f_200`/`f_156A` flow, not bolted onto an unrelated end-of-frame hook.
 - `f_19FA` saves the descriptor pointer at `$FFBC50`, reads the descriptor's fields, and initializes a group of lower player-context slots including `$FFBC1C`, `$FFBC20`, `$FFBC24`, `$FFBC3C`, `$FFBC40`, `$FFBC44`, `$FFBC48`, `$FFBC4C`, and `$FFBC5A`.
 - `f_19FA` installs the player update callback pointer `0x224C` at `$FFBC62`. The main loop later reads that slot and dispatches through it with `rt_call_addr`.
 - `f_1BDE` is a conditional secondary setup path that also reads the descriptor at `$FFBC50` and writes the callback slot at `$FFBC62`. It is not established to be a second-player initializer.
