@@ -132,12 +132,6 @@ if "coop_p2_player_state" not in block:
                 WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
             *c=coop_render_cpu;
         }
-        /* f_5DB2 appends P2's native multi-part sprite to the shared render queue. */
-        for(unsigned int i=0;i<0xB7u;i++)
-            coop_p2_player_state[i]=(uint8_t)RD8(0xFFFFBC70u+i);
-        for(unsigned int i=0;i<0xB7u;i++)
-            WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
-        *c=coop_render_cpu;
     }
     """
     block=block.replace(render_marker,render_marker+render_code,1)
