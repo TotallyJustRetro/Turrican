@@ -201,7 +201,8 @@ int md_coop_p2_import_collision_descriptors(void) {
         uint32_t ptr = md_coop_p2_long(record + 16u);
         unsigned source;
         unsigned dest;
-        if (ptr < 0xFFFF0000u || ptr > 0xFFFFFFE8u) {
+        if ((ptr & 0x00FF0000u) != 0x00FF0000u ||
+            (ptr & 0x0000FFFFu) > 0xFFE8u) {
             f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
             if (f) {
                 fprintf(f, "event=collision-desc-import frame=%lu index=%u ptr=%08X status=invalid-pointer\n",
@@ -677,7 +678,7 @@ checks = {
     "P2 rebuilds f_56CE collision candidates every frame": "md_coop_p2_call_actor(p2, 0x000056CEu)" in g,
     "P2 captures native BD28 collision candidates before P1 consumes them": "md_coop_p2_capture_collision_descriptors(c)" in g and "md_coop_p2_primary_collision_desc" in h,
     "P2 owns the full native collision descriptor table": "md_coop_p2_mark(0xBD28, 0xBF07)" in h,
-    "P2 deep-copies collision targets into private scratch": "memcpy(&md_coop_p2_ram[dest], &ram[source], 24u)" in h and "md_coop_p2_mark(0xEA00, 0xEDFF)" in h,
+    "P2 deep-copies collision targets into private scratch": "memcpy(&md_coop_p2_ram[dest], &ram[source], 24u)" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h and "md_coop_p2_mark(0xEA00, 0xEDFF)" in h,
     "P2 runs native f_3D80 with isolated collision targets": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h and "md_coop_p2_mark(0xBF08, 0xBF0C)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
