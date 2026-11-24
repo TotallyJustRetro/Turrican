@@ -58,6 +58,7 @@ def func_span(src: str, pattern: str, label: str):
 r=RECOMP.read_text(encoding="utf-8-sig")
 decls="""extern int md_local_coop_enabled;
 extern int md_player2_connected;
+static int md_player2_camera_x=-1;
 """
 if "extern int md_local_coop_enabled;" not in r:
     m=re.search(r"(?m)^#include [^\n]+\n",r)
@@ -87,6 +88,7 @@ if "coop_p2_player_state" not in block:
     render_code=r"""
     if(!md_local_coop_enabled) {
         coop_p2_player_initialized=0;
+        md_player2_camera_x=-1;
     } else if(md_player2_connected) {
         uint8_t coop_p1_ram[0xB7];
         if(!coop_p2_player_initialized) {
@@ -109,6 +111,7 @@ if "coop_p2_player_state" not in block:
             coop_p2_player_state[0x4C]=(uint8_t)(oldx>>8);
             coop_p2_player_state[0x4D]=(uint8_t)oldx;
             coop_p2_player_initialized=1;
+            md_player2_camera_x=(int)x;
         }
         for(unsigned int i=0;i<0xB7u;i++)
             coop_p1_ram[i]=(uint8_t)RD8(0xFFFFBC70u+i);
@@ -127,6 +130,8 @@ if "coop_p2_player_state" not in block:
                 /* Append was accepted; preserve P2 state after its draw pass. */
                 for(unsigned int i=0;i<0xB7u;i++)
                     coop_p2_player_state[i]=(uint8_t)RD8(0xFFFFBC70u+i);
+                md_player2_camera_x=(int)(((uint16_t)coop_p2_player_state[0xAE]<<8)|
+                                          coop_p2_player_state[0xAF]);
             }
             for(unsigned int i=0;i<0xB7u;i++)
                 WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
@@ -169,11 +174,18 @@ if "coop_p2_player_state" not in block:
         int coop_player_call_ok=(c->ret==_r || rt_fix_ret(c,_r));
         for(unsigned int i=0;i<0xB7u;i++)
             coop_p2_player_state[i]=(uint8_t)RD8(0xFFFFBC70u+i);
+        md_player2_camera_x=(int)(((uint16_t)coop_p2_player_state[0xAE]<<8)|
+                                  coop_p2_player_state[0xAF]);
         for(unsigned int i=0;i<0xB7u;i++)
             WR8(0xFFFFBC70u+i,coop_p1_ram[i]);
         *c=coop_p1_after_cpu;
         coop_player_call_entry_valid=0;
-        if(!coop_player_call_ok)coop_p2_player_initialized=0;
+        if(!coop_player_call_ok) {
+            coop_p2_player_initialized=0;
+            md_player2_camera_x=-1;
+        }
+    } else {
+        md_player2_camera_x=-1;
     }
     """
     block=block.replace(update_marker,update_marker+update_code,1)
@@ -187,7 +199,10 @@ if "coop_p2_player_state" not in block:
         "uint8_t coop_p2_input_a=(uint8_t)RD8(0xFFFFBC92u);",
         "uint8_t coop_p2_input_b=(uint8_t)RD8(0xFFFFBC93u);",
         "WR8(0xFFFFBC90u,coop_p2_input_a);",
-        "WR8(0xFFFFBC91u,coop_p2_input_b);"
+        "WR8(0xFFFFBC91u,coop_p2_input_b);",
+    "coop_shared_left_edge",
+    "coop_shared_right_edge",
+    "md_player2_camera_x"
     ):
         if required not in block:
             raise SystemExit("local co-op patch: expected P2 actor hook missing: "+required)
@@ -204,6 +219,41 @@ if "coop_p2_player_state" not in block:
         raise SystemExit("local co-op patch: P2 state must be captured before restoring P1 RAM.")
     r=r[:a]+block+r[b:]
 RECOMP.write_text(r,encoding="utf-8")
+
+# B. Require both local players to reach the same screen edge before scrolling.
+if "md_player2_camera_x" not in r:
+    raise SystemExit("local co-op patch: shared P2 camera coordinate declaration is missing")
+cam_a,cam_b=func_span(r,r"(?m)^static\\s+void\\s+f_932A\\s*\\(\\s*M68K\\s*\\*\\s*c\\s*\\)(?=\\s*\\{)","f_932A")
+cam=r[cam_a:cam_b]
+left_marker="L_9336: { RT_POLL(0x9336);"
+right_marker="L_935E: { RT_POLL(0x935E);"
+if "coop_shared_left_edge" not in cam:
+    if cam.count(left_marker)!=1 or cam.count(right_marker)!=1:
+        raise SystemExit("local co-op patch: camera threshold sites are not unique")
+    left_code=r"""
+    if(md_local_coop_enabled && md_player2_connected && md_player2_camera_x>=0) {
+        uint16_t camera=(uint16_t)RD16(0xFFFFDFD4u);
+        uint16_t p1=(uint16_t)(camera+(uint16_t)RD16(0xFFFFBD1Eu));
+        uint16_t p2=(uint16_t)(camera+(uint16_t)md_player2_camera_x);
+        /* Left-scroll only when even the rightmost player reached the edge. */
+        uint16_t coop_shared_left_edge=(p1>p2)?p1:p2;
+        DSET(0,16,coop_shared_left_edge);
+    }
+    """
+    right_code=r"""
+    if(md_local_coop_enabled && md_player2_connected && md_player2_camera_x>=0) {
+        uint16_t camera=(uint16_t)RD16(0xFFFFDFD4u);
+        uint16_t p1=(uint16_t)(camera+(uint16_t)RD16(0xFFFFBD1Eu));
+        uint16_t p2=(uint16_t)(camera+(uint16_t)md_player2_camera_x);
+        /* Right-scroll only when even the leftmost player reached the edge. */
+        uint16_t coop_shared_right_edge=(p1<p2)?p1:p2;
+        DSET(0,16,coop_shared_right_edge);
+    }
+    """
+    cam=cam.replace(left_marker,left_code+"\\n    "+left_marker,1)
+    cam=cam.replace(right_marker,right_code+"\\n    "+right_marker,1)
+    r=r[:cam_a]+cam+r[cam_b:]
+    RECOMP.write_text(r,encoding="utf-8")
 
 # B. Make Multiplayer a persistent option on the existing in-game Game Options page.
 s=SDL.read_text(encoding="utf-8-sig")
