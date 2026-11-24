@@ -355,7 +355,8 @@ if 'pad2_up' not in s:
     if not p1_map_lines:
         raise SystemExit('dual-controller patch: could not locate existing P1 pad_map config assignments')
     insert_at=max(p1_map_lines)+1
-    indent=re.match(r'\\s*',lines[insert_at-1]).group(0)
+    previous_line=lines[insert_at-1]
+    indent=previous_line[:len(previous_line)-len(previous_line.lstrip())]
     p2_lines=[
         indent+f'else if(!strcmp(l, "pad2_{key}")) pad2_map[{i}] = atoi(v);'
         for i,key in enumerate(MAP_KEYS)
