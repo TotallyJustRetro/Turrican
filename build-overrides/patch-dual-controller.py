@@ -442,16 +442,15 @@ SDL.write_text(s,encoding="utf-8")
 
 # 4. Expose controller port 2 through the emulator's existing pad_read(int p).
 h=HARNESS.read_text(encoding="utf-8-sig")
-if "extern int md_player2_live_mask;" not in h:
-    m=re.search(r"(?m)^int\s+md_live_mask\s*=\s*0\s*;",h)
-    if not m: raise SystemExit("dual-controller patch: harness md_live_mask declaration not found")
-    h=h[:m.end()]+"\nextern int md_player2_live_mask;"+h[m.end():]
 a,b=func_span(h,r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)","pad_read")
+if "extern int md_player2_live_mask;" not in h:
+    h=h[:a]+"extern int md_player2_live_mask;\\n"+h[a:]
+    a,b=func_span(h,r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)","pad_read")
 block=h[a:b]
-if "int b = (p==1) ? md_player2_live_mask : buttons();" not in block:
-    block2,n=re.subn(r"\bint\s+b\s*=\s*buttons\s*\(\s*\)\s*;",
-       "int b = (p==1) ? md_player2_live_mask : buttons();",block,count=1)
-    if n!=1: raise SystemExit("dual-controller patch: could not route P2 Genesis port separately")
+if "int b = (p == 1) ? md_player2_live_mask : buttons();" not in block:
+    block2,n=re.subn(r"\\bint\\s+b\\s*=\\s*buttons\\s*\\(\\s*\\)\\s*;",
+       "int b = (p == 1) ? md_player2_live_mask : buttons();",block,count=1)
+    if n!=1: raise SystemExit("dual-controller patch: pad_read buttons() assignment not found")
     h=h[:a]+block2+h[b:]
 HARNESS.write_text(h,encoding="utf-8")
 
