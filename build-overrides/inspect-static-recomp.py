@@ -159,7 +159,7 @@ for rel in FILES:
     emit(f"PLAYER_CALLER target={target} caller={caller} line={line_no} call={call} preceding={context[-900:].replace(chr(10),' | ')}")
   emit("[PLAYER_ADDRESS_LITERAL_REFERENCES]")
   for n,line in enumerate(lines,1):
-   if re.search(r"(?<![0-9A-Fa-f])0x0*156A(?:u|\\b)",line,re.I):
+   if re.search(r"(?<![0-9A-Fa-f])0x0*156A(?:u|\b)",line,re.I):
     emit(f"PLAYER_ADDRESS_LITERAL line={n} {line.strip()[:320]}")
   emit("[PLAYER_DYNAMIC_CALL_CONTEXTS_IN_ENTRY_CANDIDATES]")
   for name in ("f_200","f_468","f_1D10","f_1D54","f_1944","f_156A"):
