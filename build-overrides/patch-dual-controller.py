@@ -444,7 +444,7 @@ SDL.write_text(s,encoding="utf-8")
 h=HARNESS.read_text(encoding="utf-8-sig")
 a,b=func_span(h,r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)","pad_read")
 if "extern int md_player2_live_mask;" not in h:
-    h=h[:a]+"extern int md_player2_live_mask;\\n"+h[a:]
+    h=h[:a]+"extern int md_player2_live_mask;\n"+h[a:]
     a,b=func_span(h,r"static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)","pad_read")
 block=h[a:b]
 if "int b = (p == 1) ? md_player2_live_mask : buttons();" not in block:
@@ -462,7 +462,7 @@ checks={
  "SDL loads the saved P2 map": "MEGATURRICAN_PAD2_MAP" in s and "sscanf(map" in s,
  "SDL has independent P2 input reader": "static int readpad2(void)" in s,
  "P2 mask is sampled each frame": "md_player2_live_mask=md_player2_connected?readpad2():0;" in s,
- "Genesis port 2 consumes P2 mask": "int b = (p==1) ? md_player2_live_mask : buttons();" in h
+ "Genesis port 2 consumes P2 mask": "int b = (p == 1) ? md_player2_live_mask : buttons();" in h
 }
 for label,ok in checks.items():
     if not ok: raise SystemExit("dual-controller verification failed: "+label)
