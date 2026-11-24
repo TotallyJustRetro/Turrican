@@ -308,10 +308,10 @@ void md_coop_prepare_p2(M68K *primary) {
 
         /* Place P2 beside P1 without changing the shared camera. */
         md_coop_p2_put_word(0xBD1E,
-            (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0030u));
+            (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0010u));
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
-                       "one-time P1 state seed; independent CPU and F0FFFC stack");
+                       "one-time P1 state seed; P2 spawn offset +0x10; independent CPU and F0FFFC stack");
     }
 }
 
