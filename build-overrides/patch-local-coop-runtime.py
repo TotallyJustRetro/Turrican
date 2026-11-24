@@ -373,7 +373,7 @@ static int md_coop_p2_call_native(M68K *p2, uint32_t target, uint32_t sentinel) 
 static int md_coop_p2_call_slot(M68K *p2, unsigned slot, uint32_t sentinel) {
     uint32_t target;
     if (!p2 || slot > 0xFFFCu) return 0;
-    target = md_coop_p2_long(slot);
+    target = RD32(0xFFFF0000u + (uint32_t)slot);
     if (!target) return 1;
     return md_coop_p2_call_native(p2, target, sentinel);
 }
