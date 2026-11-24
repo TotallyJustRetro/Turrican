@@ -247,3 +247,37 @@ A user-supplied trace from the updated diagnostics build confirms that the secon
 - This confirms the physical P2 controller -> SDL P2 mapping -> P2 live mask -> Genesis port-2 active-low RAM bytes -> emulated game port-read chain. Do not spend another diagnostic pass on basic P2 detection or port wiring unless later evidence contradicts this trace.
 - It does **not** confirm a second game actor. The log still contains one player descriptor (`$008E5E`, selector `0000`) and one main player-update callback (`f_224C` at `$00224C`). No second descriptor or second actor update was observed.
 - The next engineering task is therefore inside the game actor model: determine whether the original game has a dormant second-player descriptor/path or implement a true second actor with independently owned player state and CPU context. The old RAM-shadow prototype remains disabled; port-2 availability is not permission to re-enable it.
+
+
+## Source boundary and next descriptor investigation (2026-11-24)
+
+The available Windows build source is not the original developers' high-level PC gameplay source. The encrypted build kit contains `recomp_gen.c` (generated C for the original Mega Drive 68000 program), the C runtime/harness, and the Electron launcher. This is still modifiable game logic, but it means player creation must be implemented at the static-recomp/game-runtime boundary; there is no verified native PC `Player` class or engine entity-spawn API to call.
+
+### Second-controller path is verified
+
+The user's updated runtime trace confirms the full input chain:
+
+- SDL reports the second physical controller connected.
+- P2's live button mask changes when the user presses/releases buttons.
+- The P2 active-low bytes at `$FFBC92/$FFBC93` change in sync.
+- The game's Genesis port-2 read counter advances continuously.
+
+Therefore the second-controller plumbing is no longer the blocker. Do not request another controller detection test unless new evidence contradicts this trace. The game still initializes and updates only one player.
+
+### Important correction: selector base 0x1994 overlaps generated code
+
+The player setup path in `f_156A` reads a longword from `0x1994 + ($FFBF1E * 4)` and passes the result to `f_19FA`. The runtime trace for selector 0 logged `0x00008E5E`, which resolves to the active player descriptor at ROM address `0x008E5E`.
+
+However, the static recomp also has a generated code entry named `f_1994` at address `0x1994`, whose body contains executable instructions at that address. This suggests the selector data may be deliberately overlaid with code, or that this address is being interpreted through a non-obvious code/data overlap. It is not yet safe to call it an ordinary standalone descriptor table, and we must not infer that selectors 1-7 are second-player descriptors.
+
+### New read-only selector dump
+
+The trace patch now dumps the first eight raw longwords at `0x1994, 0x1998, ... 0x19B0` once per game run. For any candidate address that points to at least 64 bytes inside the loaded ROM, it also records those 64 bytes. The output is labeled as raw/unclassified candidates to avoid treating arbitrary instruction bytes as valid descriptors. This instrumentation does not alter game RAM, CPU registers, player state, or input.
+
+Next decision after the dump:
+
+1. Validate whether selector values 0-7 resolve to coherent descriptor records, including their nested resource/callback pointers.
+2. If only selector 0 is valid, close the dormant-descriptor hypothesis and implement P2 as a separate actor context using the translated game logic.
+3. If another selector is valid, determine whether it is merely an alternate animation/weapon/resource descriptor or a complete second character definition before reusing it.
+
+No gameplay co-op code has been enabled. The unsafe RAM-shadow prototype remains disabled, and the normal P1 code path remains unchanged.
