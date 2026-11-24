@@ -323,3 +323,38 @@ The generated code gives a strong static identification of `$FFBF26` as the live
 - `f_6566` has a BCD increment path at `0x6574-0x657C` through wrapper `f_6500`.
 
 The initialization and death/continue decision path support the lives interpretation strongly; the increment path is a plausible life-award route. Its gameplay trigger still needs to be associated with its caller/event before we label it an extra-life pickup. This is enough to preserve `$FFBF26` as P1's lives field in the actor-ownership map, but not enough to alter it or implement P2 lives yet.
+
+
+## User's selector-dump trace analyzed (2026-11-24)
+
+The updated user-supplied `MegaTurrican-coop-runtime-trace(3).txt` confirms that selector entries 0-6 all resolve to in-ROM, descriptor-shaped records; selector 7 resolves to the raw value `0x303C0001`, which is not a valid ROM descriptor address.
+
+| Selector | Candidate descriptor | Header bytes | Notable fields |
+|---:|---:|---:|---|
+| 0 | `0x008E5E` | `11 00` | `+02=008E94`, `+06=008EA4`, `+1E=009222`, `+22=00932A`, `+26=009198` |
+| 1 | `0x00D8BA` | `12 00` | `+02=00D8F0`, `+06=00D900`, `+1E=00E3C2`, `+22=00E4A6`, `+26=00DDAE` |
+| 2 | `0x011CBA` | `0B 00` | `+02=011CF0`, `+06=011D00`, `+1E=012316`, `+22=012492`, `+26=012460` |
+| 3 | `0x016E86` | `00 FF` | `+02=016EF2`, `+06=016F02`, `+1E=017390`, `+22=0173C6`, `+26=017376` |
+| 4 | `0x0158F2` | `00 00` | `+02=015928`, `+06=015938`, `+1E=015B52`, `+22=015BF8`, `+26=015B34` |
+| 5 | `0x016EBC` | `00 00` | `+02=016EF2`, `+06=016F02`, `+1E=0173A6`, `+22=01741C`, `+26=017376` |
+| 6 | `0x018F82` | `00 00` | `+02=018FB8`, `+06=018FC8`, `+1E=019126`, `+22=019128`, `+26=0190F6` |
+
+Every candidate follows the same broad pointer-record pattern, although several fields and the tail data differ. Some selectors share setup/resource entries (for example selectors 3 and 5 share `+02`, `+06`, `+0E`, `+12`, and `+26`) while using different later callbacks.
+
+### Critical interpretation caveat
+
+Do not call these seven characters or second-player descriptors. The selector field `$FFBF1E` is actively mutated by the original single-player program:
+
+- `f_156A` resets it to zero at PC `0x1588`, increments it at `0x18B0`, decrements it by two at `0x18BC`, and resets it again at `0x18C2` or sets it to three at `0x191E`.
+- `f_C4C` and `f_CFC` set it to 4 or 5 in conditional branches.
+- Other player routines compare it against values 1 or 2.
+
+This means the 0-6 entries are definitely a selector-indexed set used by the player setup/state machinery, but the current evidence cannot distinguish alternate player forms, animation/resource states, or other single-player variants. It is not proof of a dormant P2 actor.
+
+### Follow-up trace instrumentation
+
+The read-only trace patch now logs `LIVE SELECTOR CHANGE` records at the main player-update dispatch whenever `$FFBF1E` changes. Each record captures the ROM candidate descriptor, its pointer fields, nested callback-table words, and 64 raw descriptor bytes. This will reveal which configurations the original player actually selects during normal play and whether switching them changes the active descriptor pointer at `$FFBC50`.
+
+- New patch commit: `2c5d9969cc10e4b33888aa1e51fcfb0b1190a5e6`
+- No gameplay code was changed; this is read-only instrumentation.
+- The prior RAM-shadow co-op experiment remains disabled.
