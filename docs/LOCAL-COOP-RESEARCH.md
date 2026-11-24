@@ -281,3 +281,15 @@ Next decision after the dump:
 3. If another selector is valid, determine whether it is merely an alternate animation/weapon/resource descriptor or a complete second character definition before reusing it.
 
 No gameplay co-op code has been enabled. The unsafe RAM-shadow prototype remains disabled, and the normal P1 code path remains unchanged.
+
+
+## Player lives counter narrowed down (2026-11-24)
+
+The strongest player-lives candidate is now `$FFBF26`:
+
+- `f_1944` initializes this byte based on the selected game setting at `$FFBC69`: value `2`, `3`, or `5`.
+- The main `f_156A` flow reads `$FFBF26` around the player state/transition path and performs a BCD decrement before writing it back at PC `0x1766`.
+- The separate routine `f_6566` performs a BCD increment of the same byte and writes it at PC `0x657C`. Its wrapper is `f_6500`.
+- By contrast, `$FFBF3A` is initialized separately and decremented at PC `0x1932`; it remains the continue-stock candidate, not the player-life field.
+
+The init values, decrement path, and increment path together make `$FFBF26` a high-confidence P1 lives counter. It is still a single global RAM byte today, so it is not yet separate per player. A read-only trace of the three write sites should be added before making any life-system changes, so a later run can confirm exactly when the decrement and award paths execute. The P2 implementation must preserve independent P1/P2 values while keeping `$FFBF3A` as a shared continue stock until the requested co-op continue rules are implemented deliberately.
