@@ -1460,7 +1460,7 @@ if gen.exists():
  gen_lines=gen.read_text(encoding="utf-8",errors="replace").splitlines()
  emit("[RECOMP_MEMORY_ACCESS_MACROS_AND_RUNTIME_GLOBALS]")
  for n,line in enumerate(gen_lines[:220],1):
-  if re.search(r"#\\s*define\\s+(?:RD|WR)(?:8|16|32)|rt_shadow|rt_sp|rt_call_addr|rt_fix_ret|extern\\s+M68K|static\\s+uint32_t",line):
+  if re.search(r"#\s*define\s+(?:RD|WR)(?:8|16|32)|rt_shadow|rt_sp|rt_call_addr|rt_fix_ret|extern\s+M68K|static\s+uint32_t",line):
    emit(f"RECOMP_RUNTIME_DECL line={n} {line[:320]}")
  emit("[PLAYER_FRAME_AND_CALLBACK_BODIES]")
  for name,limit in (("f_156A",420),("f_19FA",220),("f_1BDE",180),("f_224C",960),("f_2150",120),("f_5DB2",200)):
@@ -1482,9 +1482,9 @@ for rel in ("runtime/harness.c","runtime/m68k_interp.c","runtime/m68k_rt.h"):
  emit(f"[RUNTIME_CPU_AND_BUS_AUDIT {rel}]")
  patterns=(
   r"rt_call_addr",r"rt_fix_ret",r"rt_shadow",r"rt_sp",
-  r"\\bRD(?:8|16|32)\\b",r"\\bWR(?:8|16|32)\\b",
-  r"\\bbus_rd(?:8|16)\\b",r"\\bbus_wr(?:8|16)\\b",
-  r"\\brd8_raw\\b",r"\\bM68K\\b",r"\\bCPU\\b"
+  r"\bRD(?:8|16|32)\b",r"\bWR(?:8|16|32)\b",
+  r"\bbus_rd(?:8|16)\b",r"\bbus_wr(?:8|16)\b",
+  r"\brd8_raw\b",r"\bM68K\b",r"\bCPU\b"
  )
  matched=set()
  for i,line in enumerate(src_lines):
@@ -1497,7 +1497,7 @@ for rel in ("runtime/harness.c","runtime/m68k_interp.c","runtime/m68k_rt.h"):
   for q in range(lo,hi):
    emit(f"  {q+1}: {src_lines[q][:320]}")
  # Emit relevant helper function bodies where available.
- func_head=re.compile(r"^\\s*(?:(?:static|inline|extern)\\s+)*[A-Za-z_][A-Za-z0-9_\\s\\*]*?\\s+([A-Za-z_]\\w*)\\s*\\([^;{}]*\\)\\s*\\{")
+ func_head=re.compile(r"^\s*(?:(?:static|inline|extern)\s+)*[A-Za-z_][A-Za-z0-9_\s\*]*?\s+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{")
  selected={"rd8_raw","bus_rd8","bus_rd16","bus_wr8","bus_wr16","md_boot","md_load_rom","rt_call_addr","rt_fix_ret","rt_cpu_step","rt_execute"}
  for start,line in enumerate(src_lines):
   m=func_head.match(line)
