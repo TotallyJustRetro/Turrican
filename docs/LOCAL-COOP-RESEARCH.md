@@ -358,3 +358,10 @@ The read-only trace patch now logs `LIVE SELECTOR CHANGE` records at the main pl
 - New patch commit: `2c5d9969cc10e4b33888aa1e51fcfb0b1190a5e6`
 - No gameplay code was changed; this is read-only instrumentation.
 - The prior RAM-shadow co-op experiment remains disabled.
+
+
+## Alternate player-state entry probe
+
+The generated runtime report identifies `f_2E94` as a second entry point containing player-position, collision/motion, and camera-follow logic. It shares the movement/camera helper `f_3368` with `f_224C`, but the static caller audit has not established which runtime path invokes it. It also reads the current selector at `$FFBF1E`, so it may be an alternate player state or movement path rather than a second actor.
+
+The next read-only trace build adds a one-time entry record for `f_2E94` (phase 401). If the routine runs during ordinary single-player gameplay, its register and current-player context will be recorded. If it never appears, we still need to resolve its indirect caller before deciding whether it can be reused for P2. No gameplay changes are made by this hook.
