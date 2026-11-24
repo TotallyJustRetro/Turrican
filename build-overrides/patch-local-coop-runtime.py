@@ -45,11 +45,6 @@ static uint8_t md_coop_p2_private[0x10000];
 static uint8_t md_coop_p2_stack[0x10000];
 static M68K md_coop_p2_m68k;
 static M68K md_coop_p2_frame_seed;
-static M68K md_coop_p2_native_init_seed;
-static int md_coop_p2_native_init_seed_valid = 0;
-static uint8_t md_coop_p2_primary_sprite_parts[0xE8];
-static unsigned md_coop_p2_primary_sprite_parts_nonzero = 0;
-static int md_coop_p2_primary_sprite_parts_valid = 0;
 static M68K *md_coop_primary_m68k = NULL;
 static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
@@ -102,23 +97,6 @@ const M68K *md_coop_p2_frame_seed_context(void) {
     return md_coop_p2_frame_seed_valid ? &md_coop_p2_frame_seed : NULL;
 }
 
-void md_coop_p2_capture_native_init_seed(M68K *primary) {
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
-        md_coop_p2_native_init_seed_valid = 0;
-        return;
-    }
-    /* L_15AC is immediately before native f_19FA consumes A0's resource
-       template pointer and the BF1E-derived selection registers. */
-    memcpy(&md_coop_p2_native_init_seed, primary,
-           sizeof md_coop_p2_native_init_seed);
-    md_coop_p2_native_init_seed_valid = 1;
-}
-
-const M68K *md_coop_p2_native_init_context(void) {
-    return md_coop_p2_native_init_seed_valid ?
-           &md_coop_p2_native_init_seed : NULL;
-}
-
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_player2_connected && md_coop_primary_m68k != NULL;
@@ -140,22 +118,6 @@ void md_coop_prepare_p2(M68K *primary) {
     memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
     md_coop_p2_frame_seed_valid = 1;
 
-    /* L_1658 is before P1's f_5DB2 consumes the native 29-part descriptor
-       list. Keep a copy so P2's f_19FA setup can clear its own scratch safely
-       and we can restore only this renderer input afterward. */
-    memcpy(md_coop_p2_primary_sprite_parts, &ram[0xFCE8],
-           sizeof md_coop_p2_primary_sprite_parts);
-    md_coop_p2_primary_sprite_parts_nonzero = 0;
-    for (i = 0; i < 29u; ++i) {
-        unsigned o = i * 8u;
-        if (md_coop_p2_primary_sprite_parts[o] ||
-            md_coop_p2_primary_sprite_parts[o + 1u] ||
-            md_coop_p2_primary_sprite_parts[o + 2u] ||
-            md_coop_p2_primary_sprite_parts[o + 3u])
-            ++md_coop_p2_primary_sprite_parts_nonzero;
-    }
-    md_coop_p2_primary_sprite_parts_valid = 1;
-
     callback = ((uint32_t)ram[0xBC62] << 24) |
                ((uint32_t)ram[0xBC63] << 16) |
                ((uint32_t)ram[0xBC64] << 8) |
@@ -167,25 +129,16 @@ void md_coop_prepare_p2(M68K *primary) {
         if (callback != 0x0000224Cu) return;
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
-        md_coop_p2_mark(0xBC14, 0xBC24); /* native state/callback pointers */
-        md_coop_p2_mark(0xBC3C, 0xBC53); /* resource callback table + full BC50 pointer */
-        md_coop_p2_mark(0xBC5A, 0xBC65); /* resource pointer + main actor */
+        md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
-        md_coop_p2_mark(0xBC84, 0xBC8C); /* native player state flags */
-        md_coop_p2_mark(0xBC90, 0xBC91); /* player-local input */
-        md_coop_p2_mark(0xBC94, 0xBC98); /* descriptor callback buffers */
+        md_coop_p2_mark(0xBC84, 0xBC89);
+        md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCA7);
-        md_coop_p2_mark(0xBCAC, 0xBCB4); /* native animation transfer */
-        md_coop_p2_mark(0xBCB8, 0xBCBA);
         md_coop_p2_mark(0xBCBC, 0xBD26);
-        md_coop_p2_mark(0xBF08, 0xBF29); /* motion, stats and lives */
-        md_coop_p2_mark(0xDC9E, 0xDD1D); /* animation transfer buffer */
-        md_coop_p2_mark(0xDD1E, 0xDE1D); /* first callback work buffer */
-        md_coop_p2_mark(0xDE4E, 0xDECD); /* second callback work buffer */
-        md_coop_p2_mark(0xDFCE, 0xE036); /* A6 callback contexts */
-        md_coop_p2_mark(0xDFD4, 0xDFDA); /* player offsets/camera */
+        md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
+        md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
         /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
            records (BCE0 is bounded by 0x7C); f_3650/f_36E0 read the same
            frame table. Bank the whole scratch page span, not only F226. */
@@ -202,38 +155,12 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_m68k.usp = 0x00F0FFFCu;
         md_coop_p2_m68k.ret = 0;
 
-        /* Native f_19FA will establish P2's own callback/resource state.
-           Apply the lateral spawn offset only after that setup completes. */
+        /* Place P2 beside P1 without changing the shared camera. */
+        md_coop_p2_put_word(0xBD1E,
+            (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0030u));
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
                        "one-time P1 state seed; independent CPU and F0FFFC stack");
-    }
-}
-
-void md_coop_p2_apply_spawn_offset(void) {
-    uint16_t p1_x = (uint16_t)(((uint16_t)ram[0xBD1E] << 8) |
-                              (uint16_t)ram[0xBD1F]);
-    if (!md_coop_p2_ready || md_coop_p2_disabled) return;
-    md_coop_p2_put_word(0xBD1E, (uint16_t)(p1_x + 0x0030u));
-}
-
-void md_coop_p2_restore_sprite_parts(void) {
-    FILE *f;
-    if (!md_coop_p2_ready || md_coop_p2_disabled ||
-        !md_coop_p2_primary_sprite_parts_valid) return;
-    memcpy(&md_coop_p2_ram[0xFCE8], md_coop_p2_primary_sprite_parts,
-           sizeof md_coop_p2_primary_sprite_parts);
-    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-    if (f) {
-        fprintf(f, "event=native-resource-seed frame=%lu template=%08X parts=%u first=%08X status=restored\n",
-                md_coop_p2_frame_count,
-                (unsigned)md_coop_p2_native_init_seed.a[0],
-                md_coop_p2_primary_sprite_parts_nonzero,
-                ((uint32_t)md_coop_p2_primary_sprite_parts[0] << 24) |
-                ((uint32_t)md_coop_p2_primary_sprite_parts[1] << 16) |
-                ((uint32_t)md_coop_p2_primary_sprite_parts[2] << 8) |
-                (uint32_t)md_coop_p2_primary_sprite_parts[3]);
-        fclose(f);
     }
 }
 
@@ -368,7 +295,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_native_init_seed(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -397,9 +324,6 @@ extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
-extern const M68K *md_coop_p2_native_init_context(void);
-extern void md_coop_p2_apply_spawn_offset(void);
-extern void md_coop_p2_restore_sprite_parts(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
@@ -408,8 +332,6 @@ extern void md_coop_p2_finish(void);
 /* Player state persists in P2 RAM, but the game's callback also receives live
    per-frame D/A register inputs from its caller. Refresh those inputs for each
    native call while preserving P2's independent A7 and USP. */
-static int md_coop_p2_native_setup_done = 0;
-
 static void md_coop_p2_sync_call_context(M68K *p2, const M68K *primary) {
     unsigned i;
     if (!p2 || !primary) return;
@@ -436,25 +358,6 @@ static int md_coop_p2_call_renderer(M68K *p2) {
     WR32(p2->a[7], sentinel);
     rt_shadow[rt_sp++] = sentinel;
     f_5DB2(p2);
-    ok = (p2->ret == sentinel && p2->a[7] == original_sp &&
-          rt_sp == original_rt_sp + 1);
-    rt_sp = original_rt_sp;
-    return ok;
-}
-
-static int md_coop_p2_call_native_19fa(M68K *p2) {
-    const uint32_t sentinel = 0x00FEEE08u;
-    uint32_t original_sp;
-    int original_rt_sp;
-    int ok;
-    if (!p2 || rt_sp < 0 || rt_sp >= 65534) return 0;
-    original_sp = p2->a[7];
-    if (original_sp < 0x00F00008u || original_sp > 0x00F0FFFCu) return 0;
-    original_rt_sp = rt_sp;
-    p2->a[7] -= 4;
-    WR32(p2->a[7], sentinel);
-    rt_shadow[rt_sp++] = sentinel;
-    f_19FA(p2);
     ok = (p2->ret == sentinel && p2->a[7] == original_sp &&
           rt_sp == original_rt_sp + 1);
     rt_sp = original_rt_sp;
@@ -490,25 +393,6 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     frame_seed = md_coop_p2_frame_seed_context();
     if (!p2 || !frame_seed) return;
 
-    if (!md_coop_p2_native_setup_done) {
-        const M68K *init_seed = md_coop_p2_native_init_context();
-        if (init_seed) {
-            md_coop_p2_sync_call_context(p2, init_seed);
-            md_coop_p2_set_active(1);
-            if (!md_coop_p2_call_native_19fa(p2)) {
-                md_coop_p2_abort("P2 native f_19FA setup did not restore its CPU stack/return frame", 0x19FAu);
-                md_coop_p2_finish();
-                return;
-            }
-            md_coop_p2_set_active(0);
-            md_coop_p2_apply_spawn_offset();
-            md_coop_p2_restore_sprite_parts();
-        }
-        md_coop_p2_native_setup_done = 1;
-    }
-
-    /* f_19FA consumes the native resource template once for P2. Resume the
-       exact pre-render register context captured at L_1658 for the body pass. */
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
     if (!md_coop_p2_call_renderer(p2)) {
@@ -549,13 +433,6 @@ replace_once(
     "P2 one-time seed hook at player render seam",
 )
 
-replace_once(
-    GEN,
-    "L_15AC: { RT_POLL(0x15AC); { uint32_t _r=0x15B0u;",
-    "L_15AC: { RT_POLL(0x15AC); md_coop_p2_capture_native_init_seed(c); { uint32_t _r=0x15B0u;",
-    "P2 native resource-template capture before f_19FA",
-)
-
 line = re.compile(
     r"(L_1660:\s*\{[^\n]*?rt_shadow\[rt_sp\+\+\]=_r;\s*)"
     r"rt_call_addr\(c,_t\);"
@@ -581,13 +458,6 @@ checks = {
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
-    "P2 captures pre-f_19FA register/template context": "md_coop_p2_capture_native_init_seed(c)" in g and "md_coop_p2_native_init_seed_valid" in h,
-    "P2 capture hook has a prototype before f_156A": "void md_coop_p2_capture_native_init_seed(M68K *primary);" in r,
-    "P2 builds native callback/resource state through f_19FA": "f_19FA(p2);" in g and "md_coop_p2_call_native_19fa(p2)" in g,
-    "P2 keeps the full f_19FA resource pointer private": "md_coop_p2_mark(0xBC3C, 0xBC53)" in h,
-    "P2 keeps f_19FA callback buffers private": "md_coop_p2_mark(0xBC3C, 0xBC53)" in h and "md_coop_p2_mark(0xDD1E, 0xDE1D)" in h and "md_coop_p2_mark(0xDE4E, 0xDECD)" in h and "md_coop_p2_mark(0xDFCE, 0xE036)" in h,
-    "P2 restores only the native sprite-part input after f_19FA": "md_coop_p2_restore_sprite_parts();" in g and "memcpy(&md_coop_p2_ram[0xFCE8], md_coop_p2_primary_sprite_parts" in h,
-    "P2 applies its side-by-side offset after native setup": "md_coop_p2_apply_spawn_offset();" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
@@ -599,5 +469,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: independent CPU/stack, native f_19FA resource setup, private callback buffers, port-2 input and native sprite builder.")
-print("P2 preserves P1's pre-render sprite-part inputs across its one-time native setup; gameplay still requires in-game verification.")
+print("Installed guarded native P2 actor prototype: independent stack/state, frame-entry register seed, port-2 input, native sprite builder and pre-callback actor scheduling.")
+print("P2 runtime snapshots now include its CPU registers, private player-state bytes and indexed F200-F9FF work area; gameplay still requires in-game verification.")
