@@ -93,7 +93,7 @@ M68K *md_coop_p2_cpu(void) {
 
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
-           md_player2_connected && md_coop_p2_primary_m68k != NULL;
+           md_player2_connected && md_coop_primary_m68k != NULL;
 }
 
 void md_coop_prepare_p2(M68K *primary) {
