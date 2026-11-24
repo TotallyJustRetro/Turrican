@@ -167,6 +167,15 @@ The extended report now traces the direct player update graph to depth six inste
 - The `f_156A` root reaches 103 functions in the same depth-six audit and contains the descriptor setup, shared transfers, sprite preparation, player update, and post-update phases. Its two direct callers are both in `f_200` under separate game-state branches. This reinforces the boundary: duplicate a classified player context and its player-owned phases, never the entire `f_156A` entry.
 - The current audit is still not a complete ownership proof: direct-call graph limits do not resolve every pointer-indirect read, runtime callback value, DMA access, or nested event/interrupt. Until those are classified, no RAM range should be called a safe P2 bank.
 
+## Preliminary life, resource, and continue-counter ownership
+
+The current static evidence separates at least two counters that must not be conflated:
+
+- `$FFBF3A` is the strongest continue-stock candidate. The main setup path initializes it to `3` when `$FFBC69` is at least `2`, otherwise initializes it to `0xFF`; later game-state logic reads it and subtracts one using BCD `SBCD`, writing the result back. The existing `md_infinite_continues_enabled` patch is specifically at the subtract instruction at PC `0x192C`. Treat `$FFBF3A` as the current shared continue counter pending one runtime sample, not as an individual P1 life counter.
+- `$FFBD0D` is not the life counter. Setup writes `3` to it; the pickup/resource path caps it at `3`; and the player object-spawn routine `f_4992` checks it before creating an object with handler `0x49C8`, then decrements it. This is a limited player resource/ammunition count and must be preserved separately from lives.
+- `$FFBF32` and `$FFBF38` are cleared by `f_1944` and later manipulated through BCD arithmetic by `f_5FE6` and `f_6566`. Their exact gameplay meaning is not established; do not repurpose these fields as lives or continues.
+- The real player-life field remains unresolved. The next audit needs the exact death/respawn call path and its callers, rather than inferring life stock from a nearby 0–3 counter. The requested co-op rules still require separate lives, an individual out-of-lives state, and a shared continue gate controlled only by P1 after both players are out.
+
 ## Shared camera-follow writer
 
 The camera audit has now found the player-driven shared write path, which is more specific than the earlier scroll-helper hypothesis:
