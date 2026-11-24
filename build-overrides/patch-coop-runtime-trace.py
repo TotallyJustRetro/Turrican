@@ -136,6 +136,53 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
 }
 
 
+/* Log the active descriptor selector only when it changes. Selector values
+   are mutable gameplay state, so this distinguishes a set of P1 forms/states
+   from a dormant second-player descriptor without changing the game. */
+static void md_coop_trace_selector_sample(uint32_t current_descriptor, unsigned phase) {
+    static uint16_t previous_selector = 0xFFFFu;
+    uint16_t selector = ((uint16_t)ram[0xBF1E] << 8) | ram[0xBF1F];
+    if (selector == previous_selector) return;
+    previous_selector = selector;
+
+    FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
+    if (!f) return;
+    fprintf(f, "\n=== LIVE SELECTOR CHANGE phase=%u selector=%04X current_bc50=%06X ===\n",
+            phase, selector, current_descriptor & 0xFFFFFFu);
+
+    if (selector <= 6u) {
+        uint32_t source = 0x1994u + (uint32_t)selector * 4u;
+        uint32_t descriptor = md_coop_trace_rom32(source);
+        fprintf(f, "selector_source=%06X candidate_descriptor=%06X\n",
+                source, descriptor);
+        if (descriptor != 0xFFFFFFFFu && rom &&
+            descriptor < romlen && romlen - descriptor >= 64u) {
+            fprintf(f, "descriptor_header=%02X%02X", rom[descriptor], rom[descriptor + 1u]);
+            for (unsigned offset = 2u; offset <= 42u; offset += 4u) {
+                uint32_t value = md_coop_trace_rom32(descriptor + offset);
+                fprintf(f, " +%02X=%06X", offset, value);
+            }
+            uint32_t nested_a = md_coop_trace_rom32(descriptor + 2u);
+            uint32_t nested_b = md_coop_trace_rom32(descriptor + 6u);
+            fprintf(f, "\nnested_a=%06X first=%08X second=%08X nested_b=%06X first=%08X second=%08X\n",
+                    nested_a,
+                    nested_a == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(nested_a),
+                    nested_a == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(nested_a + 4u),
+                    nested_b,
+                    nested_b == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(nested_b),
+                    nested_b == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(nested_b + 4u));
+            fprintf(f, "descriptor_bytes_00_to_3F:\n");
+            md_coop_trace_bytes(f, descriptor, 64u);
+        } else {
+            fputs("candidate_descriptor_outside_rom_or_truncated\n", f);
+        }
+    } else {
+        fputs("selector_outside_known_0_to_6_range\n", f);
+    }
+    fflush(f);
+    fclose(f);
+}
+
 /* Sample host P2 detection, the live SDL mask, and the game's emulated port reads.
    This runs alongside the main player callback and only writes a text log. */
 void md_coop_trace_input(M68K *c, uint32_t descriptor, unsigned phase) {
@@ -184,6 +231,7 @@ void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
                                       ((uint32_t)ram[0xBC51] << 16) |
                                       ((uint32_t)ram[0xBC52] << 8) |
                                       (uint32_t)ram[0xBC53];
+        md_coop_trace_selector_sample(current_descriptor, phase);
         md_coop_trace_input(c, current_descriptor, phase);
     }
     uint32_t descriptor = ((uint32_t)ram[0xBC50] << 24) |
