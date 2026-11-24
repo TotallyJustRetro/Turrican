@@ -141,10 +141,14 @@ inject=r"""
     ['up',0],['down',1],['left',2],['right',3],
     ['a',4],['b',5],['c',6],['start',7]
   ];
-  const dualPadConfigForLaunch = dualPadActionsForLaunch.map(([key,index]) =>
-    'pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
-  const dualPadKeysForLaunch = new Set(dualPadActionsForLaunch.map(([key]) => 'pad_' + key));
-  for (const [key] of dualPadActionsForLaunch) dualPadKeysForLaunch.add('pad2_' + key);
+  const dualPadConfigForLaunch = [];
+  const dualPadKeysForLaunch = new Set();
+  for (const [key,index] of dualPadActionsForLaunch) {
+    dualPadConfigForLaunch.push('pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
+    dualPadConfigForLaunch.push('pad2_' + key + '=' + dualControllerSettingsForLaunch.pad2Map[index]);
+    dualPadKeysForLaunch.add('pad_' + key);
+    dualPadKeysForLaunch.add('pad2_' + key);
+  }
   for (let i = cfg.length - 1; i >= 0; i--) {
     const entry = String(cfg[i]);
     const at = entry.indexOf('=');
