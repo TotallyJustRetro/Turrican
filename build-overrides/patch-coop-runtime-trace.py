@@ -132,9 +132,9 @@ void md_coop_trace_call(M68K *c, uint32_t target, unsigned phase) {
         for (unsigned i = 0; i < 8; ++i)
             fprintf(f, "A%u=%08X%s", i, c->a[i], (i == 7u) ? "\n" : " ");
     }
-    fprintf(f, "selector=%04X player_state=%02X input=%02X%02X pos=%04X,%04X view=%04X,%04X\n",
+    fprintf(f, "selector=%04X player_state=%02X input_p1=%02X%02X input_p2=%02X%02X pos=%04X,%04X view=%04X,%04X\n",
             (uint16_t)(((uint16_t)ram[0xBF1E] << 8) | ram[0xBF1F]),
-            ram[0xBC87], ram[0xBC90], ram[0xBC91],
+            ram[0xBC87], ram[0xBC90], ram[0xBC91], ram[0xBC92], ram[0xBC93],
             (uint16_t)(((uint16_t)ram[0xBD1E] << 8) | ram[0xBD1F]),
             (uint16_t)(((uint16_t)ram[0xBD20] << 8) | ram[0xBD21]),
             (uint16_t)(((uint16_t)ram[0xDFD8] << 8) | ram[0xDFD9]),
