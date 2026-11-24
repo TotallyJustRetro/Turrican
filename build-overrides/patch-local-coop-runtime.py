@@ -157,6 +157,7 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBCBC, 0xBD26);
         md_coop_p2_mark(0xBD28, 0xBD29); /* per-player collision descriptor base */
         md_coop_p2_mark(0xBF08, 0xBF0C); /* per-player collision descriptor cursor */
+        md_coop_p2_mark(0xFE58, 0xFE58); /* P2-private copy of f_3B38's global flag byte */
         md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
         /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
@@ -502,7 +503,7 @@ checks = {
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 captures the native collision-reset register context": "md_coop_p2_capture_collision_seed(c)" in g and "md_coop_p2_collision_seed_context" in g,
-    "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h and "md_coop_p2_mark(0xBF08, 0xBF0C)" in h,
+    "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h and "md_coop_p2_mark(0xBF08, 0xBF0C)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
