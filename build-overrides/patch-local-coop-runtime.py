@@ -47,6 +47,8 @@ static M68K md_coop_p2_m68k;
 static M68K md_coop_p2_frame_seed;
 static M68K md_coop_p2_collision_seed;
 static int md_coop_p2_collision_seed_valid = 0;
+static M68K md_coop_p2_spatial_seed;
+static int md_coop_p2_spatial_seed_valid = 0;
 static M68K *md_coop_primary_m68k = NULL;
 static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
@@ -113,6 +115,22 @@ void md_coop_p2_capture_collision_seed(M68K *primary) {
 
 const M68K *md_coop_p2_collision_seed_context(void) {
     return md_coop_p2_collision_seed_valid ? &md_coop_p2_collision_seed : NULL;
+}
+
+void md_coop_p2_capture_spatial_seed(M68K *primary) {
+    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+        md_coop_p2_spatial_seed_valid = 0;
+        return;
+    }
+    /* f_56CE builds the per-frame F268/F2A8 spatial candidate buffers.
+       Capture the exact register context immediately before P1's pass. */
+    memcpy(&md_coop_p2_spatial_seed, primary,
+           sizeof md_coop_p2_spatial_seed);
+    md_coop_p2_spatial_seed_valid = 1;
+}
+
+const M68K *md_coop_p2_spatial_seed_context(void) {
+    return md_coop_p2_spatial_seed_valid ? &md_coop_p2_spatial_seed : NULL;
 }
 
 int md_coop_p2_is_ready(void) {
@@ -316,7 +334,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -346,6 +364,7 @@ extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
 extern const M68K *md_coop_p2_collision_seed_context(void);
+extern const M68K *md_coop_p2_spatial_seed_context(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
@@ -409,13 +428,15 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     M68K *p2;
     const M68K *frame_seed;
     const M68K *collision_seed;
+    const M68K *spatial_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
     p2 = md_coop_p2_cpu();
     frame_seed = md_coop_p2_frame_seed_context();
     collision_seed = md_coop_p2_collision_seed_context();
-    if (!p2 || !frame_seed || !collision_seed) return;
+    spatial_seed = md_coop_p2_spatial_seed_context();
+    if (!p2 || !frame_seed || !collision_seed || !spatial_seed) return;
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
@@ -429,8 +450,20 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     }
     md_coop_p2_set_active(0);
 
+    /* Rebuild P2's spatial collision candidates with the game's native
+       f_56CE pass. It reads the shared BC28 object list, but its F268/F2A8
+       outputs are entirely inside P2's private F200-F9FF scratch bank. */
+    md_coop_p2_sync_call_context(p2, spatial_seed);
+    md_coop_p2_set_active(1);
+    if (!md_coop_p2_call_actor(p2, 0x000056CEu)) {
+        md_coop_p2_abort("P2 spatial collision builder f_56CE did not restore its CPU stack/return frame", 0x56CEu);
+        md_coop_p2_finish();
+        return;
+    }
+    md_coop_p2_set_active(0);
+
     /* Return to the exact pre-render registers for P2's sprite and movement
-       passes; f_3B38's flags/state changes remain in P2's private RAM. */
+       passes; f_3B38 and f_56CE state changes remain in P2's private RAM. */
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
     if (!md_coop_p2_call_renderer(p2)) {
@@ -472,6 +505,12 @@ replace_once(
 )
 replace_once(
     GEN,
+    "L_1650: { RT_POLL(0x1650); { uint32_t _r=0x1654u;",
+    "L_1650: { RT_POLL(0x1650); md_coop_p2_capture_spatial_seed(c); { uint32_t _r=0x1654u;",
+    "P2 f_56CE spatial-builder register capture",
+)
+replace_once(
+    GEN,
     "L_1658: { RT_POLL(0x1658); { uint32_t _r=0x165Cu;",
     "L_1658: { RT_POLL(0x1658); md_coop_prepare_p2(c); { uint32_t _r=0x165Cu;",
     "P2 one-time seed hook at player render seam",
@@ -503,6 +542,9 @@ checks = {
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 captures the native collision-reset register context": "md_coop_p2_capture_collision_seed(c)" in g and "md_coop_p2_collision_seed_context" in g,
+    "P2 captures the native f_56CE spatial-builder context": "md_coop_p2_capture_spatial_seed(c)" in g and "md_coop_p2_spatial_seed_context" in g,
+    "P2 rebuilds f_56CE collision candidates every frame": "md_coop_p2_call_actor(p2, 0x000056CEu)" in g,
+    "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h and "md_coop_p2_mark(0xBF08, 0xBF0C)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
@@ -516,5 +558,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: isolated f_3B38 collision-state reset, private collision flags/cursor, port-2 input and native renderer/actor scheduling.")
-print("The stage/VDP path remains unchanged; gameplay still requires in-game verification.")
+print("Installed guarded native P2 actor prototype: isolated f_3B38 reset plus native f_56CE per-frame spatial candidate rebuild in P2-private scratch; stage/VDP path unchanged.")
+print("Gameplay still requires in-game verification; shared-object mutation pass f_3D80 remains intentionally excluded.")
