@@ -154,7 +154,7 @@ void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     count = ((unsigned)ram[0xBF0C] << 8) | (unsigned)ram[0xBF0D];
     md_coop_p2_primary_collision_count = count;
     md_coop_p2_primary_collision_desc_valid = 0;
-    if (count > (sizeof md_coop_p2_primary_collision_desc / 20u)) {
+    if (count > (sizeof md_coop_p2_primary_collision_desc / 12u)) {
         f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
         if (f) {
             fprintf(f, "event=collision-desc-capture frame=%lu count=%u status=overflow\n",
@@ -164,7 +164,7 @@ void md_coop_p2_capture_collision_descriptors(M68K *primary) {
         return;
     }
     if (count)
-        memcpy(md_coop_p2_primary_collision_desc, &ram[0xBD28], count * 20u);
+        memcpy(md_coop_p2_primary_collision_desc, &ram[0xBD28], count * 12u);
     md_coop_p2_primary_collision_desc_valid = 1;
     f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (f) {
@@ -174,31 +174,32 @@ void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     }
 }
 
-/* f_3D6A registers 20-byte collision candidates in BD28..BF07. Each entry's
-   pointer at +16 targets a mutable 24-byte object/collision record. For P2,
-   copy the table and give each unique target a private shadow so f_3D80 can
-   write its +11/+16 results without altering P1 or the shared object pool. */
+/* f_3D6A registers 12-byte collision candidates in BD28..BF07: four
+   16-bit bounds followed by a 32-bit pointer at +8. f_3D80 writes its
+   +11/+16 hit results into the pointed-to 24-byte object record. For P2,
+   copy the table and give each unique target a private shadow so those writes
+   cannot alter P1 or the shared object pool. The table holds 40 entries. */
 int md_coop_p2_import_collision_descriptors(void) {
-    uint32_t old_ptrs[24];
-    uint16_t new_offsets[24];
+    uint32_t old_ptrs[40];
+    uint16_t new_offsets[40];
     unsigned old_count = 0;
     unsigned count = md_coop_p2_primary_collision_count;
     unsigned i, j;
     FILE *f;
     if (!md_coop_p2_ready || md_coop_p2_disabled ||
-        !md_coop_p2_primary_collision_desc_valid || count > 24u)
+        !md_coop_p2_primary_collision_desc_valid || count > 40u)
         return 0;
 
     memset(&md_coop_p2_ram[0xBD28], 0, 0x1E0u);
     if (count)
         memcpy(&md_coop_p2_ram[0xBD28],
-               md_coop_p2_primary_collision_desc, count * 20u);
+               md_coop_p2_primary_collision_desc, count * 12u);
 
-    memset(&md_coop_p2_ram[0xEA00], 0, 0x300u);
+    memset(&md_coop_p2_ram[0xEA00], 0, 0x500u);
     md_coop_p2_collision_shadow_count = 0;
     for (i = 0; i < count; ++i) {
-        unsigned record = 0xBD28u + i * 20u;
-        uint32_t ptr = md_coop_p2_long(record + 16u);
+        unsigned record = 0xBD28u + i * 12u;
+        uint32_t ptr = md_coop_p2_long(record + 8u);
         unsigned source;
         unsigned dest;
         if ((ptr & 0x00FF0000u) != 0x00FF0000u ||
@@ -217,9 +218,9 @@ int md_coop_p2_import_collision_descriptors(void) {
         if (j < old_count) {
             dest = new_offsets[j];
         } else {
-            if (old_count >= 24u) return 0;
+            if (old_count >= 40u) return 0;
             dest = 0xEA00u + old_count * 0x20u;
-            if (source > 0xFFE8u || dest > 0xEDC0u) return 0;
+            if (source > 0xFFE8u || dest > 0xEEE8u) return 0;
             memcpy(&md_coop_p2_ram[dest], &ram[source], 24u);
             /* Do not carry P1's previous per-object collision result into P2. */
             md_coop_p2_ram[dest + 11u] = 0;
@@ -228,7 +229,7 @@ int md_coop_p2_import_collision_descriptors(void) {
             new_offsets[old_count] = (uint16_t)dest;
             ++old_count;
         }
-        md_coop_p2_put_long(record + 16u, 0xFFFF0000u | (uint32_t)dest);
+        md_coop_p2_put_long(record + 8u, 0xFFFF0000u | (uint32_t)dest);
     }
 
     md_coop_p2_put_long(0xBF08u, 0xFFFFBD28u);
@@ -283,8 +284,8 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCA7);
         md_coop_p2_mark(0xBCBC, 0xBD26);
-        md_coop_p2_mark(0xBD28, 0xBF07); /* 24 x 20-byte per-player collision descriptors */
-        md_coop_p2_mark(0xEA00, 0xEDFF); /* shadow copies of mutable collision targets */
+        md_coop_p2_mark(0xBD28, 0xBF07); /* 40 x 12-byte per-player collision descriptors */
+        md_coop_p2_mark(0xEA00, 0xEEFF); /* up to 40 shadow copies of mutable collision targets */
         md_coop_p2_mark(0xBF08, 0xBF0D); /* per-player collision descriptor cursor */
         md_coop_p2_mark(0xFE58, 0xFE58); /* P2-private copy of f_3B38's global flag byte */
         md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
@@ -679,9 +680,10 @@ checks = {
     "P2 captures the native collision-reset register context": "md_coop_p2_capture_collision_seed(c)" in g and "md_coop_p2_collision_seed_context" in g,
     "P2 captures the native f_56CE spatial-builder context": "md_coop_p2_capture_spatial_seed(c)" in g and "md_coop_p2_spatial_seed_context" in g,
     "P2 rebuilds f_56CE collision candidates every frame": "md_coop_p2_call_actor(p2, 0x000056CEu)" in g,
-    "P2 captures native BD28 collision candidates before P1 consumes them": "md_coop_p2_capture_collision_descriptors(c)" in g and "md_coop_p2_primary_collision_desc" in h,
-    "P2 owns the full native collision descriptor table": "md_coop_p2_mark(0xBD28, 0xBF07)" in h,
-    "P2 deep-copies collision targets into private scratch": "memcpy(&md_coop_p2_ram[dest], &ram[source], 24u)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h and "md_coop_p2_mark(0xEA00, 0xEDFF)" in h,
+    "P2 captures native BD28 collision candidates before P1 consumes them": "md_coop_p2_capture_collision_descriptors(c)" in g and "md_coop_p2_primary_collision_desc" in h and "count * 12u" in h,
+    "P2 owns 40 native 12-byte collision descriptors": "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "count * 12u" in h and "count > 40u" in h and "record = 0xBD28u + i * 12u" in h,
+    "P2 deep-copies collision targets through descriptor offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
+    "P2 deep-copies up to 40 targets into private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
     "P2 runs native f_3D80 with isolated collision targets": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
@@ -697,5 +699,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: isolated f_3B38/f_56CE preparation, copied BD28 candidate table, private shadows for mutable collision targets, and native f_3D80 resolver.")
-print("The P2 collision resolver cannot write through to P1/shared object records; gameplay still requires in-game verification.")
+print("Installed guarded native P2 actor prototype: isolated f_3B38/f_56CE preparation, 40-entry 12-byte BD28 table, private target shadows, and native f_3D80 resolver.")
+print("Collision record stride and pointer offset match the generated native 68000 code; gameplay still requires in-game verification.")
