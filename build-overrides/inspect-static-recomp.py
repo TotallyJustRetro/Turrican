@@ -212,6 +212,34 @@ for rel in FILES:
    if len(body_lines)>360:
     emit(f"  ... clipped {len(body_lines)-360} lines ...")
 
+  emit("[PLAYER_CAMERA_VIEW_AUDIT]")
+  camera_addresses=("DFD4","DFD6","DFD8","DFDA","DFDC","DFE4")
+  for owner,body in sorted(fn_bodies.items()):
+   body_lines=body.splitlines()
+   for ix,line in enumerate(body_lines):
+    if not re.search(r"\bWR(?:8|16|32)\s*\(",line): continue
+    hits=sorted(set(m.group(1).upper() for m in re.finditer(r"0xFFFF(DFD[468A-C]|DFE4)u",line,re.I)))
+    if hits:
+     emit(f"PLAYER_VIEW_WRITE function={owner} pc_line={fn_lines[owner][0]+ix} addresses={','.join('$FF'+h for h in hits)} code={line.strip()[:260]}")
+  for target in ("f_3368","f_3430","f_34DA","f_34E2"):
+   callers=[]
+   for caller,body in fn_bodies.items():
+    for match in re.finditer(r"\b"+re.escape(target)+r"\s*\(\s*c\s*\)",body):
+     prefix=body[:match.start()].splitlines()
+     local=prefix[-1].strip() if prefix else ""
+     callers.append((caller,fn_lines[caller][0]+len(prefix)-1,local))
+   emit(f"PLAYER_VIEW_CALLERS target={target} count={len(callers)}")
+   for caller,line_no,local in callers[:100]:
+    emit(f"PLAYER_VIEW_CALL target={target} caller={caller} source_line={line_no} prior={local[:220]}")
+  for name in ("f_3368","f_3430","f_34DA","f_34E2"):
+   body=fn_bodies.get(name)
+   if not body:
+    emit(f"PLAYER_VIEW_HELPER_MISSING {name}")
+    continue
+   emit(f"PLAYER_VIEW_HELPER_BODY {name} source_lines={fn_lines[name][0]}-{fn_lines[name][1]}")
+   for line in body.splitlines()[:220]:
+    emit("  "+line[:280])
+
   # A value loaded from a fixed RAM slot and immediately dispatched through
   # rt_call_addr is a runtime callback candidate. Record the slot and call PC;
   # the live Maker snapshot will supply the pointer value for this run.
