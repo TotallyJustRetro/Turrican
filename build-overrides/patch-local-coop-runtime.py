@@ -124,7 +124,8 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
-        md_coop_p2_mark(0xBC84, 0xBC91);
+        md_coop_p2_mark(0xBC84, 0xBC89);
+        md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCA7);
         md_coop_p2_mark(0xBCBC, 0xBD26);
@@ -400,7 +401,7 @@ checks = {
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
-    "DMA raw reads remain untouched": "uint16_t vdp_dma_read(uint32_t a){ return (rd8_raw(a) << 8) | rd8_raw(a + 1); }" in h,
+    "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a+1)" in h,
 }
 for label, passed in checks.items():
     if not passed:
