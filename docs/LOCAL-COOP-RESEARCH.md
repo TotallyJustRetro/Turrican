@@ -377,3 +377,6 @@ Therefore, while descriptors 1-6 are valid ROM candidates, they were not selecte
 ### Shared player update entry across descriptors
 
 The current `f_19FA` setup analysis shows it installs the same main player update callback, `f_224C`, in `$FFBC62`. The descriptor selector changes the surrounding callback/resource tables and associated player setup fields, but not this core movement entry. This further supports treating selectors 0-6 as profiles/states for the same player actor until contrary runtime evidence appears. A P2 actor would still require a second independent player context and update pass; choosing selector 1 or another descriptor is not, by itself, a P2 implementation.
+
+
+The static body of `f_2E94` also reads the P1 input bytes `$FFBC90/$FFBC91` (for example around PCs `0x2F1E`, `0x2F48`, and `0x2F6A`). That makes it unlikely to be an already independent P2 controller path. It can still be a reusable alternate player-state routine under a future P2 memory/input view, but it is not evidence of native P2 support.
