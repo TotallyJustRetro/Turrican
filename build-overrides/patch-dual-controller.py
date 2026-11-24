@@ -135,7 +135,7 @@ if cfg_start<0: raise SystemExit("dual-controller patch: launcher cfg array not 
 # whitespace/formatting, so anchor on the final padMap declaration before cfg.
 for name in ("pad2Map", "padMap"):
     prefix=main[:cfg_start]
-    matches=list(re.finditer(r"(?m)^[ \\t]*(?:const|let|var)\\s+"+name+r"\\s*=",prefix))
+    matches=list(re.finditer(r"(?m)^[ \t]*(?:const|let|var)\s+"+name+r"\s*=",prefix))
     if matches:
         match=matches[-1]
         semicolon=main.find(";",match.start())
