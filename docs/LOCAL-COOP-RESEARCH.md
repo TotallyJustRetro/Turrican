@@ -104,6 +104,19 @@ The recovery build's runtime-state report provides a narrower, safer scheduling 
 6. Add a guarded P2 render-only pass only after its context, resource references, and scratch storage are valid. Then add movement/collision while gating the camera-advance side effect and keeping the global `f_156A`/continue flow single-instance.
 7. Add lives/continue and the requested extra-life sharing rules only after both actors survive gameplay, death, respawn, and level transitions.
 
+## Exact runtime callback trace points
+
+The diagnostic hook now records the actual 68000 target address immediately before each selected indirect call. Phase IDs are fixed in the trace output:
+
+- `101`, `102`, `103`: the three dynamic calls inside `f_19FA` at PCs `0x1AF0`, `0x1B32`, and `0x1B56`. These capture the selected target after the descriptor-selection logic has finished, so they are authoritative; the nested descriptor raw bytes are supplementary only.
+- `201`, `202`, `203`: the three dynamic calls inside `f_1BDE` at PCs `0x1C60`, `0x1CA2`, and `0x1CAC`. These capture the restore/setup callback targets after `f_1BDE` has read the saved descriptor and callback fields.
+- `301`, `302`, `303`, `304`: the recurring player-frame callback targets in `f_156A` at PCs `0x1620`, `0x162A`, `0x1630`, and `0x163E`, corresponding to the four descriptor-supplied callbacks in slots `$FFBC3C`, `$FFBC44`, `$FFBC4C`, and `$FFBC1C`.
+- `305`: the active player update callback in `$FFBC62` at PC `0x1660` (normally `f_224C`).
+- `306`: the post-update callback in `$FFBC20` at PC `0x166E`.
+- `307`: the optional callback loaded from `$FFBC5E` at PC `0x1746`; the trace will show whether it is present and which target is actually used.
+
+The trace records the descriptor pointer, actual indirect target, 68000 D/A registers, active selector, player state, current P1 input bytes, player screen coordinates, and shared view offsets. Calls are de-duplicated by descriptor/target/phase, so the file should remain small even though the player loop runs every frame. These hooks only append diagnostic text; they do not alter emulated registers, RAM, callback targets, or game control flow.
+
 ## Runtime actor-context and event/interrupt rules
 
 The runtime audit confirms that the P2 execution context must be isolated at the emulator layer, not only by copying game RAM:
