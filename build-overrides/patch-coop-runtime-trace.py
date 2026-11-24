@@ -338,5 +338,6 @@ replace_once(GEN, "L_163E: { RT_POLL(0x163E); uint32_t e=A(0); {", "L_163E: { RT
 replace_once(GEN, "L_1660: { RT_POLL(0x1660); uint32_t e=A(0); {", "L_1660: { RT_POLL(0x1660); uint32_t e=A(0); md_coop_trace_call(c,e,305); {")
 replace_once(GEN, "L_166E: { RT_POLL(0x166E); uint32_t e=A(0); {", "L_166E: { RT_POLL(0x166E); uint32_t e=A(0); md_coop_trace_call(c,e,306); {")
 replace_once(GEN, "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); {", "L_1746: { RT_POLL(0x1746); uint32_t e=A(0); md_coop_trace_call(c,e,307); {")
+replace_once(GEN, "L_2E94: { RT_POLL(0x2E94);", "L_2E94: { RT_POLL(0x2E94); md_coop_trace_call(c,0x2E94u,401);")
 
 print("Installed read-only player-descriptor trace hooks (no gameplay behavior changed).")
