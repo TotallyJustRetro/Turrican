@@ -225,6 +225,18 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f, "\np2_player_scratch_F200_F9FF=");
     for (i = 0xF200u; i <= 0xF9FFu; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_animation_clear_DC9E_DD1B=");
+    for (i = 0xDC9Eu; i <= 0xDD1Bu; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_descriptor_work_DD1E_DE1D=");
+    for (i = 0xDD1Eu; i <= 0xDE1Du; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_descriptor_work_DE4E_DECD=");
+    for (i = 0xDE4Eu; i <= 0xDECDu; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_callback_tables_DFCE_E035=");
+    for (i = 0xDFCEu; i <= 0xE035u; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
     fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
             (unsigned)md_coop_p2_ram[0xDFDA],
@@ -605,6 +617,7 @@ checks = {
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
+    "P2 actor trace captures newly isolated animation buffers": "p2_animation_clear_DC9E_DD1B=" in h and "p2_descriptor_work_DD1E_DE1D=" in h and "p2_descriptor_work_DE4E_DECD=" in h and "p2_callback_tables_DFCE_E035=" in h,
     "P2 renderer uses native f_5DB2 through guarded call wrapper": "md_coop_p2_call_native(p2, 0x00005DB2u" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
