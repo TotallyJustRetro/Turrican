@@ -44,7 +44,9 @@ static uint8_t md_coop_p2_ram[0x10000];
 static uint8_t md_coop_p2_private[0x10000];
 static uint8_t md_coop_p2_stack[0x10000];
 static M68K md_coop_p2_m68k;
+static M68K md_coop_p2_frame_seed;
 static M68K *md_coop_primary_m68k = NULL;
+static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
 static int md_coop_p2_disabled = 0;
 static unsigned long md_coop_p2_frame_count = 0;
@@ -91,6 +93,10 @@ M68K *md_coop_p2_cpu(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled ? &md_coop_p2_m68k : NULL;
 }
 
+const M68K *md_coop_p2_frame_seed_context(void) {
+    return md_coop_p2_frame_seed_valid ? &md_coop_p2_frame_seed : NULL;
+}
+
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_player2_connected && md_coop_primary_m68k != NULL;
@@ -101,7 +107,16 @@ void md_coop_prepare_p2(M68K *primary) {
     unsigned i;
     if (!primary) return;
     md_coop_primary_m68k = primary;
-    if (md_coop_p2_disabled || !md_player2_connected) return;
+    if (md_coop_p2_disabled || !md_player2_connected) {
+        md_coop_p2_frame_seed_valid = 0;
+        return;
+    }
+
+    /* Capture the caller immediately before the original f_5DB2 render pass.
+       P2 starts from this same frame-entry context, runs its own renderer, then
+       carries those renderer-produced registers into its movement callback. */
+    memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
+    md_coop_p2_frame_seed_valid = 1;
 
     callback = ((uint32_t)ram[0xBC62] << 24) |
                ((uint32_t)ram[0xBC63] << 16) |
@@ -171,14 +186,14 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->d[i]);
     fprintf(f, " a:");
     for (i = 0; i < 8u; ++i) fprintf(f, " %08X", (unsigned)cpu->a[i]);
-    fprintf(f, " ret=%08X usp=%08X flags=%u%u%u%u%u sr=%04X\\n",
+    fprintf(f, " ret=%08X usp=%08X flags=%u%u%u%u%u sr=%04X\n",
             (unsigned)cpu->ret, (unsigned)cpu->usp,
             (unsigned)cpu->x, (unsigned)cpu->n, (unsigned)cpu->z,
             (unsigned)cpu->v, (unsigned)cpu->c, (unsigned)cpu->sr_sys);
     fprintf(f, "p2_state_BC62_BD26=");
     for (i = 0xBC62u; i <= 0xBD26u; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
-    fprintf(f, "\\np2_camera_DFD8_DFDA=%02X%02X%02X scratch_F226=%02X sprite_FD24_25=%02X%02X\\n",
+    fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X scratch_F226=%02X sprite_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
             (unsigned)md_coop_p2_ram[0xDFDA], (unsigned)md_coop_p2_ram[0xF226],
             (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25]);
@@ -302,6 +317,7 @@ extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_set_active(int active);
 extern M68K *md_coop_p2_cpu(void);
+extern const M68K *md_coop_p2_frame_seed_context(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
@@ -363,13 +379,15 @@ static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
 
 void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     M68K *p2;
+    const M68K *frame_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
     p2 = md_coop_p2_cpu();
-    if (!p2) return;
+    frame_seed = md_coop_p2_frame_seed_context();
+    if (!p2 || !frame_seed) return;
 
-    md_coop_p2_sync_call_context(p2, primary);
+    md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
     if (!md_coop_p2_call_renderer(p2)) {
         md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
@@ -384,7 +402,6 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
-    md_coop_p2_sync_call_context(p2, primary);
     if (!md_coop_p2_call_actor(p2, callback)) {
         md_coop_p2_abort("P2 actor did not restore its CPU stack/return frame", callback);
         md_coop_p2_finish();
@@ -433,7 +450,8 @@ checks = {
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
-    "P2 refreshes live caller registers": "md_coop_p2_sync_call_context(p2, primary);" in g,
+    "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
+    "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
@@ -444,5 +462,5 @@ for label, passed in checks.items():
     if not passed:
         raise SystemExit("local co-op verification failed: " + label)
 
-print("Installed guarded native P2 actor prototype: independent stack/state, live callback registers, port-2 input, native sprite builder and pre-callback actor scheduling.")
+print("Installed guarded native P2 actor prototype: independent stack/state, frame-entry register seed, port-2 input, native sprite builder and pre-callback actor scheduling.")
 print("P2 runtime snapshots now include its CPU registers and private player-state bytes; gameplay still requires in-game verification.")
