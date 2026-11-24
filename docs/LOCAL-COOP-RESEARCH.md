@@ -53,6 +53,18 @@ The generated recomp report establishes a central work-RAM access path:
 - `f_224C` also uses `$FFDFD8/$FFDFDA` through helper `f_3368`, while helpers `f_3430` and `f_3514` access `$FFDFD4/$FFDFD6`. These are shared-camera candidates that must be examined before deciding which writes P2 may perform.
 - The callback contains a computed call through A6 at PC `0x288E`, in addition to its direct calls. Its dynamic target is part of the player's per-frame behavior and must be preserved in P2's initialized context.
 
+## Frame/event scheduling constraints
+
+The runtime helper bodies add another critical constraint:
+
+- `RT_POLL` decrements the shared `rt_budget`; when it drops below zero, it calls `rt_event(c)`. It then calls `rt_irq_service(c)` if an interrupt is pending.
+- `rt_event` advances one VDP line, renders that line, advances audio, updates VBlank/HBlank pending state, and after a full frame calls `md_frame_hook()`.
+- `md_frame_hook` polls SDL events, handles pause/title UI and gameplay options, then refreshes `md_live_mask` from controller 1 and `md_player2_live_mask` from controller 2. It also renders/presents the frame.
+- `rt_irq_service(c)` dispatches VBlank/HBlank handlers using the exact `M68K *c` passed by the generated callback. If a future P2 CPU context enters a nested event with a normal interrupt mask, the interrupt handler would run against P2's registers and the currently selected P2 memory view. P2's interrupt semantics therefore need explicit handling.
+- An isolated P2 update must not accidentally advance a second video/audio frame or run the launcher/game frame hook mid-callback. One possible design is to save `rt_budget`, run the P2 per-player callbacks under a bounded no-yield guard, and restore the budget afterwards; this is only a proposal until the exact callback duration and IRQ behavior are tested.
+- If event/yield behavior is retained during P2 execution, the event path must temporarily select the shared RAM view and dispatch game interrupts only on the primary CPU context. VDP DMA reads through `rd8_raw`, and `md_frame_hook` performs UI/input work, so leaving the P2 view globally selected during an event is unsafe.
+- The P2 controller mask is refreshed by `md_frame_hook`, not continuously by the SDL callback itself. A P2 pass should latch `md_player2_live_mask` at a stable point before entering the player callback and expose it through P2's local view at `$FFBC90/$FFBC91`.
+
 The memory bus is therefore a useful *mechanism*, not an ownership map. Before implementing it, we still need to classify every direct and pointer-indirect player access, isolate event/interrupt execution onto the shared view, and reserve a safe P2 stack.
 
 ## Why the previous attempt was unsafe
