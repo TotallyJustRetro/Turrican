@@ -132,10 +132,14 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC1C, 0xBC23); /* pre/post actor callbacks */
         md_coop_p2_mark(0xBC3C, 0xBC4F); /* descriptor setup callbacks */
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
+        md_coop_p2_mark(0xBC5A, 0xBC5D); /* current player resource table */
+        md_coop_p2_mark(0xBC5E, 0xBC61); /* player transition callback */
+        md_coop_p2_mark(0xBC68, 0xBC68); /* player contact/weapon state */
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
         md_coop_p2_mark(0xBC84, 0xBC8B);
         md_coop_p2_mark(0xBC90, 0xBC91);
+        md_coop_p2_mark(0xBC94, 0xBC9B); /* player-specific DMA descriptors */
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCB4); /* animation/work descriptors */
         md_coop_p2_mark(0xBCC2, 0xBCC8); /* alternate animation state */
@@ -420,8 +424,16 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
 
-    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE20u) ||
-        !md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE24u) ||
+    /* f_156A installs the callback-specific A6 contexts before the first two
+       descriptor calls. The targets consume these base pointers indirectly. */
+    p2->a[6] = 0xFFFFDFCEu;
+    if (!md_coop_p2_call_slot(p2, 0xBC3Cu, 0x00FEEE20u)) {
+        md_coop_p2_abort("P2 first descriptor callback did not restore its private stack", callback);
+        md_coop_p2_finish();
+        return;
+    }
+    p2->a[6] = 0xFFFFE002u;
+    if (!md_coop_p2_call_slot(p2, 0xBC44u, 0x00FEEE24u) ||
         !md_coop_p2_call_slot(p2, 0xBC4Cu, 0x00FEEE28u) ||
         !md_coop_p2_call_slot(p2, 0xBC1Cu, 0x00FEEE2Cu)) {
         md_coop_p2_abort("P2 descriptor callbacks did not restore its private stack", callback);
@@ -474,7 +486,7 @@ void md_coop_run_local_p2_post(M68K *primary) {
 """
 
 gen = GEN.read_text(encoding="utf-8")
-if "First native Mega Turrican P2 actor runner." not in gen:
+if "Native Mega Turrican P2 frame slice." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
@@ -520,6 +532,8 @@ checks = {
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 owns pre/post callback slots": "md_coop_p2_mark(0xBC1C, 0xBC23)" in h and "md_coop_p2_mark(0xBC3C, 0xBC4F)" in h,
     "P2 owns animation descriptor RAM": "md_coop_p2_mark(0xBCA4, 0xBCB4)" in h and "md_coop_p2_mark(0xBCC2, 0xBCC8)" in h,
+    "P2 owns descriptor pointers and DMA slots": "md_coop_p2_mark(0xBC5A, 0xBC5D)" in h and "md_coop_p2_mark(0xBC94, 0xBC9B)" in h,
+    "P2 restores descriptor callback A6 contexts": "p2->a[6] = 0xFFFFDFCEu;" in g and "p2->a[6] = 0xFFFFE002u;" in g,
     "P2 owns motion descriptor RAM": "md_coop_p2_mark(0xBF08, 0xBF29)" in h and "md_coop_p2_mark(0xBD28, 0xBD29)" in h,
     "P2 resets private multipart scratch every frame": "0x00005D8Au" in g,
     "P2 runs player-local animation preamble": "0x00003B38u" in g and "0x00001E00u" in g and "0x00002150u" in g,
