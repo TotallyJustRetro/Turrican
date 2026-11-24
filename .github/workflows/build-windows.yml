@@ -143,6 +143,12 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-controller-menu.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying Genesis controller changes failed.' }
 
+      - name: Add independent P1/P2 controller profiles and port-2 input
+        shell: pwsh
+        run: |
+          python (Join-Path $PWD 'build-overrides/patch-dual-controller.py') $env:MEGATURRICAN_PROJECT
+          if ($LASTEXITCODE -ne 0) { throw 'Applying independent P1/P2 controller profiles failed.' }
+
       - name: Apply launcher audio options and game icon
         shell: pwsh
         run: |
