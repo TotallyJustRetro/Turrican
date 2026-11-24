@@ -72,13 +72,6 @@ static uint32_t md_coop_p2_long(unsigned at) {
            (uint32_t)md_coop_p2_ram[(at + 3u) & 0xFFFFu];
 }
 
-static void md_coop_p2_put_long(unsigned at, uint32_t value) {
-    md_coop_p2_ram[at] = (uint8_t)(value >> 24);
-    md_coop_p2_ram[(at + 1u) & 0xFFFFu] = (uint8_t)(value >> 16);
-    md_coop_p2_ram[(at + 2u) & 0xFFFFu] = (uint8_t)(value >> 8);
-    md_coop_p2_ram[(at + 3u) & 0xFFFFu] = (uint8_t)value;
-}
-
 static void md_coop_p2_log(const char *event, uint32_t callback, const char *detail) {
     FILE *f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f) return;
@@ -131,7 +124,7 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBCBC, 0xBD26);
         md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
         md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
-        md_coop_p2_mark(0xF226, 0xF2A7); /* actor scratch table */
+        md_coop_p2_mark(0xF226, 0xF226); /* confirmed actor scratch byte */
         md_coop_p2_mark(0xFCE8, 0xFDCF); /* 29-entry multipart sprite scratch */
 
         memset(md_coop_p2_ram, 0, sizeof md_coop_p2_ram);
@@ -147,10 +140,6 @@ void md_coop_prepare_p2(M68K *primary) {
         /* Place P2 beside P1 without changing the shared camera. */
         md_coop_p2_put_word(0xBD1E,
             (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0030u));
-        md_coop_p2_put_long(0xBCBC,
-            ((uint32_t)md_coop_p2_word(0xBD1E) << 16) |
-            (uint32_t)md_coop_p2_word(0xBD20));
-
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
                        "one-time P1 state seed; independent CPU and F0FFFC stack");
