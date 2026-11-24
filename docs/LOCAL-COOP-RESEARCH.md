@@ -414,3 +414,18 @@ Do not implement P2 by simply switching a global RAM pointer around f_224C. A vi
 The P2 CPU context also needs its own valid emulated A7 stack range, while shared object lists, stage state, camera, renderer output, VDP/Z80 state, and DMA source RAM remain global. The existing global rt_shadow/rt_sp call/return bookkeeping must be audited for per-CPU nesting before a second M68K context is introduced. The first option is more general, but it is not ready to code until every event, interrupt, exception, and host callback entry/exit can be covered and tested.
 
 This is an architectural stop condition, not a reason to re-enable the failed RAM-shadow experiment. Build #555 is read-only instrumentation only.
+
+
+## Player frame scheduling and the shared render queue
+
+The f_156A frame setup order is now established from the generated trace:
+- PC 0x1658 calls f_5DB2 to build the original player's multipart sprite data.
+- PC 0x165C loads the main player callback from $FFBC62.
+- PC 0x1660 invokes that callback; the active callback is f_224C.
+- PC 0x1662 calls f_5472, which processes the shared output queue using $FFBC54/$FFBC58 and the shared object-list head $FFBC28.
+
+This gives a candidate P2 scheduling point immediately after the f_224C call at 0x1660 returns and before f_5472 starts. A P2 pass at that point could run f_224C with its own CPU and player-local bank, then run f_5DB2 for the P2 multipart sprite so both characters contribute to the same output queue before f_5472 consumes it. This is a code-grounded candidate, not an implemented or verified schedule; f_224C's own sprite helpers and all side effects still need to be audited before using it.
+
+f_5DB2 uses $FFFFFCE8 as temporary multipart sprite scratch, but writes completed sprite entries through the shared $FFBC54/$FFBC58 output queue. Sequential P1 then P2 rendering may allow scratch to be reused while the output queue accumulates both players, provided no queued record retains a pointer into $FFFFFCE8. The object pool and $FFBC28/$FFBC2C/$FFBC30 heads remain shared and must never be banked as player-local memory.
+
+Camera handling needs a separate treatment. f_3368 computes the player's camera threshold state in per-player fields $FFBC87, $FFBCCE, $FFBCD2, $FFBCD6, and $FFBCD7, but writes the candidate camera to shared $FFDFD8/$FFDFDA. P2's threshold-state fields are candidates for its local bank. Its camera writes should be captured as a P2 candidate rather than replacing the visible shared camera; after both player updates the runtime can merge P1 and P2 candidates so the trailing player limits forward progress. The merge direction, stage boundaries, and scrolling lock behavior still need to be validated from more than one level.
