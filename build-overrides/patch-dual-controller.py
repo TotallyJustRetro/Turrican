@@ -95,7 +95,18 @@ function syncControllerSettingsFromConfig(configPath) {
       return Number.isInteger(value) && value >= -8 && value <= 15
         ? value : defaultControllerSettings.padMap[i];
     });
-    const normalized = { version: 4, padMap: readMap('pad_'), pad2Map: readMap('pad2_') };
+    let previousP2 = defaultControllerSettings.pad2Map.slice();
+    try {
+      const stored = JSON.parse(fs.readFileSync(controllerSettingsFile, 'utf8'));
+      previousP2 = normalizeControllerSettings(stored).pad2Map;
+    } catch (_) {}
+    const pad2Map = previousP2.slice();
+    MAP_KEYS.forEach((key, i) => {
+      const raw = current.get('pad2_' + key);
+      const value = Number(raw);
+      if (raw !== undefined && Number.isInteger(value) && value >= -8 && value <= 15) pad2Map[i] = value;
+    });
+    const normalized = { version: 4, padMap: readMap('pad_'), pad2Map };
     fs.mkdirSync(path.dirname(controllerSettingsFile), { recursive: true });
     const temporary = controllerSettingsFile + '.tmp';
     fs.writeFileSync(temporary, JSON.stringify(normalized, null, 2), 'utf8');
