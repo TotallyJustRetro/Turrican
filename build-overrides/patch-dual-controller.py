@@ -134,28 +134,25 @@ write_anchor="fs.writeFileSync(configPath,"
 if main.count(write_anchor)!=1:
     raise SystemExit("dual-controller patch: config.ini write site not found uniquely")
 inject=r"""
-  // Dual-controller settings are injected after the legacy cfg array is built.
+  // Keep P1's original config.ini mapping and pass P2's independent map
+  // to the child process without depending on the private config parser.
   const dualControllerSettingsForLaunch = normalizeControllerSettings(settings);
-  const dualPadConfigForLaunch = [];
-  const dualPadKeysForLaunch = new Set();
   const dualPadActionsForLaunch = [
     ['up',0],['down',1],['left',2],['right',3],
     ['a',4],['b',5],['c',6],['start',7]
   ];
-  for (const [key,index] of dualPadActionsForLaunch) {
-    dualPadConfigForLaunch.push('pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
-    dualPadConfigForLaunch.push('pad2_' + key + '=' + dualControllerSettingsForLaunch.pad2Map[index]);
-  }
-  for (const entry of dualPadConfigForLaunch) dualPadKeysForLaunch.add(entry.slice(0, entry.indexOf('=')));
+  const dualPadConfigForLaunch = dualPadActionsForLaunch.map(([key,index]) =>
+    'pad_' + key + '=' + dualControllerSettingsForLaunch.padMap[index]);
+  const dualPadKeysForLaunch = new Set(dualPadActionsForLaunch.map(([key]) => 'pad_' + key));
+  for (const [key] of dualPadActionsForLaunch) dualPadKeysForLaunch.add('pad2_' + key);
   for (let i = cfg.length - 1; i >= 0; i--) {
     const entry = String(cfg[i]);
     const at = entry.indexOf('=');
     if (at > 0 && dualPadKeysForLaunch.has(entry.slice(0, at))) cfg.splice(i, 1);
   }
   cfg.push(...dualPadConfigForLaunch);
-"""
-main=main.replace(write_anchor,inject+"\n  "+write_anchor,1)
-MAIN.write_text(main,encoding="utf-8")
+  process.env.MEGATURRICAN_PAD2_MAP = dualControllerSettingsForLaunch.pad2Map.join(',');
+"""MAIN.write_text(main,encoding="utf-8")
 
 # 2. Launcher profile switch and JS keep the two maps independent.
 html=HTML.read_text(encoding="utf-8-sig")
@@ -339,6 +336,11 @@ HTML.write_text(html,encoding="utf-8")
 
 # 3. SDL: second controller handle, independent mappings, and live P2 mask.
 s=SDL.read_text(encoding="utf-8-sig")
+for header in ("#include <stdlib.h>","#include <stdio.h>"):
+    if header not in s:
+        first_include=re.search(r"(?m)^#include[^\\n]*\\n",s)
+        if not first_include: raise SystemExit("dual-controller patch: SDL include section missing")
+        s=s[:first_include.end()]+header+"\\n"+s[first_include.end():]
 if "static SDL_GameController *pad2 = NULL;" not in s:
     decl=re.search(r"(?m)^\s*static\s+SDL_GameController\s*\*\s*pad\s*(?:=\s*NULL)?\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: SDL primary pad declaration not found")
@@ -349,22 +351,7 @@ if "static int pad2_map[8]" not in s:
     s=s[:decl.end()]+"\nstatic int pad2_map[8] = {12,13,14,15,2,0,1,9};\nint md_player2_live_mask=0;\nint md_player2_connected=0;\nint md_local_coop_enabled=0;"+s[decl.end():]
 
 # Parse P2 map keys from config.ini.
-if 'pad2_up' not in s:
-    lines=s.splitlines()
-    p1_map_lines=[i for i,line in enumerate(lines) if 'pad_map[' in line and 'atoi(' in line]
-    if not p1_map_lines:
-        raise SystemExit('dual-controller patch: could not locate existing P1 pad_map config assignments')
-    insert_at=max(p1_map_lines)+1
-    previous_line=lines[insert_at-1]
-    indent=previous_line[:len(previous_line)-len(previous_line.lstrip())]
-    p2_lines=[
-        indent+f'else if(!strcmp(l, "pad2_{key}")) pad2_map[{i}] = atoi(v);'
-        for i,key in enumerate(MAP_KEYS)
-    ]
-    lines[insert_at:insert_at]=p2_lines
-    s=chr(10).join(lines)+chr(10)
-
-
+# P2 mapping is read from MEGATURRICAN_PAD2_MAP during open_pad().
 # Make mapping helper device-agnostic and keep the existing P1 function.
 if "mapped_controller_button_for" not in s:
     a,b=func_span(s,r"static\s+int\s+mapped_controller_button\s*\(\s*int\s+binding\s*\)","mapped_controller_button")
@@ -388,6 +375,19 @@ static int readpad2(void){
     s=s[:b]+reader+s[b:]
 
 open_pad=r"""static void open_pad(void){
+    static int p2_map_env_loaded=0;
+    if(!p2_map_env_loaded){
+        const char *map=getenv("MEGATURRICAN_PAD2_MAP");
+        if(map){
+            int values[8];
+            if(sscanf(map,"%d,%d,%d,%d,%d,%d,%d,%d",
+                      &values[0],&values[1],&values[2],&values[3],
+                      &values[4],&values[5],&values[6],&values[7])==8){
+                for(int i=0;i<8;i++)if(values[i]>=-8&&values[i]<=15)pad2_map[i]=values[i];
+            }
+        }
+        p2_map_env_loaded=1;
+    }
     if(pad){SDL_GameControllerClose(pad);pad=NULL;}
     if(pad2){SDL_GameControllerClose(pad2);pad2=NULL;}
     for(int i=0;i<SDL_NumJoysticks();i++){
