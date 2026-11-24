@@ -462,7 +462,7 @@ static void maker_refresh_tile_shelf()
         const int entry=mtlb_editor_tile_entry(index,g_maker_palette);
         char card[512];
         std::snprintf(card,sizeof(card),
-            "<div id='asset-tile-%d' class='asset-card tile-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb tile-thumb'></div><div>TILE %03d</div><div class='asset-tag'>2D / VDP</div></div>",
+            "<div id='asset-tile-%d' class='asset-card tile-card %s' data-action='asset-select' data-asset-id='%d' data-asset-type='2d_tile'><div class='asset-thumb tile-thumb'></div><div>TILE %03d</div><div class='asset-tag'>2D / VDP</div></div>",
             index,entry==g_brush_tile?"selected":"",index,index+1);
         cards+=card;
     }
@@ -487,7 +487,7 @@ static void maker_refresh_sprite_lists()
         const int category=std::max(0,std::min(4,mtlb_editor_sprite_asset_category(i)));
         char card[512];
         std::snprintf(card,sizeof(card),
-            "<div id='asset-sprite-%s-%d' class='asset-card %s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='rom_sprite'><div class='asset-thumb' id='sprite-thumb-%s-%d'></div><div>ROM SPRITE %03d</div><div class='asset-tag'>2D / %uF / %uP</div><div class='asset-tag'>$%06X</div></div>",
+            "<div id='asset-sprite-%s-%d' class='asset-card %s' data-action='asset-select' data-asset-id='%d' data-asset-type='rom_sprite'><div class='asset-thumb' id='sprite-thumb-%s-%d'></div><div>ROM SPRITE %03d</div><div class='asset-tag'>2D / %uF / %uP</div><div class='asset-tag'>$%06X</div></div>",
             folders[category],i,i==g_selected_rom_sprite?"selected":"",i,folders[category],i,i+1,
             (unsigned)frames,(unsigned)parts,(unsigned)descriptor);
         lists[category]+=card;
@@ -520,7 +520,7 @@ static void maker_refresh_imported_asset_lists()
         if(i==g_selected_model_asset)classes+=" selected";
         if(!g_maker_modern)classes+=" model-modern-only";
         std::snprintf(card,sizeof(card),
-            "<div id='asset-model-%d' class='%s' draggable='true' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
+            "<div id='asset-model-%d' class='%s' data-action='asset-select' data-asset-id='%d' data-asset-type='3d_model'><div class='asset-thumb model-thumb'>3D</div><div>%s</div><div class='asset-tag tag-3d'>3D</div></div>",
             i,classes.c_str(),i,Rml::StringUtilities::EncodeRml(name).c_str());
         lists[std::max(0,std::min(4,classification))]+=card;
     }
