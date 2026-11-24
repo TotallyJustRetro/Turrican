@@ -131,11 +131,11 @@ void md_coop_trace_input(M68K *c, uint32_t descriptor, unsigned phase) {
     if (sample_count == 1u || changed || (sample_count % 60u) == 0u) {
         FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
         if (f) {
-            fprintf(f, "\\n=== INPUT SAMPLE n=%u phase=%u descriptor=%06X ===\\n",
+            fprintf(f, "\n=== INPUT SAMPLE n=%u phase=%u descriptor=%06X ===\n",
                     sample_count, phase, descriptor & 0xFFFFFFu);
-            fprintf(f, "p2_connected=%d p2_live_mask=%08X emulated_pad_reads_port0=%u port1=%u\\n",
+            fprintf(f, "p2_connected=%d p2_live_mask=%08X emulated_pad_reads_port0=%u port1=%u\n",
                     connected, mask, md_coop_pad_read_count[0], md_coop_pad_read_count[1]);
-            fprintf(f, "ram_BC90_91=%02X%02X ram_BC92_93=%02X%02X\\n",
+            fprintf(f, "ram_BC90_91=%02X%02X ram_BC92_93=%02X%02X\n",
                     ram[0xBC90], ram[0xBC91], ram[0xBC92], ram[0xBC93]);
             fflush(f);
             fclose(f);
@@ -214,16 +214,16 @@ for path in (GEN, HARNESS, RT_HEADER):
 # file scope before pad_read so it is available regardless of source order.
 harness_source = HARNESS.read_text(encoding="utf-8")
 if "md_coop_pad_read_count[2]" not in harness_source:
-    harness_source = "static unsigned int md_coop_pad_read_count[2];\\n" + harness_source
+    harness_source = "static unsigned int md_coop_pad_read_count[2];\n" + harness_source
     pad_read_match = re.search(
-        r"(static\\s+uint8_t\\s+pad_read\\s*\\(\\s*int\\s+p\\s*\\)\\s*\\{)",
+        r"(static\s+uint8_t\s+pad_read\s*\(\s*int\s+p\s*\)\s*\{)",
         harness_source,
     )
     if not pad_read_match:
         raise SystemExit("Could not find the emulated Genesis pad_read(int p) function for diagnostics.")
-    counter_line = "\\n    if (p >= 0 && p < 2) ++md_coop_pad_read_count[p];"
+    counter_line = "\n    if (p >= 0 && p < 2) ++md_coop_pad_read_count[p];"
     harness_source = harness_source[:pad_read_match.end()] + counter_line + harness_source[pad_read_match.end():]
-    HARNESS.write_text(harness_source, encoding="utf-8", newline="\\n")
+    HARNESS.write_text(harness_source, encoding="utf-8", newline="\n")
 
 replace_once(
     HARNESS,
