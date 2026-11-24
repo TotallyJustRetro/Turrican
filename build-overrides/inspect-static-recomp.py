@@ -56,6 +56,65 @@ for rel in FILES:
   for name,addresses in sorted(fn_summary.items(),key=lambda item:(-len(item[1]),item[0])):
    emit(f"RAM_FUNCTION {name} unique_addresses={len(addresses)} addresses={','.join(sorted(addresses))}")
 
+  emit("[PLAYER_ACTOR_CALLGRAPH_AUDIT]")
+  # Build exact generated-function bodies so the player update, its setup
+  # callbacks, and the ordinary object allocator can be compared by ownership.
+  fn_start=re.compile(r"^\s*static\s+void\s+(f_[0-9A-Fa-f]+)\s*\([^;{}]*\)\s*\{")
+  fn_bodies={}
+  fn_lines={}
+  for start,line in enumerate(lines):
+   fm=fn_start.match(line)
+   if not fm: continue
+   name=fm.group(1)
+   if name in fn_bodies: continue
+   depth=0; opened=False; end=-1
+   for q in range(start,len(lines)):
+    if "{" in lines[q]: opened=True
+    if opened:
+     depth+=lines[q].count("{")-lines[q].count("}")
+     if depth==0:
+      end=q+1
+      break
+   if end<=start: continue
+   fn_bodies[name]="\n".join(lines[start:end])
+   fn_lines[name]=(start+1,end)
+  direct_call=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(\s*c\s*\)")
+  actor_addr=re.compile(r"0xFFFF((?:BC|BD|BE|BF)[0-9A-Fa-f]{2})u",re.I)
+  audit_roots=("f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2")
+  for root in audit_roots:
+   if root not in fn_bodies:
+    emit(f"PLAYER_GRAPH_ROOT_MISSING {root}")
+    continue
+   depth_map={root:0}; queue=[root]
+   while queue:
+    owner=queue.pop(0)
+    depth=depth_map[owner]
+    if depth>=3: continue
+    for target in direct_call.findall(fn_bodies.get(owner,"")):
+     if target in fn_bodies and target not in depth_map:
+      depth_map[target]=depth+1
+      queue.append(target)
+   emit(f"PLAYER_GRAPH_ROOT {root} reachable_functions={len(depth_map)} max_depth=3")
+   for name,depth in sorted(depth_map.items(),key=lambda item:(item[1],item[0])):
+    body=fn_bodies[name]
+    refs=sorted(set(m.group(1).upper() for m in actor_addr.finditer(body)))
+    calls=sorted(set(direct_call.findall(body)))
+    indirect_lines=[i for i,line in enumerate(body.splitlines()) if "rt_call_addr" in line]
+    emit(f"PLAYER_GRAPH_FUNCTION root={root} function={name} depth={depth} source_lines={fn_lines[name][0]}-{fn_lines[name][1]} refs={','.join('$FF'+x for x in refs) or '-'} direct_calls={','.join(calls[:40]) or '-'} indirect_calls={len(indirect_lines)}")
+    body_lines=body.splitlines()
+    for ix in indirect_lines[:8]:
+     lo=max(0,ix-4); hi=min(len(body_lines),ix+2)
+     for q in range(lo,hi):
+      emit(f"  INDIRECT_CONTEXT {name} line={fn_lines[name][0]+q} {body_lines[q].strip()[:260]}")
+  emit("[PLAYER_CONTEXT_DESCRIPTOR_SETUP]")
+  for name in ("f_156A","f_1994","f_19FA","f_1BDE","f_2150","f_224C"):
+   body=fn_bodies.get(name)
+   if not body: continue
+   bl=body.splitlines()
+   for ix,line in enumerate(bl):
+    if any(token in line for token in ("0x1994u","0xFFFFBC50u","0xFFFFBC3Cu","0xFFFFBC40u","0xFFFFBC44u","0xFFFFBC48u","0xFFFFBC4Cu","0xFFFFBC5Au","0xFFFFBC62u","0xFFFFBCC4u")):
+     emit(f"PLAYER_DESCRIPTOR_CONTEXT function={name} line={fn_lines[name][0]+ix} {line.strip()[:280]}")
+
   # A value loaded from a fixed RAM slot and immediately dispatched through
   # rt_call_addr is a runtime callback candidate. Record the slot and call PC;
   # the live Maker snapshot will supply the pointer value for this run.
