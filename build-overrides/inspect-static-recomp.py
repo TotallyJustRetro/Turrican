@@ -1498,7 +1498,7 @@ for rel in ("runtime/harness.c","runtime/m68k_interp.c","runtime/m68k_rt.h"):
    emit(f"  {q+1}: {src_lines[q][:320]}")
  # Emit relevant helper function bodies where available.
  func_head=re.compile(r"^\s*(?:(?:static|inline|extern)\s+)*[A-Za-z_][A-Za-z0-9_\s\*]*?\s+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{")
- selected={"rd8_raw","bus_rd8","bus_rd16","bus_wr8","bus_wr16","md_boot","md_load_rom","rt_call_addr","rt_fix_ret","rt_cpu_step","rt_execute"}
+ selected={"rd8_raw","bus_rd8","bus_rd16","bus_wr8","bus_wr16","md_boot","md_copy_cpu_state","rt_call_addr","rt_fix_ret","rt_event","dispatch","rt_irq_service"}
  for start,line in enumerate(src_lines):
   m=func_head.match(line)
   if not m or m.group(1) not in selected: continue
