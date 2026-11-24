@@ -200,9 +200,7 @@ if "coop_p2_player_state" not in block:
         "uint8_t coop_p2_input_b=(uint8_t)RD8(0xFFFFBC93u);",
         "WR8(0xFFFFBC90u,coop_p2_input_a);",
         "WR8(0xFFFFBC91u,coop_p2_input_b);",
-    "coop_shared_left_edge",
-    "coop_shared_right_edge",
-    "md_player2_camera_x"
+        "md_player2_camera_x"
     ):
         if required not in block:
             raise SystemExit("local co-op patch: expected P2 actor hook missing: "+required)
@@ -252,6 +250,9 @@ if "coop_shared_left_edge" not in cam:
     """
     cam=cam.replace(left_marker,left_code+"\n    "+left_marker,1)
     cam=cam.replace(right_marker,right_code+"\n    "+right_marker,1)
+    for required in ("coop_shared_left_edge","coop_shared_right_edge"):
+        if required not in cam:
+            raise SystemExit("local co-op patch: shared camera contract missing: "+required)
     r=r[:cam_a]+cam+r[cam_b:]
     RECOMP.write_text(r,encoding="utf-8")
 
