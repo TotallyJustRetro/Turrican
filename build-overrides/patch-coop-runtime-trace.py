@@ -46,7 +46,10 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
             seen[i].phase == phase) return;
     }
     if (seen_count >= 32) return;
-    seen[seen_count++] = (typeof(seen[0])){ descriptor, selector, phase };
+    seen[seen_count].descriptor = descriptor;
+    seen[seen_count].selector = selector;
+    seen[seen_count].phase = phase;
+    ++seen_count;
 
     FILE *f = fopen("MegaTurrican-coop-runtime-trace.txt", "ab");
     if (!f) return;
@@ -54,10 +57,10 @@ void md_coop_trace_capture(M68K *c, uint32_t descriptor, unsigned phase) {
     uint32_t table_entry = md_coop_trace_rom32(0x1994u + (uint32_t)selector * 4u);
     uint32_t table2 = md_coop_trace_rom32(descriptor + 2u);
     uint32_t table6 = md_coop_trace_rom32(descriptor + 6u);
-    uint32_t callback1 = md_coop_trace_rom32(table2);
-    uint32_t slot3c = md_coop_trace_rom32(table2 + 4u);
-    uint32_t callback2 = md_coop_trace_rom32(table6);
-    uint32_t slot44 = md_coop_trace_rom32(table6 + 4u);
+    uint32_t callback1 = table2 == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(table2);
+    uint32_t slot3c = table2 == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(table2 + 4u);
+    uint32_t callback2 = table6 == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(table6);
+    uint32_t slot44 = table6 == 0xFFFFFFFFu ? 0xFFFFFFFFu : md_coop_trace_rom32(table6 + 4u);
     uint32_t callback3 = md_coop_trace_rom32(descriptor + 38u);
 
     fprintf(f, "\n=== DESCRIPTOR TRACE phase=%u selector=%04X descriptor=%06X ===\n",
