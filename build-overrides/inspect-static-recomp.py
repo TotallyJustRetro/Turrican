@@ -181,6 +181,24 @@ for rel in FILES:
     if any(token in line for token in ("0x1994u","0xFFFFBC50u","0xFFFFBC3Cu","0xFFFFBC40u","0xFFFFBC44u","0xFFFFBC48u","0xFFFFBC4Cu","0xFFFFBC5Au","0xFFFFBC62u","0xFFFFBCC4u")):
      emit(f"PLAYER_DESCRIPTOR_CONTEXT function={name} line={fn_lines[name][0]+ix} {line.strip()[:280]}")
 
+  emit("[PLAYER_FRAME_PHASE_HELPER_BODIES]")
+  phase_helpers=("f_2130","f_3B38","f_1E00","f_5BC","f_8BE","f_E0C","f_2150",
+                 "f_552A","f_1E64","f_5432","f_5644","f_56CE","f_3D80",
+                 "f_5472","f_3BD8","f_5450","f_5EC","f_6D6","f_3368",
+                 "f_374E","f_3650","f_2612","f_57A6","f_3222","f_31E4",
+                 "f_1944","f_3B7E","f_6C9C","f_6E7E","f_7146")
+  for name in phase_helpers:
+   body=fn_bodies.get(name)
+   if not body:
+    emit(f"PLAYER_PHASE_HELPER_MISSING {name}")
+    continue
+   body_lines=body.splitlines()
+   emit(f"PLAYER_PHASE_HELPER {name} source_lines={fn_lines[name][0]}-{fn_lines[name][1]}")
+   for line in body_lines[:180]:
+    emit("  "+line[:300])
+   if len(body_lines)>180:
+    emit(f"  ... clipped {len(body_lines)-180} lines ...")
+
   emit("[PLAYER_ALLOCATOR_AND_RENDERER_HELPERS]")
   for name in ("f_5300","f_5382","f_5400","f_5D8A","f_5DB2"):
    body=fn_bodies.get(name)
