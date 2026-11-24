@@ -183,7 +183,7 @@ void md_coop_prepare_p2(M68K *primary) {
    immediately before P1's f_5DB2 sprite builder. The P2 pass runs just after
    that builder, so preserve the CPU context from this exact pre-render seam. */
 void md_coop_p2_capture_render_seed(M68K *primary) {
-    if (!primary || !md_coop_p2_ready()) return;
+    if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_primary_m68k = primary;
     memcpy(&md_coop_p2_frame_seed, primary, sizeof md_coop_p2_frame_seed);
     md_coop_p2_frame_seed_valid = 1;
