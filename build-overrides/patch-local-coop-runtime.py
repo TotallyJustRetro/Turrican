@@ -979,12 +979,18 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     motion_seed = md_coop_p2_motion_seed_context();
     if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
-    /* Keep f_2130 out of the P2 runner: Build #645 first replayed it
-       inside the isolated P2 context, after which P2 stopped appearing.
-       Test f_5D8A independently because it initializes P2's private
-       multipart-sprite scratch table and BD24/BD25 flags. */
+    /* Restore the original native f_156A per-frame initializer order.
+       f_2130 seeds P2's private BCBC..BD04 movement/contact work area;
+       f_5D8A then clears the multipart-sprite scratch table. Keep the
+       restored motion-seed readiness gate below: Build #645 tested f_2130
+       without that gate, so it did not isolate the initializer's effect. */
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
+    if (!md_coop_p2_call_actor(p2, 0x00002130u)) {
+        md_coop_p2_abort("P2 native per-frame state initializer f_2130 did not restore its CPU stack/return frame", 0x2130u);
+        md_coop_p2_finish();
+        return;
+    }
     if (!md_coop_p2_call_actor(p2, 0x00005D8Au)) {
         md_coop_p2_abort("P2 native sprite-scratch initializer f_5D8A did not restore its CPU stack/return frame", 0x5D8Au);
         md_coop_p2_finish();
@@ -1449,8 +1455,7 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
-    "P2 keeps the known-regression f_2130 replay disabled": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g,
-    "P2 tests f_5D8A independently before f_3B38": "md_coop_p2_call_actor(p2, 0x00005D8Au)" in g and g.index("0x00005D8Au") < g.index("0x00003B38u"),
+    "P2 restores native f_2130 then f_5D8A before f_3B38 while retaining the motion-seed gate": all(x in g for x in ("md_coop_p2_call_actor(p2, 0x00002130u)", "md_coop_p2_call_actor(p2, 0x00005D8Au)", "md_coop_p2_call_actor(p2, 0x00003B38u)", "motion_seed = md_coop_p2_motion_seed_context();", "|| !motion_seed")) and g.index("0x00002130u") < g.index("0x00005D8Au") < g.index("0x00003B38u"),
     "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
