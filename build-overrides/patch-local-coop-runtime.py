@@ -739,7 +739,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -774,7 +774,7 @@ extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
-extern void md_coop_p2_finish(void);\nextern void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);
+extern void md_coop_p2_finish(void);
 
 /* Player state persists in P2 RAM, but the game's callback also receives live
    per-frame D/A register inputs from its caller. Refresh those inputs for each
