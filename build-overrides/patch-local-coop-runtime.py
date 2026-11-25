@@ -6,7 +6,7 @@ This is deliberately a constrained prototype:
 - P2 owns an independently persistent M68K context and private 68000 stack.
 - Player-local RAM and the sprite scratch area are banked through the CPU bus.
 - World/object pools, DMA reads, VDP state and the shared render queue remain shared.
-- P2 is sampled from physical controller port 2 and only runs while it is connected.
+- P2 is sampled from physical controller port 2 when connected, or can be forced on by the persistent Game Options toggle.
 - Any CPU/stack return mismatch disables P2 rather than continuing with corrupt state.
 
 It does not enable the launcher multiplayer UI or claim full co-op completion.
@@ -38,6 +38,7 @@ HARNESS_HELPERS = r"""
 #include <string.h>
 extern int md_player2_connected;
 extern int md_player2_live_mask;
+extern int md_local_coop_enabled;
 
 int md_coop_p2_active = 0;
 static uint8_t md_coop_p2_ram[0x10000];
@@ -61,6 +62,12 @@ static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
 static int md_coop_p2_disabled = 0;
 static unsigned long md_coop_p2_frame_count = 0;
+
+/* Physical pad 2 enables P2 automatically; the persistent Game Options
+   override can also force the actor on when no second controller is attached. */
+static int md_coop_p2_requested(void) {
+    return md_player2_connected || md_local_coop_enabled;
+}
 
 static void md_coop_p2_mark(unsigned first, unsigned last) {
     unsigned i;
@@ -95,8 +102,9 @@ static uint32_t md_coop_p2_long(unsigned at) {
 static void md_coop_p2_log(const char *event, uint32_t callback, const char *detail) {
     FILE *f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f) return;
-    fprintf(f, "event=%s frame=%lu connected=%d callback=%06X p2_x=%04X p2_y=%04X input=%02X%02X detail=%s\n",
-            event, md_coop_p2_frame_count, md_player2_connected, callback,
+    fprintf(f, "event=%s frame=%lu connected=%d forced=%d callback=%06X p2_x=%04X p2_y=%04X input=%02X%02X detail=%s\n",
+            event, md_coop_p2_frame_count, md_player2_connected,
+            md_local_coop_enabled, callback,
             md_coop_p2_word(0xBD1E), md_coop_p2_word(0xBD20),
             md_coop_p2_ram[0xBC90], md_coop_p2_ram[0xBC91],
             detail ? detail : "-");
@@ -276,7 +284,7 @@ const M68K *md_coop_p2_frame_seed_context(void) {
 }
 
 void md_coop_p2_capture_collision_seed(M68K *primary) {
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+    if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_collision_seed_valid = 0;
         return;
     }
@@ -527,7 +535,7 @@ void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu) {
 
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
-           md_player2_connected && md_coop_primary_m68k != NULL;
+           md_coop_p2_requested() && md_coop_primary_m68k != NULL;
 }
 
 void md_coop_prepare_p2(M68K *primary) {
@@ -535,7 +543,7 @@ void md_coop_prepare_p2(M68K *primary) {
     unsigned i;
     if (!primary) return;
     md_coop_primary_m68k = primary;
-    if (md_coop_p2_disabled || !md_player2_connected) {
+    if (md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_frame_seed_valid = 0;
         return;
     }
@@ -1323,6 +1331,9 @@ checks = {
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
+    "P2 activation accepts physical detection or forced Game Options mode": "extern int md_local_coop_enabled;" in h and "return md_player2_connected || md_local_coop_enabled;" in h,
+    "P2 seed capture and readiness honor forced mode": h.count("!md_coop_p2_requested()") >= 5 and "md_coop_p2_requested() && md_coop_primary_m68k != NULL" in h,
+    "P2 trace records whether multiplayer was forced": "connected=%d forced=%d callback=%06X" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
     "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 captures the native collision-reset register context": "md_coop_p2_capture_collision_seed(c)" in g and "md_coop_p2_collision_seed_context" in g,
