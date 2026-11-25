@@ -334,11 +334,13 @@ void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     }
 }
 
-/* f_3D6A registers 12-byte collision candidates in BD28..BF07: four
+/* f_3D6A registers 12-byte collision descriptors in BD28..BF07: four
    16-bit bounds followed by a 32-bit pointer at +8. f_3D80 writes its
-   +11/+16 hit results into the pointed-to 24-byte object record. For P2,
-   copy the table and give each unique target a private shadow so those writes
-   cannot alter P1 or the shared object pool. The table holds 40 entries. */
+   +11 contact result and +16 candidate pointer into the referenced 24-byte
+   collision-result context. P2 gets private copies of these contexts so its
+   collision pass cannot overwrite P1's results. The F268 candidate list is
+   separately rebuilt from the shared world-object list into private scratch.
+   The table holds 40 entries. */
 int md_coop_p2_import_collision_descriptors(void) {
     uint32_t old_ptrs[40];
     uint16_t new_offsets[40];
@@ -1156,9 +1158,9 @@ checks = {
     "P2 rebuilds f_56CE collision candidates every frame": "md_coop_p2_call_actor(p2, 0x000056CEu)" in g,
     "P2 captures native BD28 collision candidates before P1 consumes them": "md_coop_p2_capture_collision_descriptors(c)" in g and "md_coop_p2_primary_collision_desc" in h and "count * 12u" in h,
     "P2 owns 40 native 12-byte collision descriptors": "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "count * 12u" in h and "count > 40u" in h and "record = 0xBD28u + i * 12u" in h,
-    "P2 deep-copies collision targets through descriptor offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
-    "P2 deep-copies up to 40 targets into private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
-    "P2 runs native f_3D80 with isolated collision targets": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
+    "P2 redirects descriptors to private collision-result contexts through offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
+    "P2 shadows up to 40 collision-result contexts in private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
+    "P2 runs native f_3D80 with isolated collision-result contexts": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
