@@ -157,6 +157,55 @@ void md_coop_p2_trace_ground(const char *stage, M68K *cpu) {
     fclose(f);
 }
 
+/* f_3650 is the native player map/tile collision pass. Capture both sides
+   of that routine and the F226 lookup scratch that the f_3284 probe missed. */
+void md_coop_p2_trace_floor(const char *stage, M68K *cpu) {
+    FILE *f;
+    unsigned i;
+    if (!md_coop_p2_active || !md_coop_p2_ready ||
+        md_coop_p2_frame_count > 360u) return;
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f) return;
+    fprintf(f,
+        "event=p2-floor stage=%s frame=%lu xy=%04X,%04X "
+        "BCD9=%02X BCE5=%02X BCE6=%08X BCE0=%04X BCE2=%04X BCE4=%02X "
+        "BCDA=%08X BCDC=%04X BC54=%08X BC58=%04X BC86=%02X BD16=%02X "
+        "BCD8=%02X BCC8=%04X",
+        stage ? stage : "-", md_coop_p2_frame_count,
+        md_coop_p2_word(0xBD1E), md_coop_p2_word(0xBD20),
+        md_coop_p2_ram[0xBCD9], md_coop_p2_ram[0xBCE5],
+        (unsigned)md_coop_p2_long(0xBCE6),
+        md_coop_p2_word(0xBCE0), md_coop_p2_word(0xBCE2),
+        md_coop_p2_ram[0xBCE4], (unsigned)md_coop_p2_long(0xBCDA),
+        md_coop_p2_word(0xBCDC), (unsigned)md_coop_p2_long(0xBC54),
+        md_coop_p2_word(0xBC58), md_coop_p2_ram[0xBC86],
+        md_coop_p2_ram[0xBD16], md_coop_p2_ram[0xBCD8],
+        md_coop_p2_word(0xBCC8));
+    if (cpu) {
+        fprintf(f, " D=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X"
+                   " A=%08X,%08X,%08X,%08X,%08X,%08X,%08X",
+                (unsigned)cpu->d[0], (unsigned)cpu->d[1],
+                (unsigned)cpu->d[2], (unsigned)cpu->d[3],
+                (unsigned)cpu->d[4], (unsigned)cpu->d[5],
+                (unsigned)cpu->d[6], (unsigned)cpu->d[7],
+                (unsigned)cpu->a[0], (unsigned)cpu->a[1],
+                (unsigned)cpu->a[2], (unsigned)cpu->a[3],
+                (unsigned)cpu->a[4], (unsigned)cpu->a[5],
+                (unsigned)cpu->a[6]);
+    }
+    fprintf(f, " F226=");
+    for (i = 0; i < 64u; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[0xF226u + i]);
+    fprintf(f, " F268=");
+    for (i = 0; i < 16u; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[0xF268u + i]);
+    fprintf(f, " F2A8=");
+    for (i = 0; i < 16u; ++i)
+        fprintf(f, "%02X", (unsigned)md_coop_p2_ram[0xF2A8u + i]);
+    fprintf(f, "\n");
+    fclose(f);
+}
+
 void md_coop_p2_set_active(int active) {
     md_coop_p2_active = active ? 1 : 0;
 }
@@ -503,7 +552,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -745,6 +794,19 @@ replace_once(
     "P2 ground-check exit trace",
 )
 
+replace_once(
+    GEN,
+    "L_3650: { RT_POLL(0x3650); uint32_t s=0xFFFFBCE6u; uint32_t v=RD32(s); A(7)-=4; uint32_t d=A(7); WR32(d,v); fl_logic(c,v,32);",
+    "L_3650: { RT_POLL(0x3650); md_coop_p2_trace_floor(\"f3650-enter\",c); uint32_t s=0xFFFFBCE6u; uint32_t v=RD32(s); A(7)-=4; uint32_t d=A(7); WR32(d,v); fl_logic(c,v,32);",
+    "P2 map collision entry trace",
+)
+replace_once(
+    GEN,
+    "L_36DE: { RT_POLL(0x36DE); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "L_36DE: { RT_POLL(0x36DE); md_coop_p2_trace_floor(\"f3650-exit\",c); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "P2 map collision exit trace",
+)
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -772,6 +834,7 @@ checks = {
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
+    "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
