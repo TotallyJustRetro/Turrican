@@ -1249,7 +1249,7 @@ replace_once(
 
 replace_once(
     GEN,
-    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); WR8(d,v); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); fl_logic(c,v,8); }",
+    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; WR8(d,v); fl_logic(c,v,8); }",
     "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); WR8(d,v); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); fl_logic(c,v,8); }",
     "P2 native shared-object hit pre-write trace",
 )
