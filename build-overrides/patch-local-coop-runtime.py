@@ -100,6 +100,63 @@ static void md_coop_p2_log(const char *event, uint32_t callback, const char *det
     fclose(f);
 }
 
+/* Frame-by-frame probe around the native player ground/collision calculation.
+   Only writes while the private P2 bus is active, and only for the first
+   420 P2 ticks of each run so the diagnostic file stays bounded. */
+void md_coop_p2_trace_ground(const char *stage, M68K *cpu) {
+    FILE *f;
+    unsigned i;
+    if (!md_coop_p2_active || !md_coop_p2_ready ||
+        md_coop_p2_frame_count > 420u) return;
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f) return;
+    fprintf(f,
+        "event=p2-ground stage=%s frame=%lu xy=%04X,%04X "
+        "in=%02X%02X BCEA=%04X BC8A=%02X BC8B=%02X "
+        "BCF0=%02X BCF1=%02X BCF2=%02X BCFC=%02X BCFE=%02X "
+        "BCD8=%02X BCD9=%02X BD02=%02X BD04=%02X "
+        "BD12=%02X%02X BD14=%02X BD1D=%02X BD22=%02X "
+        "BCC0=%04X BCC2=%04X BCC8=%04X BCE0=%04X BCE2=%04X BCE4=%02X BCE5=%02X",
+        stage ? stage : "-", md_coop_p2_frame_count,
+        md_coop_p2_word(0xBD1E), md_coop_p2_word(0xBD20),
+        md_coop_p2_ram[0xBC90], md_coop_p2_ram[0xBC91],
+        md_coop_p2_word(0xBCEA),
+        md_coop_p2_ram[0xBC8A], md_coop_p2_ram[0xBC8B],
+        md_coop_p2_ram[0xBCF0], md_coop_p2_ram[0xBCF1],
+        md_coop_p2_ram[0xBCF2], md_coop_p2_ram[0xBCFC],
+        md_coop_p2_ram[0xBCFE], md_coop_p2_ram[0xBCD8],
+        md_coop_p2_ram[0xBCD9], md_coop_p2_ram[0xBD02],
+        md_coop_p2_ram[0xBD04], md_coop_p2_ram[0xBD12],
+        md_coop_p2_ram[0xBD13], md_coop_p2_ram[0xBD14],
+        md_coop_p2_ram[0xBD1D], md_coop_p2_ram[0xBD22],
+        md_coop_p2_word(0xBCC0), md_coop_p2_word(0xBCC2),
+        md_coop_p2_word(0xBCC8), md_coop_p2_word(0xBCE0),
+        md_coop_p2_word(0xBCE2), md_coop_p2_ram[0xBCE4],
+        md_coop_p2_ram[0xBCE5]);
+    if (cpu) {
+        fprintf(f, " D=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X"
+                   " A=%08X,%08X,%08X,%08X,%08X,%08X,%08X",
+                (unsigned)cpu->d[0], (unsigned)cpu->d[1],
+                (unsigned)cpu->d[2], (unsigned)cpu->d[3],
+                (unsigned)cpu->d[4], (unsigned)cpu->d[5],
+                (unsigned)cpu->d[6], (unsigned)cpu->d[7],
+                (unsigned)cpu->a[0], (unsigned)cpu->a[1],
+                (unsigned)cpu->a[2], (unsigned)cpu->a[3],
+                (unsigned)cpu->a[4], (unsigned)cpu->a[5],
+                (unsigned)cpu->a[6]);
+    }
+    fprintf(f, " F268=%08X,%08X,%08X,%08X F2A8=%08X,%08X,%08X,%08X\\n",
+            (unsigned)md_coop_p2_long(0xF268),
+            (unsigned)md_coop_p2_long(0xF26C),
+            (unsigned)md_coop_p2_long(0xF270),
+            (unsigned)md_coop_p2_long(0xF274),
+            (unsigned)md_coop_p2_long(0xF2A8),
+            (unsigned)md_coop_p2_long(0xF2AC),
+            (unsigned)md_coop_p2_long(0xF2B0),
+            (unsigned)md_coop_p2_long(0xF2B4));
+    fclose(f);
+}
+
 void md_coop_p2_set_active(int active) {
     md_coop_p2_active = active ? 1 : 0;
 }
@@ -446,7 +503,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -675,6 +732,19 @@ if "md_coop_run_local_p2(c,_t);" not in gen:
         raise SystemExit("local co-op patch: verified pre-callback L_1660 seam not found")
     GEN.write_text(gen, encoding="utf-8", newline="\n")
 
+replace_once(
+    GEN,
+    "L_3284: { RT_POLL(0x3284); D(1)=(uint32_t)(int32_t)(int8_t)0; fl_logic(c,D(1),32);",
+    "L_3284: { RT_POLL(0x3284); md_coop_p2_trace_ground(\"f3284-enter\",c); D(1)=(uint32_t)(int32_t)(int8_t)0; fl_logic(c,D(1),32);",
+    "P2 ground-check entry trace",
+)
+replace_once(
+    GEN,
+    "L_3366: { RT_POLL(0x3366); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "L_3366: { RT_POLL(0x3366); md_coop_p2_trace_ground(\"f3284-exit\",c); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "P2 ground-check exit trace",
+)
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -701,6 +771,7 @@ checks = {
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
+    "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
