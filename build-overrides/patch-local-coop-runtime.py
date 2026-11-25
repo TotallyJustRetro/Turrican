@@ -7,7 +7,8 @@ This is deliberately a constrained prototype:
 - Player-local RAM and the sprite scratch area are banked through the CPU bus.
 - World/object pools, DMA reads, VDP state and the shared render queue remain shared.
 - P2 is sampled from physical controller port 2 when connected, or can be forced on by the persistent Game Options toggle.
-- Any CPU/stack return mismatch disables P2 rather than continuing with corrupt state.
+- A transient CPU/stack return mismatch soft-resets P2 so it can reseed from P1;
+  repeated faults in a short window disable P2 rather than continuing with corrupt state.
 
 It does not enable the launcher multiplayer UI or claim full co-op completion.
 """
@@ -62,6 +63,11 @@ static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
 static int md_coop_p2_disabled = 0;
 static unsigned long md_coop_p2_frame_count = 0;
+/* Soft-abort retry: after a stack/contract fault, P2 waits this many frames
+   before re-seeding from P1 state. Permanent disable only if faults happen
+   faster than the minimum safe re-seed interval. */
+static unsigned long md_coop_p2_abort_frame = 0;
+static unsigned md_coop_p2_abort_count = 0;
 
 /* Physical pad 2 enables P2 automatically; the persistent Game Options
    override can also force the actor on when no second controller is attached. */
@@ -225,8 +231,7 @@ void md_coop_p2_trace_floor(const char *stage, M68K *cpu) {
 void md_coop_p2_trace_motion(const char *stage, M68K *cpu) {
     FILE *f;
     if (!md_coop_p2_active || !md_coop_p2_ready ||
-        md_coop_p2_frame_count < 220u ||
-        md_coop_p2_frame_count > 280u) return;
+        md_coop_p2_frame_count > 60u) return;
     f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f) return;
     fprintf(f,
@@ -669,6 +674,22 @@ void md_coop_prepare_p2(M68K *primary) {
             (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0010u));
         md_coop_p2_put_word(0xBF12,
             (uint16_t)(md_coop_p2_word(0xBF12) + 0x0010u));
+
+        /* BCF5 is tested and decremented by f_3222 as a movement-lock countdown.
+           BCF6..BCF8 are adjacent movement/state branch bytes. Do not inherit
+           P1's live action/lock state when creating P2's independent actor. */
+        md_coop_p2_ram[0xBCF5] = 0;
+        md_coop_p2_ram[0xBCF6] = 0;
+        md_coop_p2_ram[0xBCF7] = 0;
+        md_coop_p2_ram[0xBCF8] = 0;
+
+        /* f_224C reads BCEC/BCED as the vertical movement delta added to BD20.
+           Start P2 at rest rather than inheriting P1's current jump/fall delta. */
+        md_coop_p2_put_word(0xBCEC, 0);
+        /* BCEE is consulted as a movement-state latch in f_224C; clear the
+           inherited P1 latch rather than treating it as P2's own input state. */
+        md_coop_p2_put_word(0xBCEE, 0);
+
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
                        "one-time P1 state seed; P2 spawn offset +0x10; independent CPU and F0FFFC stack");
@@ -691,6 +712,11 @@ void md_coop_p2_refresh(void) {
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     unsigned i;
     FILE *f;
+    /* Reset the abort fault counter after 300 consecutive successful frames
+       so sporadic stack noise events do not accumulate toward permanent disable. */
+    if (md_coop_p2_abort_count > 0u &&
+        md_coop_p2_frame_count > md_coop_p2_abort_frame + 300u)
+        md_coop_p2_abort_count = 0u;
     if (md_coop_p2_frame_count > 10u && (md_coop_p2_frame_count % 60u) != 0u)
         return;
     md_coop_p2_log("actor-frame", callback, "P2 renderer and actor callback returned");
@@ -735,8 +761,30 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
 
 void md_coop_p2_abort(const char *reason, uint32_t callback) {
     md_coop_p2_active = 0;
-    md_coop_p2_disabled = 1;
-    md_coop_p2_log("disabled", callback, reason ? reason : "runtime contract failed");
+    /* Start a fresh fault window if the previous fault was more than 180 P2
+       frames ago. This makes the documented rapid-fault threshold explicit. */
+    if (md_coop_p2_abort_count > 0u &&
+        md_coop_p2_frame_count > md_coop_p2_abort_frame + 180u)
+        md_coop_p2_abort_count = 0u;
+    md_coop_p2_abort_count++;
+    md_coop_p2_abort_frame = md_coop_p2_frame_count;
+    /* Permanently disable only after more than 3 faults within the 180-frame
+       window, which indicates a structural incompatibility.
+       A single or infrequent fault gets a soft reset: P2 re-seeds from P1 on the
+       next prepare cycle so a recoverable condition (stack noise during an event)
+       does not kill co-op for the entire session. */
+    if (md_coop_p2_abort_count > 3u) {
+        md_coop_p2_disabled = 1;
+        md_coop_p2_log("permanently-disabled", callback, reason ? reason : "repeated runtime contract failures");
+    } else {
+        md_coop_p2_ready = 0;
+        md_coop_p2_frame_seed_valid = 0;
+        md_coop_p2_collision_seed_valid = 0;
+        md_coop_p2_spatial_seed_valid = 0;
+        md_coop_p2_motion_seed_valid = 0;
+        md_coop_p2_primary_collision_desc_valid = 0;
+        md_coop_p2_log("soft-abort", callback, reason ? reason : "runtime contract failed");
+    }
 }
 
 void md_coop_p2_finish(void) {
@@ -1425,6 +1473,11 @@ checks = {
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
+    "P2 movement-lock bytes are zeroed at spawn": all(x in h for x in (
+        "md_coop_p2_ram[0xBCF5] = 0;", "md_coop_p2_ram[0xBCF6] = 0;",
+        "md_coop_p2_ram[0xBCF7] = 0;", "md_coop_p2_ram[0xBCF8] = 0;")),
+    "P2 velocity accumulators are zeroed at spawn": "md_coop_p2_put_word(0xBCEC, 0)" in h and "md_coop_p2_put_word(0xBCEE, 0)" in h,
+    "P2 uses soft abort with retry instead of permanent disable on first fault": "soft-abort" in h and "md_coop_p2_abort_count" in h and "md_coop_p2_ready = 0" in h,
 }
 # Enforce the ownership boundary: these ranges belong to the one shared
 # world/renderer/game-flow instance and must never enter P2's private bank.
