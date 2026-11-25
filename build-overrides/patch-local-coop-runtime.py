@@ -976,30 +976,12 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     spatial_seed = md_coop_p2_spatial_seed_context();
     if (!p2 || !frame_seed || !collision_seed || !spatial_seed) return;
 
-    /* The original f_156A frame loop runs f_2130 every frame before
-       f_3B38. It clears and seeds only the player's private BCBC..BD04
-       work area, including BCC0 and BCF3/BCF4. P2 must receive the same
-       per-frame initialization or later movement phases inherit stale state. */
-    md_coop_p2_sync_call_context(p2, frame_seed);
-    md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_actor(p2, 0x00002130u)) {
-        md_coop_p2_abort("P2 per-frame private-state initializer f_2130 did not restore its CPU stack/return frame", 0x2130u);
-        md_coop_p2_finish();
-        return;
-    }
-
-    /* The original f_156A sequence calls f_5D8A immediately after f_2130.
-       It clears 29 longwords in the private FCE8 sprite-part table and
-       initializes P2's BD24/BD25 scratch flags. Skipping it leaves the
-       native f_5DB2 renderer with uninitialized multipart sprite state. */
-    if (!md_coop_p2_call_actor(p2, 0x00005D8Au)) {
-        md_coop_p2_abort("P2 native sprite-scratch initializer f_5D8A did not restore its CPU stack/return frame", 0x5D8Au);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_set_active(0);
-    /* Continue with the original native phase order. The helper logger lives
-       in harness.c and is intentionally not called from this generated TU. */
+    /* Keep the last known-visible Build #644 actor phase order.
+       P2 is seeded at the native render seam; Build #645 first replayed
+       f_2130 inside the isolated P2 context, after which P2 stopped appearing.
+       The later f_5D8A replay was also never present in the visible build.
+       Leave both initializers out of the P2 runner until their private-side
+       effects can be validated independently from the render path. */
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
@@ -1458,7 +1440,7 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
-    "P2 runs native f_2130 then f_5D8A sprite scratch initialization before f_3B38": all(x in g for x in ("md_coop_p2_call_actor(p2, 0x00002130u)", "md_coop_p2_call_actor(p2, 0x00005D8Au)", "md_coop_p2_call_actor(p2, 0x00003B38u)")) and g.index("0x00002130u") < g.index("0x00005D8Au") < g.index("0x00003B38u"),
+    "P2 preserves the Build #644 visible actor phase order without replaying f_2130 or f_5D8A": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g and "md_coop_p2_call_actor(p2, 0x00005D8Au)" not in g and "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
     "P2 f3222 post-movement collision path is traced": "md_coop_p2_trace_motion(\"f3222-enter\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf5-zero-branch\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf6-load\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-first-before\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-second-after\",c)" in g and "md_coop_p2_trace_motion(\"f3222-normal-return\",c)" in g and "BCF5=%02X BCF6=%02X" in h,
