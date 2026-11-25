@@ -901,6 +901,7 @@ extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
 extern const M68K *md_coop_p2_collision_seed_context(void);
 extern const M68K *md_coop_p2_spatial_seed_context(void);
+extern const M68K *md_coop_p2_motion_seed_context(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
@@ -967,6 +968,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     const M68K *frame_seed;
     const M68K *collision_seed;
     const M68K *spatial_seed;
+    const M68K *motion_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
@@ -974,7 +976,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     frame_seed = md_coop_p2_frame_seed_context();
     collision_seed = md_coop_p2_collision_seed_context();
     spatial_seed = md_coop_p2_spatial_seed_context();
-    if (!p2 || !frame_seed || !collision_seed || !spatial_seed) return;
+    motion_seed = md_coop_p2_motion_seed_context();
+    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
     /* Keep the last known-visible Build #644 actor phase order.
        P2 is seeded at the native render seam; Build #645 first replayed
@@ -1441,6 +1444,7 @@ checks = {
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 preserves the Build #644 visible actor phase order without replaying f_2130 or f_5D8A": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g and "md_coop_p2_call_actor(p2, 0x00005D8Au)" not in g and "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
+    "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
     "P2 f3222 post-movement collision path is traced": "md_coop_p2_trace_motion(\"f3222-enter\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf5-zero-branch\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf6-load\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-first-before\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-second-after\",c)" in g and "md_coop_p2_trace_motion(\"f3222-normal-return\",c)" in g and "BCF5=%02X BCF6=%02X" in h,
