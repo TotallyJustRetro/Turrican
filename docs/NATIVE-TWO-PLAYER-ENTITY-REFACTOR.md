@@ -36,6 +36,23 @@ The gaps are intentional. BC28..BC3B is the shared world-object list, BC54..BC59
 
 The P2 runtime trace now prints the private callback pointers and lifecycle snapshot, making later callback isolation auditable rather than inferred. One important alignment is enforced at spawn: both the live X coordinate in BD1E and the saved player X in BF12 receive the same +0x10 offset. The native f_1BDE respawn path rebuilds position from the shared viewport origin in BF0E and the saved player position in BF12; leaving BF12 unchanged would make a later P2 respawn collapse back onto P1's saved X. The BD28 descriptor table is copied per player; each descriptor's +8 pointer is redirected to a private 24-byte collision-result context. f_3D80 writes its +11 contact result and +16 candidate pointer there, so P2's collision pass cannot overwrite P1's result context. The F268 candidate buffer it points into is rebuilt from the shared BC28 world-object list, while its output scratch is private.
 
+## Shared-world object interaction path found
+
+The static actor audit now distinguishes collision detection from the actual object-response path:
+
+- P2 runs f_56CE against the same shared BC28 world-object list as P1, building only its own F268/F2A8 candidate buffers.
+- During f_224C, the native f_57A6 query follows pointers from those spatial candidates and returns the object-specific state pointer in A2.
+- The player actor then writes the hit/response byte at A2+11 and subtracts from the response field at A2+9. Those writes are not directed at the private BD28 collision-result shadows. The target address is classified against the explicit P2 private-bank allowlist by the new runtime trace, so the next in-game run can confirm the actual target memory region and before/after values.
+- After movement, f_3BD8 has another P2-local input/contact path. Under its native conditions it calls f_4626, which obtains an object through the shared f_5382 allocator and initializes its fields using P2's BD1E/BD20 coordinates. f_5382 updates the shared allocator links at BC2C/BC30. f_3BD8 can also call f_3D12, which appends its effect through the shared sprite queue at BC54/BC58.
+
+This is strong evidence that the prototype is not a separate simulated copy of the level: P2's native actor can query shared world objects, address their object-owned response state, and invoke the game's shared object allocator with P2's position. It is not yet runtime proof that every enemy type, pickup, projectile, or damage case behaves correctly.
+
+The new file MegaTurrican-coop-shared-hit-trace.txt records the A2 pointer and A2+9/A2+11 values before and after the f_224C writes, along with a private-bank classification for each target byte. A target marked private=0 is outside the P2 private allowlist and is read from shared RAM.
+
+## Camera boundary
+
+P2's native f_3368 computes its own camera candidate into private DFD8/DFDA using P2's position and the shared viewport origin DFD4/DFD6. However, no shared-camera merge has been installed yet. The original post-actor callback f_932A calls f_BCB6, which derives camera movement from global viewport/mode state and may call f_5300 to mutate the shared object list. Running that callback a second time unchanged would duplicate global work. For now the viewport still follows P1; a safe midpoint/dual-player camera policy remains a separate milestone.
+
 ## Why the callbacks are not all duplicated yet
 
 The original callback targets observed for this descriptor include 004EE2, 00915A, 000582, 009222, and 00932A. Their bodies are not all pure player-state updates:
