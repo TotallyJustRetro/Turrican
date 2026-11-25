@@ -882,7 +882,7 @@ replace_once(
 replace_once(
     GEN,
     "L_24F2: { RT_POLL(0x24F2); if(cond(c,7)) goto L_2508; }",
-    "L_24F2: { RT_POLL(0x24F2); md_coop_p2_trace_motion(\"f24f2-optional-branch\",c); if(cond(c,7)) goto L_2508; }",
+    "L_24F2: { RT_POLL(0x24F2); md_coop_p2_trace_motion(\"f24f2-optional-branch\",c); if(cond(c,7) && !md_coop_p2_active) goto L_2508; }",
     "P2 optional collision branch trace",
 )
 replace_once(
@@ -1022,6 +1022,7 @@ checks = {
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
+    "P2 cannot bypass native map/tile collision on equality": "if(cond(c,7) && !md_coop_p2_active) goto L_2508;" in g,
     "P2 map collision branch and call-site are traced": "md_coop_p2_trace_floor(\"f2502-branch\",c)" in g and "md_coop_p2_trace_floor(\"f2504-call\",c)" in g and "md_coop_p2_trace_floor(\"f2508-after\",c)" in g,
     "P2 records each native BD20 vertical movement branch": "md_coop_p2_trace_motion(\"f24f2-optional-branch\",c)" in g and "md_coop_p2_trace_motion(\"f2452-vertical-branch\",c)" in g and "md_coop_p2_trace_motion(\"f2480-y-add-before\",c)" in g and "md_coop_p2_trace_motion(\"f2484-y-add-after\",c)" in g and "md_coop_p2_trace_motion(\"f227a-y-sub-before\",c)" in g and "md_coop_p2_trace_motion(\"f2818-y-store-before\",c)" in g and "md_coop_p2_trace_motion(\"f287c-y-add-before\",c)" in g and "md_coop_p2_trace_motion(\"f2984-y-clamp-before\",c)" in g and "md_coop_p2_trace_motion(\"f29ac-y-sub-before\",c)" in g and "md_coop_p2_trace_motion(\"f2ae6-y-add-before\",c)" in g and "event=p2-motion" in h,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
