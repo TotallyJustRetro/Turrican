@@ -177,8 +177,11 @@ void md_coop_p2_trace_floor(const char *stage, M68K *cpu) {
         (unsigned)md_coop_p2_long(0xBCE6),
         md_coop_p2_word(0xBCE0), md_coop_p2_word(0xBCE2),
         md_coop_p2_ram[0xBCE4], (unsigned)md_coop_p2_long(0xBCDA),
-        md_coop_p2_word(0xBCDC), (unsigned)md_coop_p2_long(0xBC54),
-        md_coop_p2_word(0xBC58), md_coop_p2_ram[0xBC86],
+        md_coop_p2_word(0xBCDC),
+        (unsigned)(((uint32_t)ram[0xBC54] << 24) | ((uint32_t)ram[0xBC55] << 16) |
+                   ((uint32_t)ram[0xBC56] << 8) | (uint32_t)ram[0xBC57]),
+        (uint16_t)(((uint16_t)ram[0xBC58] << 8) | (uint16_t)ram[0xBC59]),
+        md_coop_p2_ram[0xBC86],
         md_coop_p2_ram[0xBD16], md_coop_p2_ram[0xBCD8],
         md_coop_p2_word(0xBCC8));
     if (cpu) {
