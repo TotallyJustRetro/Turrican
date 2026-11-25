@@ -999,6 +999,12 @@ if "First native Mega Turrican P2 actor runner." not in gen:
 # pre-render seam, then run P2 beside the original player actor.
 replace_once(
     GEN,
+    "L_15CE: { RT_POLL(0x15CE); { uint32_t _r=0x15D2u;",
+    "L_15CE: { RT_POLL(0x15CE); md_coop_p2_capture_setup_seed(c); { uint32_t _r=0x15D2u;",
+    "P2 setup seed at native f_2130 call site",
+)
+replace_once(
+    GEN,
     "L_15D6: { RT_POLL(0x15D6); { uint32_t _r=0x15DAu;",
     "L_15D6: { RT_POLL(0x15D6); md_coop_p2_capture_collision_seed(c); { uint32_t _r=0x15DAu;",
     "P2 collision reset register/condition-code capture",
