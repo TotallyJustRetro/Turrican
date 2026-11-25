@@ -614,6 +614,18 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
+
+    /* The original frame loop runs f_3BD8 immediately after the player's
+       movement callback. It finalizes per-player contact/collision flags
+       consumed by the next frame's f_3B38/f_3284 path. P2 must run the same
+       native post-actor phase against its private RAM view or its contact
+       state is only initialized, then cleared without being rebuilt. */
+    if (!md_coop_p2_call_actor(p2, 0x00003BD8u)) {
+        md_coop_p2_abort("P2 post-actor contact finalizer f_3BD8 did not restore its CPU stack/return frame", 0x3BD8u);
+        md_coop_p2_finish();
+        return;
+    }
+
     md_coop_p2_set_active(0);
     md_coop_p2_actor_complete(p2, callback);
     md_coop_p2_finish();
@@ -688,6 +700,7 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
+    "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
