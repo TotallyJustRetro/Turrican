@@ -80,7 +80,7 @@ for rel in FILES:
    fn_lines[name]=(start+1,end)
   direct_call=re.compile(r"\b(f_[0-9A-Fa-f]+)\s*\(\s*c\s*\)")
   actor_addr=re.compile(r"0xFFFF([0-9A-Fa-f]{4})u",re.I)
-  audit_roots=("f_200","f_468","f_1D10","f_1D54","f_1944","f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2")
+  audit_roots=("f_200","f_468","f_1D10","f_1D54","f_1944","f_156A","f_1994","f_19FA","f_1BDE","f_224C","f_2150","f_5300","f_5382","f_5400","f_5DB2","f_3D80","f_3BD8")
   for root in audit_roots:
    if root not in fn_bodies:
     emit(f"PLAYER_GRAPH_ROOT_MISSING {root}")
@@ -184,7 +184,9 @@ for rel in FILES:
   emit("[PLAYER_FRAME_PHASE_HELPER_BODIES]")
   phase_helpers=("f_2130","f_3B38","f_1E00","f_5BC","f_8BE","f_E0C","f_2150",
                  "f_552A","f_1E64","f_5432","f_5644","f_56CE","f_3D80",
-                 "f_5472","f_3BD8","f_5450","f_5EC","f_6D6","f_3368",
+                 "f_5472","f_3BD8","f_3D6A","f_574A","f_3D12","f_4626","f_54A6",
+                 "f_5232","f_5578","f_4EE2","f_915A","f_0582","f_9222","f_932A",
+                 "f_9B5C","f_9B6C","f_9BE0","f_5450","f_5EC","f_6D6","f_3368",
                  "f_374E","f_3650","f_2612","f_57A6","f_3222","f_31E4",
                  "f_1944","f_3B7E","f_6C9C","f_6E7E","f_7146")
   for name in phase_helpers:
@@ -1535,7 +1537,7 @@ if gen.exists():
   if re.search(r"#\s*define\s+(?:RD|WR)(?:8|16|32)|rt_shadow|rt_sp|rt_call_addr|rt_fix_ret|extern\s+M68K|static\s+uint32_t",line):
    emit(f"RECOMP_RUNTIME_DECL line={n} {line[:320]}")
  emit("[PLAYER_FRAME_AND_CALLBACK_BODIES]")
- for name,limit in (("f_200",220),("f_468",220),("f_1D10",220),("f_1D54",220),("f_1944",120),("f_156A",420),("f_19FA",220),("f_1BDE",180),("f_224C",960),("f_2150",120),("f_5DB2",200)):
+ for name,limit in (("f_200",220),("f_468",220),("f_1D10",220),("f_1D54",220),("f_1944",120),("f_156A",420),("f_19FA",220),("f_1BDE",180),("f_224C",960),("f_2150",120),("f_5DB2",200),("f_3D80",100),("f_3BD8",120),("f_3D6A",100),("f_574A",120),("f_3D12",120),("f_4626",140),("f_4EE2",220),("f_915A",160),("f_0582",120),("f_9222",180),("f_932A",240),("f_9B5C",100),("f_9B6C",100),("f_9BE0",120)):
   body=fn_bodies.get(name) if "fn_bodies" in locals() else None
   if not body:
    emit(f"PLAYER_FRAME_BODY_MISSING {name}")
