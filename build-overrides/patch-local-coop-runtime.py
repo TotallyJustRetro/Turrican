@@ -624,7 +624,8 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f,
         "p2_callback_slots BC18=%08X BC1C=%08X BC20=%08X BC24=%08X "
         "BC3C=%08X BC40=%08X BC44=%08X BC48=%08X BC4C=%08X "
-        "BC50=%08X BC5A=%08X BC5E=%08X BF0E=%08X BF12=%08X BF16=%02X BF17=%02X\n",
+        "BC50=%08X BC5A=%08X BC5E=%08X BF0E=%08X BF12=%08X BF16=%02X BF17=%02X "
+        "BC8C=%02X BF18=%08X BF1C=%04X\n",
         (unsigned)md_coop_p2_long(0xBC18), (unsigned)md_coop_p2_long(0xBC1C),
         (unsigned)md_coop_p2_long(0xBC20), (unsigned)md_coop_p2_long(0xBC24),
         (unsigned)md_coop_p2_long(0xBC3C), (unsigned)md_coop_p2_long(0xBC40),
@@ -632,7 +633,10 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
         (unsigned)md_coop_p2_long(0xBC4C), (unsigned)md_coop_p2_long(0xBC50),
         (unsigned)md_coop_p2_long(0xBC5A), (unsigned)md_coop_p2_long(0xBC5E),
         (unsigned)md_coop_p2_long(0xBF0E), (unsigned)md_coop_p2_long(0xBF12),
-        (unsigned)md_coop_p2_ram[0xBF16], (unsigned)md_coop_p2_ram[0xBF17]);
+        (unsigned)md_coop_p2_ram[0xBF16], (unsigned)md_coop_p2_ram[0xBF17],
+        (unsigned)md_coop_p2_ram[0xBC8C],
+        (unsigned)md_coop_p2_long(0xBF18),
+        (unsigned)md_coop_p2_word(0xBF1C));
     fprintf(f, "p2_state_BC62_BD26=");
     for (i = 0xBC62u; i <= 0xBD26u; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
@@ -1272,6 +1276,7 @@ checks = {
         "md_coop_p2_mark(0xBC5A, 0xBC61)")),
     "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
     "P2 owns f_19FA player init state BC8C": "md_coop_p2_mark(0xBC8C, 0xBC8C)" in h,
+    "P2 init state is included in runtime trace": "BC8C=%02X BF18=%08X BF1C=%04X" in h,
     "P2 owns f_19FA descriptor state BF18..BF1D": "md_coop_p2_mark(0xBF18, 0xBF1D)" in h,
     "P2 live spawn offset matches its native respawn X snapshot": "md_coop_p2_put_word(0xBF12" in h and "md_coop_p2_word(0xBF12) + 0x0010u" in h,
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
