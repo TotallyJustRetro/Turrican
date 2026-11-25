@@ -979,12 +979,18 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     motion_seed = md_coop_p2_motion_seed_context();
     if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
-    /* Keep the last known-visible Build #644 actor phase order.
-       P2 is seeded at the native render seam; Build #645 first replayed
-       f_2130 inside the isolated P2 context, after which P2 stopped appearing.
-       The later f_5D8A replay was also never present in the visible build.
-       Leave both initializers out of the P2 runner until their private-side
-       effects can be validated independently from the render path. */
+    /* Keep f_2130 out of the P2 runner: Build #645 first replayed it
+       inside the isolated P2 context, after which P2 stopped appearing.
+       Test f_5D8A independently because it initializes P2's private
+       multipart-sprite scratch table and BD24/BD25 flags. */
+    md_coop_p2_sync_call_context(p2, frame_seed);
+    md_coop_p2_set_active(1);
+    if (!md_coop_p2_call_actor(p2, 0x00005D8Au)) {
+        md_coop_p2_abort("P2 native sprite-scratch initializer f_5D8A did not restore its CPU stack/return frame", 0x5D8Au);
+        md_coop_p2_finish();
+        return;
+    }
+    md_coop_p2_set_active(0);
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
@@ -1443,7 +1449,9 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
-    "P2 preserves the Build #644 visible actor phase order without replaying f_2130 or f_5D8A": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g and "md_coop_p2_call_actor(p2, 0x00005D8Au)" not in g and "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
+    "P2 keeps the known-regression f_2130 replay disabled": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g,
+    "P2 tests f_5D8A independently before f_3B38": "md_coop_p2_call_actor(p2, 0x00005D8Au)" in g and g.index("0x00005D8Au") < g.index("0x00003B38u"),
+    "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
