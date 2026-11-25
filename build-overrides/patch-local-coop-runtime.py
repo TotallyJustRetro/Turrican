@@ -1249,17 +1249,10 @@ replace_once(
 
 replace_once(
     GEN,
-    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; WR8(d,v); fl_logic(c,v,8); }",
-    "L_25AA: { RT_POLL(0x25AA); md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; WR8(d,v); fl_logic(c,v,8); }",
+    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); WR8(d,v); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); fl_logic(c,v,8); }",
+    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); WR8(d,v); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); fl_logic(c,v,8); }",
     "P2 native shared-object hit pre-write trace",
 )
-replace_once(
-    GEN,
-    "L_25B2: { RT_POLL(0x25B2); uint32_t s=0xFFFFBD02u; uint32_t v=RD8(s); DSET(1,8,v); fl_logic(c,v,8); }",
-    "L_25B2: { RT_POLL(0x25B2); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); uint32_t s=0xFFFFBD02u; uint32_t v=RD8(s); DSET(1,8,v); fl_logic(c,v,8); }",
-    "P2 native shared-object hit post-write trace",
-)
-
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
