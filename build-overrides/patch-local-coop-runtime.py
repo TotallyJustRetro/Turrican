@@ -51,8 +51,6 @@ static M68K md_coop_p2_spatial_seed;
 static int md_coop_p2_spatial_seed_valid = 0;
 static M68K md_coop_p2_motion_seed;
 static int md_coop_p2_motion_seed_valid = 0;
-static M68K md_coop_p2_setup_seed;
-static int md_coop_p2_setup_seed_valid = 0;
 static uint8_t md_coop_p2_primary_collision_desc[0x1E0];
 static unsigned md_coop_p2_primary_collision_count = 0;
 static int md_coop_p2_primary_collision_desc_valid = 0;
@@ -324,20 +322,6 @@ const M68K *md_coop_p2_motion_seed_context(void) {
     return md_coop_p2_motion_seed_valid ? &md_coop_p2_motion_seed : NULL;
 }
 
-void md_coop_p2_capture_setup_seed(M68K *primary) {
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
-        md_coop_p2_setup_seed_valid = 0;
-        return;
-    }
-    /* f_2130 executes at the head of the native frame sequence. */
-    memcpy(&md_coop_p2_setup_seed, primary, sizeof md_coop_p2_setup_seed);
-    md_coop_p2_setup_seed_valid = 1;
-}
-
-const M68K *md_coop_p2_setup_seed_context(void) {
-    return md_coop_p2_setup_seed_valid ? &md_coop_p2_setup_seed : NULL;
-}
-
 void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     unsigned count;
     FILE *f;
@@ -539,44 +523,6 @@ void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu) {
         (unsigned)at11, (unsigned)value11, (unsigned)private11,
         (unsigned)cpu->d[0]);
     fclose(f);
-}
-
-void md_coop_p2_trace_motion_setup(const char *stage, M68K *cpu) {
-    FILE *f;
-    uint32_t p1_bcc4;
-    if (md_coop_p2_frame_count > 360u) return;
-    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-    if (!f) return;
-    p1_bcc4 = ((uint32_t)ram[0xBCC4] << 24) |
-              ((uint32_t)ram[0xBCC5] << 16) |
-              ((uint32_t)ram[0xBCC6] << 8) | (uint32_t)ram[0xBCC7];
-    fprintf(f,
-        "event=p2-motion-setup stage=%s frame=%lu "
-        "BF28_P1=%04X BF28_P2=%04X BCFC_P1=%02X BCFC_P2=%02X "
-        "BCD8_P1=%02X BCD8_P2=%02X BCE5_P1=%02X BCE5_P2=%02X "
-        "BCC2_P1=%02X BCC2_P2=%02X BCF7_P1=%02X BCF7_P2=%02X "
-        "BCC4_P1=%08X BCC4_P2=%08X BD20_P1=%04X BD20_P2=%04X",
-        stage ? stage : "-", md_coop_p2_frame_count,
-        (unsigned)(((uint16_t)ram[0xBF28] << 8) | ram[0xBF29]),
-        (unsigned)md_coop_p2_word(0xBF28),
-        (unsigned)ram[0xBCFC], (unsigned)md_coop_p2_ram[0xBCFC],
-        (unsigned)ram[0xBCD8], (unsigned)md_coop_p2_ram[0xBCD8],
-        (unsigned)ram[0xBCE5], (unsigned)md_coop_p2_ram[0xBCE5],
-        (unsigned)ram[0xBCC2], (unsigned)md_coop_p2_ram[0xBCC2],
-        (unsigned)ram[0xBCF7], (unsigned)md_coop_p2_ram[0xBCF7],
-        (unsigned)p1_bcc4, (unsigned)md_coop_p2_long(0xBCC4),
-        (unsigned)(((uint16_t)ram[0xBD20] << 8) | ram[0xBD21]),
-        (unsigned)md_coop_p2_word(0xBD20));
-    if (cpu) fprintf(f, " D0=%08X D1=%08X D7=%08X A0=%08X SR=%04X",
-                     (unsigned)cpu->d[0], (unsigned)cpu->d[1],
-                     (unsigned)cpu->d[7], (unsigned)cpu->a[0],
-                     (unsigned)cpu->sr_sys);
-    fprintf(f, "\n");
-    fclose(f);
-}
-
-int md_coop_p2_needs_f2150(void) {
-    return md_coop_p2_word(0xBF28u) == 0u;
 }
 
 int md_coop_p2_is_ready(void) {
@@ -810,7 +756,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_setup_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -842,9 +788,6 @@ extern const M68K *md_coop_p2_frame_seed_context(void);
 extern const M68K *md_coop_p2_collision_seed_context(void);
 extern const M68K *md_coop_p2_spatial_seed_context(void);
 extern const M68K *md_coop_p2_motion_seed_context(void);
-extern const M68K *md_coop_p2_setup_seed_context(void);
-extern void md_coop_p2_trace_motion_setup(const char *stage, M68K *cpu);
-extern int md_coop_p2_needs_f2150(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
@@ -911,7 +854,6 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     const M68K *collision_seed;
     const M68K *spatial_seed;
     const M68K *motion_seed;
-    const M68K *setup_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
@@ -920,21 +862,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     collision_seed = md_coop_p2_collision_seed_context();
     spatial_seed = md_coop_p2_spatial_seed_context();
     motion_seed = md_coop_p2_motion_seed_context();
-    setup_seed = md_coop_p2_setup_seed_context();
-    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed || !setup_seed) return;
-
-    /* f_2130 rebuilds P2's player-local descriptor/work pointer and constants.
-       Its writes stay inside the P2-private BCBC/BD work area. */
-    md_coop_p2_trace_motion_setup("before-f2130", p2);
-    md_coop_p2_sync_call_context(p2, setup_seed);
-    md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_actor(p2, 0x00002130u)) {
-        md_coop_p2_abort("P2 player-state setup f_2130 did not restore its CPU stack/return frame", 0x2130u);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_set_active(0);
-    md_coop_p2_trace_motion_setup("after-f2130", p2);
+    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
@@ -947,22 +875,6 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
     md_coop_p2_set_active(0);
-
-    /* Mirror f_156A's conditional native f_2150 per-player state update.
-       The original dispatcher runs it while BF28 is zero; test P2's private
-       BF28 so the two players do not share a timer/respawn decision. */
-    if (md_coop_p2_needs_f2150()) {
-        md_coop_p2_trace_motion_setup("before-f2150", p2);
-        md_coop_p2_sync_call_context(p2, motion_seed);
-        md_coop_p2_set_active(1);
-        if (!md_coop_p2_call_actor(p2, 0x00002150u)) {
-            md_coop_p2_abort("P2 conditional player-state update f_2150 did not restore its CPU stack/return frame", 0x2150u);
-            md_coop_p2_finish();
-            return;
-        }
-        md_coop_p2_set_active(0);
-        md_coop_p2_trace_motion_setup("after-f2150", p2);
-    }
 
     /* Rebuild P2's spatial collision candidates with the game's native
        f_56CE pass. It reads the shared BC28 object list, but its F268/F2A8
@@ -1041,12 +953,6 @@ if "First native Mega Turrican P2 actor runner." not in gen:
 
 # 4) Capture the native per-frame collision reset inputs, seed P2 at the
 # pre-render seam, then run P2 beside the original player actor.
-replace_once(
-    GEN,
-    "L_15CE: { RT_POLL(0x15CE); { uint32_t _r=0x15D2u;",
-    "L_15CE: { RT_POLL(0x15CE); md_coop_p2_capture_setup_seed(c); { uint32_t _r=0x15D2u;",
-    "P2 setup seed at native f_2130 call site",
-)
 replace_once(
     GEN,
     "L_15D6: { RT_POLL(0x15D6); { uint32_t _r=0x15DAu;",
