@@ -53,6 +53,7 @@ static uint8_t md_coop_p2_primary_collision_desc[0x1E0];
 static unsigned md_coop_p2_primary_collision_count = 0;
 static int md_coop_p2_primary_collision_desc_valid = 0;
 static unsigned md_coop_p2_collision_shadow_count = 0;
+static uint32_t md_coop_p2_collision_result_log_frames = 0;
 static M68K *md_coop_primary_m68k = NULL;
 static int md_coop_p2_frame_seed_valid = 0;
 static int md_coop_p2_ready = 0;
@@ -406,6 +407,70 @@ int md_coop_p2_import_collision_descriptors(void) {
     return 1;
 }
 
+/* Trace the P2 collision-result contexts after native f_3D80. The +11
+   byte and +16 long are the fields f_3D80 writes. The source bytes show
+   P1's already-computed result; the shadow bytes show P2's independent pass. */
+void md_coop_p2_trace_collision_results(void) {
+    FILE *f;
+    unsigned i, p1_nonzero = 0, p2_nonzero = 0, logged = 0;
+    unsigned count = md_coop_p2_primary_collision_count;
+    if (!md_coop_p2_active || !md_coop_p2_primary_collision_desc_valid ||
+        count > 40u || md_coop_p2_frame_count > 240u) return;
+    f = fopen("MegaTurrican-coop-collision-result-trace.txt", "a");
+    if (!f) return;
+    for (i = 0; i < count; ++i) {
+        const uint8_t *src_desc = &md_coop_p2_primary_collision_desc[i * 12u];
+        unsigned record = 0xBD28u + i * 12u;
+        uint32_t src_ptr = ((uint32_t)src_desc[8] << 24) |
+                           ((uint32_t)src_desc[9] << 16) |
+                           ((uint32_t)src_desc[10] << 8) | (uint32_t)src_desc[11];
+        uint32_t dst_ptr = md_coop_p2_long(record + 8u);
+        unsigned src = (unsigned)(src_ptr & 0xFFFFu);
+        unsigned dst = (unsigned)(dst_ptr & 0xFFFFu);
+        uint8_t p1_flag, p2_flag;
+        uint32_t p1_candidate, p2_candidate;
+        unsigned j;
+        if ((src_ptr & 0x00FF0000u) != 0x00FF0000u ||
+            (dst_ptr & 0x00FF0000u) != 0x00FF0000u ||
+            src > 0xFFE8u || dst > 0xFFE8u) continue;
+        for (j = 0; j < i; ++j) {
+            const uint8_t *prior = &md_coop_p2_primary_collision_desc[j * 12u];
+            uint32_t prior_ptr = ((uint32_t)prior[8] << 24) |
+                                 ((uint32_t)prior[9] << 16) |
+                                 ((uint32_t)prior[10] << 8) | (uint32_t)prior[11];
+            if (prior_ptr == src_ptr) break;
+        }
+        if (j < i) continue;
+        p1_flag = ram[src + 11u];
+        p2_flag = md_coop_p2_ram[dst + 11u];
+        p1_candidate = ((uint32_t)ram[src + 16u] << 24) |
+                       ((uint32_t)ram[src + 17u] << 16) |
+                       ((uint32_t)ram[src + 18u] << 8) |
+                       (uint32_t)ram[src + 19u];
+        p2_candidate = md_coop_p2_long(dst + 16u);
+        if (p1_flag) ++p1_nonzero;
+        if (p2_flag) ++p2_nonzero;
+        if (p2_flag || p2_candidate) {
+            fprintf(f,
+                "event=p2-collision-context frame=%lu index=%u "
+                "source=%08X shadow=%08X p1_flag=%02X p2_flag=%02X "
+                "p1_candidate=%08X p2_candidate=%08X\\n",
+                md_coop_p2_frame_count, i, (unsigned)src_ptr,
+                (unsigned)dst_ptr, (unsigned)p1_flag, (unsigned)p2_flag,
+                (unsigned)p1_candidate, (unsigned)p2_candidate);
+            ++logged;
+        }
+    }
+    if (md_coop_p2_collision_result_log_frames != md_coop_p2_frame_count) {
+        fprintf(f,
+            "event=p2-collision-summary frame=%lu descriptors=%u "
+            "p1_nonzero=%u p2_nonzero=%u changed_records=%u\\n",
+            md_coop_p2_frame_count, count, p1_nonzero, p2_nonzero, logged);
+        md_coop_p2_collision_result_log_frames = (uint32_t)md_coop_p2_frame_count;
+    }
+    fclose(f);
+}
+
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_player2_connected && md_coop_primary_m68k != NULL;
@@ -626,7 +691,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -770,6 +835,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_trace_collision_results();
     md_coop_p2_set_active(0);
 
     /* Return to the exact pre-render registers for P2's sprite and movement
@@ -1161,6 +1227,7 @@ checks = {
     "P2 redirects descriptors to private collision-result contexts through offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
     "P2 shadows up to 40 collision-result contexts in private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
     "P2 runs native f_3D80 with isolated collision-result contexts": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
+    "P2 and P1 collision results are traced independently": "md_coop_p2_trace_collision_results(void)" in h and "p1_flag=%02X p2_flag=%02X" in h and "md_coop_p2_trace_collision_results();" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
