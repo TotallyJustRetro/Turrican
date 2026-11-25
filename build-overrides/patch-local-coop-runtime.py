@@ -471,6 +471,43 @@ void md_coop_p2_trace_collision_results(void) {
     fclose(f);
 }
 
+/* f_224C's native hit response receives A2 from f_57A6, which follows
+   candidate pointers from the shared world-object list. Log the target fields
+   on both sides of the writes so runtime evidence can distinguish a real
+   shared-world mutation from an isolated P2 shadow. */
+void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu) {
+    FILE *f;
+    uint32_t base, at9, at11;
+    unsigned off9, off11;
+    int is_ram9, is_ram11, private9, private11;
+    uint8_t value9, value11;
+    if (!md_coop_p2_active || !cpu || md_coop_p2_frame_count > 300u)
+        return;
+    base = cpu->a[2];
+    at9 = base + 9u;
+    at11 = base + 11u;
+    is_ram9 = ((at9 & 0x00FF0000u) == 0x00FF0000u);
+    is_ram11 = ((at11 & 0x00FF0000u) == 0x00FF0000u);
+    if (!is_ram9 || !is_ram11) return;
+    off9 = (unsigned)(at9 & 0xFFFFu);
+    off11 = (unsigned)(at11 & 0xFFFFu);
+    private9 = md_coop_p2_private[off9] != 0;
+    private11 = md_coop_p2_private[off11] != 0;
+    value9 = private9 ? md_coop_p2_ram[off9] : ram[off9];
+    value11 = private11 ? md_coop_p2_ram[off11] : ram[off11];
+    f = fopen("MegaTurrican-coop-shared-hit-trace.txt", "a");
+    if (!f) return;
+    fprintf(f,
+        "event=p2-hit-target stage=%s frame=%lu A2=%08X "
+        "target9=%08X value9=%02X private9=%u "
+        "target11=%08X value11=%02X private11=%u D0=%08X\n",
+        stage ? stage : "-", md_coop_p2_frame_count, (unsigned)base,
+        (unsigned)at9, (unsigned)value9, (unsigned)private9,
+        (unsigned)at11, (unsigned)value11, (unsigned)private11,
+        (unsigned)cpu->d[0]);
+    fclose(f);
+}
+
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_player2_connected && md_coop_primary_m68k != NULL;
@@ -731,7 +768,7 @@ extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
-extern void md_coop_p2_finish(void);
+extern void md_coop_p2_finish(void);\nextern void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);
 
 /* Player state persists in P2 RAM, but the game's callback also receives live
    per-frame D/A register inputs from its caller. Refresh those inputs for each
@@ -1204,6 +1241,19 @@ replace_once(
     "P2 final vertical addition result trace",
 )
 
+replace_once(
+    GEN,
+    "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; WR8(d,v); fl_logic(c,v,8); }",
+    "L_25AA: { RT_POLL(0x25AA); md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; WR8(d,v); fl_logic(c,v,8); }",
+    "P2 native shared-object hit pre-write trace",
+)
+replace_once(
+    GEN,
+    "L_25B2: { RT_POLL(0x25B2); uint32_t s=0xFFFFBD02u; uint32_t v=RD8(s); DSET(1,8,v); fl_logic(c,v,8); }",
+    "L_25B2: { RT_POLL(0x25B2); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); uint32_t s=0xFFFFBD02u; uint32_t v=RD8(s); DSET(1,8,v); fl_logic(c,v,8); }",
+    "P2 native shared-object hit post-write trace",
+)
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -1233,7 +1283,7 @@ checks = {
     "P2 redirects descriptors to private collision-result contexts through offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
     "P2 shadows up to 40 collision-result contexts in private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
     "P2 runs native f_3D80 with isolated collision-result contexts": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
-    "P2 and P1 collision results are traced independently": "md_coop_p2_trace_collision_results(void)" in h and "p1_flag=%02X p2_flag=%02X" in h and "md_coop_p2_trace_collision_results();" in g,
+    "P2 and P1 collision results are traced independently": "md_coop_p2_trace_collision_results(void)" in h and "p1_flag=%02X p2_flag=%02X" in h and "md_coop_p2_trace_collision_results();" in g,\n    "P2 native object hit target writes are traced on both sides": "md_coop_p2_trace_hit_target(const char *stage, M68K *cpu)" in h and "before-object-hit-write" in g and "after-object-hit-write" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
