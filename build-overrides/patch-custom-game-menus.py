@@ -81,6 +81,7 @@ static void proc_native_pause_audio_settings(SDL_Event *e);
 static void proc_native_pause_controller_setup(SDL_Event *e);
 static void proc_native_pause_info_back(SDL_Event *e);
 static void native_custom_save_config(void);
+extern int md_local_coop_enabled; /* Force the experimental native P2 actor even without pad 2. */
 extern void md_set_ram_byte(uint32_t address,uint8_t value);
 extern void md_pause_fm_test_start(int track);
 extern void md_pause_fm_test_stop(void);
@@ -419,11 +420,11 @@ static void native_custom_save_config(void) {
     fprintf(f,"game_level=%d\ncheat_energy=%d\ncheat_lives=%d\ncheat_timer=%d\n"
               "modern_continues=%d\nmodern_map=%d\nmodern_no_timer_hud=%d\n"
               "modern_persistent_weapon=%d\nmodern_checkpoints=%d\nmodern_iframes=%d\n"
-              "pause_rapid_fire=%d\npause_control_config=%d\n",
+              "pause_rapid_fire=%d\npause_control_config=%d\nforce_multiplayer=%d\n",
         native_game_level_modern,native_cheat_energy,native_cheat_lives,native_cheat_timer,
         native_modern_continues,native_modern_map,native_modern_no_timer_hud,
         native_modern_persistent_weapon,native_modern_checkpoints,native_modern_iframes,
-        native_pause_rapid_fire,native_pause_control_config);
+        native_pause_rapid_fire,native_pause_control_config,md_local_coop_enabled);
     if(fclose(f)!=0){remove(temp);return;}
     remove(path);
     rename(temp,path);
@@ -449,6 +450,7 @@ static void native_custom_load_config(void) {
             else if(!strcmp(line,"modern_iframes"))native_modern_iframes=!!v;
             else if(!strcmp(line,"pause_rapid_fire"))native_pause_rapid_fire=!!v;
             else if(!strcmp(line,"pause_control_config"))native_pause_control_config=(v%3+3)%3;
+            else if(!strcmp(line,"force_multiplayer"))md_local_coop_enabled=!!v;
         }
         fclose(f);
     }
@@ -661,7 +663,7 @@ static void native_modern_option_toggle(int item) {
 }
 static void native_title_scroll_ensure_visible(void) {
     int item=native_title_game_options_focus-2;
-    if(item<0)return;
+    if(item<0 || item>=6)return; /* Focus 8 is the always-visible multiplayer switch. */
     if(item<native_modern_scroll_offset)native_modern_scroll_offset=item;
     if(item>=native_modern_scroll_offset+4)native_modern_scroll_offset=item-3;
     if(native_modern_scroll_offset<0)native_modern_scroll_offset=0;
@@ -669,8 +671,8 @@ static void native_title_scroll_ensure_visible(void) {
 }
 static void native_title_game_options_move(int delta) {
     int next=native_title_game_options_focus+delta;
-    if(next<0)next=8;
-    if(next>8)next=0;
+    if(next<0)next=9;
+    if(next>9)next=0;
     if(!native_game_level_modern && next>=2 && next<=7)
         next=(delta>0)?8:1;
     native_title_game_options_focus=next;
@@ -705,11 +707,16 @@ static void render_native_title_game_options(void) {
         }
         char scroll[24];
         snprintf(scroll,sizeof scroll,"SCROLL %d/3",native_modern_scroll_offset+1);
-        native_title_draw_text_center_palette(scroll,H*78/100,1);
+        native_title_draw_text_center_palette(scroll,H*76/100,1);
     }
 
-    native_title_draw_text_center("EXIT",H*91/100,
+    char multiplayer[40];
+    snprintf(multiplayer,sizeof multiplayer,"FORCE MULTIPLAYER: %s",
+             md_local_coop_enabled?"ON":"OFF");
+    native_title_draw_text_center(multiplayer,H*85/100,
                                   native_title_game_options_focus==8,1);
+    native_title_draw_text_center("EXIT",H*94/100,
+                                  native_title_game_options_focus==9,1);
 }
 static void native_title_game_options_exit(void) {
     native_title_page_mode=0;
@@ -739,6 +746,10 @@ static void native_title_game_options_confirm(void) {
             native_modern_option_toggle(native_title_game_options_focus-2);
         break;
     case 8:
+        md_local_coop_enabled^=1;
+        native_custom_save_config();
+        break;
+    case 9:
         native_title_game_options_exit();
         break;
     }
@@ -761,11 +772,14 @@ static void native_title_game_options_change_side(int direction) {
         native_title_game_options_focus=0;
     } else if(native_title_game_options_focus>=2 && native_title_game_options_focus<=7) {
         native_modern_option_toggle(native_title_game_options_focus-2);
+    } else if(native_title_game_options_focus==8) {
+        md_local_coop_enabled^=1;
+        native_custom_save_config();
     }
     native_title_game_options_pass_input(0,1);
 }
 static void native_title_game_options_select(void) {
-    int exiting=(native_title_game_options_focus==8);
+    int exiting=(native_title_game_options_focus==9);
     native_title_game_options_confirm();
     native_title_game_options_pass_input(1,!exiting);
 }
