@@ -1181,7 +1181,7 @@ checks = {
 private_ranges = [
     (int(start, 16), int(end, 16))
     for start, end in re.findall(
-        r"md_coop_p2_mark\\(0x([0-9A-Fa-f]+),\\s*0x([0-9A-Fa-f]+)\\)", h
+        r"md_coop_p2_mark\(0x([0-9A-Fa-f]+),\s*0x([0-9A-Fa-f]+)\)", h
     )
 ]
 shared_ranges = {
