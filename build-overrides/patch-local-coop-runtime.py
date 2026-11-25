@@ -772,7 +772,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_setup_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -803,7 +803,7 @@ extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
 extern const M68K *md_coop_p2_collision_seed_context(void);
 extern const M68K *md_coop_p2_spatial_seed_context(void);
-extern const M68K *md_coop_p2_motion_seed_context(void);
+extern const M68K *md_coop_p2_motion_seed_context(void);\nextern const M68K *md_coop_p2_setup_seed_context(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
@@ -869,7 +869,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     const M68K *frame_seed;
     const M68K *collision_seed;
     const M68K *spatial_seed;
-    const M68K *motion_seed;
+    const M68K *motion_seed;\n    const M68K *setup_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
@@ -877,8 +877,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     frame_seed = md_coop_p2_frame_seed_context();
     collision_seed = md_coop_p2_collision_seed_context();
     spatial_seed = md_coop_p2_spatial_seed_context();
-    motion_seed = md_coop_p2_motion_seed_context();
-    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
+    motion_seed = md_coop_p2_motion_seed_context();\n    setup_seed = md_coop_p2_setup_seed_context();
+    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed || !setup_seed) return;
 
     /* f_2130 rebuilds P2's player-local descriptor/work pointer and constants.
        Its writes stay inside the P2-private BCBC/BD work area. */
