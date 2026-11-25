@@ -849,6 +849,68 @@ replace_once(
 
 replace_once(
     GEN,
+    "L_3286: { RT_POLL(0x3286); uint32_t s=0xFFFFBCEAu; uint32_t v=RD16(s); DSET(0,16,v); fl_logic(c,v,16); }",
+    "L_3286: { RT_POLL(0x3286); md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c); uint32_t s=0xFFFFBCEAu; uint32_t v=RD16(s); DSET(0,16,v); fl_logic(c,v,16); }",
+    "P2 f3284 BCEA load probe",
+)
+replace_once(
+    GEN,
+    "L_3290: { RT_POLL(0x3290); if(cond(c,6)) goto L_329C; }",
+    "L_3290: { RT_POLL(0x3290); md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c); if(cond(c,6)) goto L_329C; }",
+    "P2 f3284 input bit 2 branch probe",
+)
+replace_once(
+    GEN,
+    "L_32A2: { RT_POLL(0x32A2); if(cond(c,6)) goto L_32AE; }",
+    "L_32A2: { RT_POLL(0x32A2); md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c); if(cond(c,6)) goto L_32AE; }",
+    "P2 f3284 input bit 3 branch probe",
+)
+replace_once(
+    GEN,
+    "L_32B6: { RT_POLL(0x32B6); if(cond(c,6)) goto L_335A; }",
+    "L_32B6: { RT_POLL(0x32B6); md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c); if(cond(c,6)) goto L_335A; }",
+    "P2 f3284 BCFE branch probe",
+)
+replace_once(
+    GEN,
+    "L_32CA: { RT_POLL(0x32CA); if(cond(c,6)) goto L_3326; }",
+    "L_32CA: { RT_POLL(0x32CA); md_coop_p2_trace_ground(\"f3284-first-bound-result\",c); if(cond(c,6)) goto L_3326; }",
+    "P2 f3284 first bounds result probe",
+)
+replace_once(
+    GEN,
+    "L_32E8: { RT_POLL(0x32E8); if(cond(c,6)) goto L_3326; }",
+    "L_32E8: { RT_POLL(0x32E8); md_coop_p2_trace_ground(\"f3284-second-bound-result\",c); if(cond(c,6)) goto L_3326; }",
+    "P2 f3284 second bounds result probe",
+)
+replace_once(
+    GEN,
+    "L_32FC: { RT_POLL(0x32FC); if(cond(c,7)) goto L_335A; }",
+    "L_32FC: { RT_POLL(0x32FC); md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c); if(cond(c,7)) goto L_335A; }",
+    "P2 f3284 BCD8 branch probe",
+)
+replace_once(
+    GEN,
+    "L_334C: { RT_POLL(0x334C); uint32_t e=0xFFFFBCD8u; WR8(e,(cond(c,1)?0xFF:0)); }",
+    "L_334C: { RT_POLL(0x334C); md_coop_p2_trace_ground(\"f3284-bcd8-write\",c); uint32_t e=0xFFFFBCD8u; WR8(e,(cond(c,1)?0xFF:0)); }",
+    "P2 f3284 BCD8 result write probe",
+)
+replace_once(
+    GEN,
+    "L_3350: { RT_POLL(0x3350); uint32_t e=0xFFFFBCE5u; WR8(e,(cond(c,1)?0xFF:0)); }",
+    "L_3350: { RT_POLL(0x3350); md_coop_p2_trace_ground(\"f3284-bce5-write\",c); uint32_t e=0xFFFFBCE5u; WR8(e,(cond(c,1)?0xFF:0)); }",
+    "P2 f3284 BCE5 result write probe",
+)
+replace_once(
+    GEN,
+    "L_3362: { RT_POLL(0x3362); uint32_t e=0xFFFFBD22u; WR8(e,(cond(c,11)?0xFF:0)); }",
+    "L_3362: { RT_POLL(0x3362); md_coop_p2_trace_ground(\"f3284-bd22-write\",c); uint32_t e=0xFFFFBD22u; WR8(e,(cond(c,11)?0xFF:0)); }",
+    "P2 f3284 BD22 result write probe",
+)
+
+
+replace_once(
+    GEN,
     "L_3650: { RT_POLL(0x3650); uint32_t s=0xFFFFBCE6u; uint32_t v=RD32(s); A(7)-=4; uint32_t d=A(7); WR32(d,v); fl_logic(c,v,32);",
     "L_3650: { RT_POLL(0x3650); md_coop_p2_trace_floor(\"f3650-enter\",c); uint32_t s=0xFFFFBCE6u; uint32_t v=RD32(s); A(7)-=4; uint32_t d=A(7); WR32(d,v); fl_logic(c,v,32);",
     "P2 map collision entry trace",
@@ -1020,6 +1082,7 @@ checks = {
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
+    "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
     "P2 map collision branch and call-site are traced": "md_coop_p2_trace_floor(\"f2502-branch\",c)" in g and "md_coop_p2_trace_floor(\"f2504-call\",c)" in g and "md_coop_p2_trace_floor(\"f2508-after\",c)" in g,
