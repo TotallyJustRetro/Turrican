@@ -436,7 +436,13 @@ void md_coop_prepare_p2(M68K *primary) {
         if (callback != 0x0000224Cu) return;
 
         memset(md_coop_p2_private, 0, sizeof md_coop_p2_private);
-        md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */
+        md_coop_p2_mark(0xBC18, 0xBC27); /* per-player init, post-actor and state callbacks */
+        md_coop_p2_mark(0xBC3C, 0xBC43); /* descriptor-selected animation/update callback pair */
+        md_coop_p2_mark(0xBC44, 0xBC4B); /* descriptor-selected animation/update callback pair */
+        md_coop_p2_mark(0xBC4C, 0xBC53); /* descriptor-selected callback and descriptor pointer */
+        md_coop_p2_mark(0xBC5A, 0xBC61); /* dynamic state callback and callback context */
+        md_coop_p2_mark(0xBF0E, 0xBF17); /* per-player camera/position snapshot used by lifecycle */
+        md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */ 
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
         md_coop_p2_mark(0xBC84, 0xBC8B); /* includes f_3B38 collision flags */
@@ -504,6 +510,18 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
             (unsigned)cpu->ret, (unsigned)cpu->usp,
             (unsigned)cpu->x, (unsigned)cpu->n, (unsigned)cpu->z,
             (unsigned)cpu->v, (unsigned)cpu->c, (unsigned)cpu->sr_sys);
+    fprintf(f,
+        "p2_callback_slots BC18=%08X BC1C=%08X BC20=%08X BC24=%08X "
+        "BC3C=%08X BC40=%08X BC44=%08X BC48=%08X BC4C=%08X "
+        "BC50=%08X BC5A=%08X BC5E=%08X BF0E=%08X BF12=%08X BF16=%02X BF17=%02X\\n",
+        (unsigned)md_coop_p2_long(0xBC18), (unsigned)md_coop_p2_long(0xBC1C),
+        (unsigned)md_coop_p2_long(0xBC20), (unsigned)md_coop_p2_long(0xBC24),
+        (unsigned)md_coop_p2_long(0xBC3C), (unsigned)md_coop_p2_long(0xBC40),
+        (unsigned)md_coop_p2_long(0xBC44), (unsigned)md_coop_p2_long(0xBC48),
+        (unsigned)md_coop_p2_long(0xBC4C), (unsigned)md_coop_p2_long(0xBC50),
+        (unsigned)md_coop_p2_long(0xBC5A), (unsigned)md_coop_p2_long(0xBC5E),
+        (unsigned)md_coop_p2_long(0xBF0E), (unsigned)md_coop_p2_long(0xBF12),
+        (unsigned)md_coop_p2_ram[0xBF16], (unsigned)md_coop_p2_ram[0xBF17]);
     fprintf(f, "p2_state_BC62_BD26=");
     for (i = 0xBC62u; i <= 0xBD26u; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
@@ -1123,6 +1141,12 @@ checks = {
     "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
+    "P2 owns its original descriptor callback slots": all(x in h for x in (
+        "md_coop_p2_mark(0xBC18, 0xBC27)", "md_coop_p2_mark(0xBC3C, 0xBC43)",
+        "md_coop_p2_mark(0xBC44, 0xBC4B)", "md_coop_p2_mark(0xBC4C, 0xBC53)",
+        "md_coop_p2_mark(0xBC5A, 0xBC61)")),
+    "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
+    "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
