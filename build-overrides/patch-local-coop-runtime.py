@@ -307,6 +307,21 @@ const M68K *md_coop_p2_spatial_seed_context(void) {
     return md_coop_p2_spatial_seed_valid ? &md_coop_p2_spatial_seed : NULL;
 }
 
+void md_coop_p2_capture_motion_seed(M68K *primary) {
+    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+        md_coop_p2_motion_seed_valid = 0;
+        return;
+    }
+    /* Capture at f_156A's BF28 gate so P2 can replay its conditional
+       f_2150 state-preparation call with the exact native call-site context. */
+    memcpy(&md_coop_p2_motion_seed, primary, sizeof md_coop_p2_motion_seed);
+    md_coop_p2_motion_seed_valid = 1;
+}
+
+const M68K *md_coop_p2_motion_seed_context(void) {
+    return md_coop_p2_motion_seed_valid ? &md_coop_p2_motion_seed : NULL;
+}
+
 void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     unsigned count;
     FILE *f;
