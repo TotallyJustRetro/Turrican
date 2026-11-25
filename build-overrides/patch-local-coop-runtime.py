@@ -958,6 +958,12 @@ replace_once(
 )
 replace_once(
     GEN,
+    "L_160E: { RT_POLL(0x160E); uint32_t e=0xFFFFBF28u; uint32_t v=RD16(e); uint32_t r=v; fl_logic(c,r,16); }",
+    "L_160E: { RT_POLL(0x160E); md_coop_p2_capture_motion_seed(c); uint32_t e=0xFFFFBF28u; uint32_t v=RD16(e); uint32_t r=v; fl_logic(c,r,16); }",
+    "P2 motion-state seed at the native BF28 gate",
+)
+replace_once(
+    GEN,
     "L_1650: { RT_POLL(0x1650); { uint32_t _r=0x1654u;",
     "L_1650: { RT_POLL(0x1650); md_coop_p2_capture_spatial_seed(c); { uint32_t _r=0x1654u;",
     "P2 f_56CE spatial-builder register capture",
