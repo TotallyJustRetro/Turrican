@@ -13,7 +13,7 @@ The generated Mega Turrican frame loop in f_156A contains these important player
 1. f_3B38: reset per-frame player collision state and descriptor cursor.
 2. Descriptor-selected callbacks through BC3C, BC44, and BC4C.
 3. f_56CE: rebuild collision candidates from the shared world-object list into player work buffers.
-4. f_3D80: resolve this player's collision descriptors and mutate collision targets.
+4. f_3D80: resolve this player's collision descriptors and write per-player contact results into their 24-byte result/context records.
 5. f_5DB2: build the player's multipart sprite data and append to the shared render queue.
 6. BC62: native player actor, normally f_224C.
 7. f_3BD8: finalize player contact/collision state.
@@ -32,9 +32,9 @@ P2 now has private copies for these descriptor/lifecycle fields:
 - BC5A..BC61: dynamic callback and callback context.
 - BF0E..BF17: player-specific camera/position snapshot used by the original initialization and lifecycle paths.
 
-The gaps are intentional. BC54..BC59 contains the shared sprite-output queue pointer/count and must remain world-owned. The patch must not accidentally bank that queue while separating callback state.
+The gaps are intentional. BC28..BC3B is the shared world-object list, BC54..BC59 is the shared sprite-output queue pointer/count, DFD4..DFD7 is the shared viewport origin, and BF3A is the global continue counter. These must remain world-owned. The build patch now parses every private-bank range and fails its static ownership checks if any of those shared ranges are banked.
 
-The P2 runtime trace now prints the private callback pointers and lifecycle snapshot, making later callback isolation auditable rather than inferred.
+The P2 runtime trace now prints the private callback pointers and lifecycle snapshot, making later callback isolation auditable rather than inferred. The BD28 descriptor table is copied per player; each descriptor's +8 pointer is redirected to a private 24-byte collision-result context. f_3D80 writes its +11 contact result and +16 candidate pointer there, so P2's collision pass cannot overwrite P1's result context. The F268 candidate buffer it points into is rebuilt from the shared BC28 world-object list, while its output scratch is private.
 
 ## Why the callbacks are not all duplicated yet
 
@@ -43,10 +43,10 @@ The original callback targets observed for this descriptor include 004EE2, 00915
 - f_915A reads the shared world-view origin and writes through a context pointer.
 - f_582 stages data through shared transfer helpers.
 - f_9222 touches global mode/state and dynamic callback state.
-- f_932A calls f_BCB6, reads shared world bounds, and writes camera candidate values to DFD8/DFDA; some paths also create or update shared world/render objects.
+- f_932A calls f_BCB6, reads shared world bounds, writes camera candidate values to DFD8/DFDA, and updates player callback/lifecycle fields. It also touches global mode and level-state bytes, so its full body cannot be duplicated unchanged.
 - f_4EE2 walks a caller-supplied context block and calls transfer helpers. Its writable context has not yet been proven independent of shared rendering/resource state.
 
-Calling these routines twice without first separating their world-wide effects could duplicate object creation, resource transfers, or camera mutations. They remain a deliberate boundary for the next phase.
+Calling these routines twice without first separating their world-wide effects could duplicate resource transfers or overwrite the one shared camera/mode state. They remain a deliberate boundary for the next phase. P2's private collision result records are not yet proof that every enemy-damage or pickup side effect is visible in the shared world; that interaction path still needs explicit validation.
 
 ## Initialization and lifecycle boundary
 
@@ -60,6 +60,6 @@ Likewise, f_156A owns both per-player life state and global continue/game-flow d
 2. Split callback routines into player-state updates and shared world/render/resource effects; execute each half at the correct once-per-player or once-per-world frequency.
 3. Implement P2 life, death, respawn, and game-over handling without duplicating global continue flow.
 4. Merge P1/P2 camera candidates into one viewport that keeps both actors visible.
-5. Validate that both players collide with and affect the same enemies, projectiles, platforms, pickups, and stage state.
+5. Validate that both players collide with and affect the same enemies, projectiles, platforms, pickups, and stage state; bridge any player-result-to-world-object effects that remain P1-only.
 
 The working spawn baseline must remain intact throughout these steps.
