@@ -454,7 +454,7 @@ void md_coop_p2_trace_collision_results(void) {
             fprintf(f,
                 "event=p2-collision-context frame=%lu index=%u "
                 "source=%08X shadow=%08X p1_flag=%02X p2_flag=%02X "
-                "p1_candidate=%08X p2_candidate=%08X\\n",
+                "p1_candidate=%08X p2_candidate=%08X\n",
                 md_coop_p2_frame_count, i, (unsigned)src_ptr,
                 (unsigned)dst_ptr, (unsigned)p1_flag, (unsigned)p2_flag,
                 (unsigned)p1_candidate, (unsigned)p2_candidate);
@@ -464,7 +464,7 @@ void md_coop_p2_trace_collision_results(void) {
     if (md_coop_p2_collision_result_log_frames != md_coop_p2_frame_count) {
         fprintf(f,
             "event=p2-collision-summary frame=%lu descriptors=%u "
-            "p1_nonzero=%u p2_nonzero=%u changed_records=%u\\n",
+            "p1_nonzero=%u p2_nonzero=%u changed_records=%u\n",
             md_coop_p2_frame_count, count, p1_nonzero, p2_nonzero, logged);
         md_coop_p2_collision_result_log_frames = (uint32_t)md_coop_p2_frame_count;
     }
@@ -580,7 +580,7 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f,
         "p2_callback_slots BC18=%08X BC1C=%08X BC20=%08X BC24=%08X "
         "BC3C=%08X BC40=%08X BC44=%08X BC48=%08X BC4C=%08X "
-        "BC50=%08X BC5A=%08X BC5E=%08X BF0E=%08X BF12=%08X BF16=%02X BF17=%02X\\n",
+        "BC50=%08X BC5A=%08X BC5E=%08X BF0E=%08X BF12=%08X BF16=%02X BF17=%02X\n",
         (unsigned)md_coop_p2_long(0xBC18), (unsigned)md_coop_p2_long(0xBC1C),
         (unsigned)md_coop_p2_long(0xBC20), (unsigned)md_coop_p2_long(0xBC24),
         (unsigned)md_coop_p2_long(0xBC3C), (unsigned)md_coop_p2_long(0xBC40),
