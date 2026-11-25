@@ -145,7 +145,7 @@ void md_coop_p2_trace_ground(const char *stage, M68K *cpu) {
                 (unsigned)cpu->a[4], (unsigned)cpu->a[5],
                 (unsigned)cpu->a[6]);
     }
-    fprintf(f, " F268=%08X,%08X,%08X,%08X F2A8=%08X,%08X,%08X,%08X\\n",
+    fprintf(f, " F268=%08X,%08X,%08X,%08X F2A8=%08X,%08X,%08X,%08X\n",
             (unsigned)md_coop_p2_long(0xF268),
             (unsigned)md_coop_p2_long(0xF26C),
             (unsigned)md_coop_p2_long(0xF270),
