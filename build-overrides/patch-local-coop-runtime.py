@@ -209,6 +209,56 @@ void md_coop_p2_trace_floor(const char *stage, M68K *cpu) {
     fclose(f);
 }
 
+/* Capture the actual BD20 writes and the velocity/state fields feeding them.
+   Limit the trace to the reproducible fall window around P2 frames 220-280. */
+void md_coop_p2_trace_motion(const char *stage, M68K *cpu) {
+    FILE *f;
+    if (!md_coop_p2_active || !md_coop_p2_ready ||
+        md_coop_p2_frame_count < 220u ||
+        md_coop_p2_frame_count > 280u) return;
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f) return;
+    fprintf(f,
+        "event=p2-motion stage=%s frame=%lu xy=%04X,%04X "
+        "BCEC=%04X BCEE=%04X BCD8=%02X BCD9=%02X "
+        "BCE0=%04X BCE2=%04X BCE5=%02X BCE6=%08X "
+        "BCDA=%08X BCDC=%04X BCF3=%02X BCF7=%02X BCF8=%02X "
+        "BCFC=%02X BCFE=%02X BC90=%02X%02X "
+        "BD02=%02X BD04=%02X BD1D=%02X BD22=%02X "
+        "BCC8=%04X BCEA=%04X",
+        stage ? stage : "-", md_coop_p2_frame_count,
+        md_coop_p2_word(0xBD1E), md_coop_p2_word(0xBD20),
+        md_coop_p2_word(0xBCEC), md_coop_p2_word(0xBCEE),
+        md_coop_p2_ram[0xBCD8], md_coop_p2_ram[0xBCD9],
+        md_coop_p2_word(0xBCE0), md_coop_p2_word(0xBCE2),
+        md_coop_p2_ram[0xBCE5], (unsigned)md_coop_p2_long(0xBCE6),
+        (unsigned)md_coop_p2_long(0xBCDA), md_coop_p2_word(0xBCDC),
+        md_coop_p2_ram[0xBCF3], md_coop_p2_ram[0xBCF7],
+        md_coop_p2_ram[0xBCF8], md_coop_p2_ram[0xBCFC],
+        md_coop_p2_ram[0xBCFE], md_coop_p2_ram[0xBC90],
+        md_coop_p2_ram[0xBC91], md_coop_p2_ram[0xBD02],
+        md_coop_p2_ram[0xBD04], md_coop_p2_ram[0xBD1D],
+        md_coop_p2_ram[0xBD22], md_coop_p2_word(0xBCC8),
+        md_coop_p2_word(0xBCEA));
+    if (cpu) {
+        fprintf(f,
+            " CC=%u%u%u%u D=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X"
+            " A=%08X,%08X,%08X,%08X,%08X,%08X,%08X",
+            (unsigned)cpu->n, (unsigned)cpu->z, (unsigned)cpu->v,
+            (unsigned)cpu->c,
+            (unsigned)cpu->d[0], (unsigned)cpu->d[1],
+            (unsigned)cpu->d[2], (unsigned)cpu->d[3],
+            (unsigned)cpu->d[4], (unsigned)cpu->d[5],
+            (unsigned)cpu->d[6], (unsigned)cpu->d[7],
+            (unsigned)cpu->a[0], (unsigned)cpu->a[1],
+            (unsigned)cpu->a[2], (unsigned)cpu->a[3],
+            (unsigned)cpu->a[4], (unsigned)cpu->a[5],
+            (unsigned)cpu->a[6]);
+    }
+    fprintf(f, "\n");
+    fclose(f);
+}
+
 void md_coop_p2_set_active(int active) {
     md_coop_p2_active = active ? 1 : 0;
 }
@@ -555,7 +605,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -829,6 +879,121 @@ replace_once(
     "P2 map collision branch continuation trace",
 )
 
+replace_once(
+    GEN,
+    "L_24F2: { RT_POLL(0x24F2); if(cond(c,7)) goto L_2508; }",
+    "L_24F2: { RT_POLL(0x24F2); md_coop_p2_trace_motion(\"f24f2-optional-branch\",c); if(cond(c,7)) goto L_2508; }",
+    "P2 optional collision branch trace",
+)
+replace_once(
+    GEN,
+    "L_2452: { RT_POLL(0x2452); if(cond(c,7)) goto L_2498; }",
+    "L_2452: { RT_POLL(0x2452); md_coop_p2_trace_motion(\"f2452-vertical-branch\",c); if(cond(c,7)) goto L_2498; }",
+    "P2 vertical velocity branch trace",
+)
+replace_once(
+    GEN,
+    "L_247C: { RT_POLL(0x247C); uint32_t s=0xFFFFBCECu; uint32_t v=RD16(s); DSET(0,16,v); fl_logic(c,v,16); }",
+    "L_247C: { RT_POLL(0x247C); md_coop_p2_trace_motion(\"f247c-velocity-load\",c); uint32_t s=0xFFFFBCECu; uint32_t v=RD16(s); DSET(0,16,v); fl_logic(c,v,16); }",
+    "P2 vertical velocity load trace",
+)
+replace_once(
+    GEN,
+    "L_2480: { RT_POLL(0x2480); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(0),v,16); WR16(e,r); }",
+    "L_2480: { RT_POLL(0x2480); md_coop_p2_trace_motion(\"f2480-y-add-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(0),v,16); WR16(e,r); }",
+    "P2 primary vertical addition trace",
+)
+replace_once(
+    GEN,
+    "L_2484: { RT_POLL(0x2484); goto L_2498; }",
+    "L_2484: { RT_POLL(0x2484); md_coop_p2_trace_motion(\"f2484-y-add-after\",c); goto L_2498; }",
+    "P2 primary vertical addition result trace",
+)
+replace_once(
+    GEN,
+    "L_227A: { RT_POLL(0x227A); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,D(1),v,16); WR16(e,r); }",
+    "L_227A: { RT_POLL(0x227A); md_coop_p2_trace_motion(\"f227a-y-sub-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,D(1),v,16); WR16(e,r); }",
+    "P2 alternate vertical subtraction trace",
+)
+replace_once(
+    GEN,
+    "L_227E: { RT_POLL(0x227E); uint32_t e=0xFFFFBCFCu; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "L_227E: { RT_POLL(0x227E); md_coop_p2_trace_motion(\"f227e-y-sub-after\",c); uint32_t e=0xFFFFBCFCu; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "P2 alternate vertical subtraction result trace",
+)
+replace_once(
+    GEN,
+    "L_25F8: { RT_POLL(0x25F8); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,2,v,16); WR16(e,r); }",
+    "L_25F8: { RT_POLL(0x25F8); md_coop_p2_trace_motion(\"f25f8-y-minus-two-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,2,v,16); WR16(e,r); }",
+    "P2 second vertical adjustment trace",
+)
+replace_once(
+    GEN,
+    "L_25FC: { RT_POLL(0x25FC); uint32_t e=0xFFFFBCC4u; uint32_t v=RD16(e); uint32_t r=v; op_cmp(c,0xFFFCu,v,16); }",
+    "L_25FC: { RT_POLL(0x25FC); md_coop_p2_trace_motion(\"f25fc-y-minus-two-after\",c); uint32_t e=0xFFFFBCC4u; uint32_t v=RD16(e); uint32_t r=v; op_cmp(c,0xFFFCu,v,16); }",
+    "P2 second vertical adjustment result trace",
+)
+replace_once(
+    GEN,
+    "L_2818: { RT_POLL(0x2818); uint32_t v=(D(1)&0xFFFFu); uint32_t d=0xFFFFBD20u; WR16(d,v); fl_logic(c,v,16); }",
+    "L_2818: { RT_POLL(0x2818); md_coop_p2_trace_motion(\"f2818-y-store-before\",c); uint32_t v=(D(1)&0xFFFFu); uint32_t d=0xFFFFBD20u; WR16(d,v); fl_logic(c,v,16); }",
+    "P2 direct vertical store trace",
+)
+replace_once(
+    GEN,
+    "L_281C: { RT_POLL(0x281C); uint32_t e=0xFFFFBCC2u; WR8(e,(cond(c,0)?0xFF:0)); }",
+    "L_281C: { RT_POLL(0x281C); md_coop_p2_trace_motion(\"f281c-y-store-after\",c); uint32_t e=0xFFFFBCC2u; WR8(e,(cond(c,0)?0xFF:0)); }",
+    "P2 direct vertical store result trace",
+)
+replace_once(
+    GEN,
+    "L_287C: { RT_POLL(0x287C); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(0),v,16); WR16(e,r); }",
+    "L_287C: { RT_POLL(0x287C); md_coop_p2_trace_motion(\"f287c-y-add-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(0),v,16); WR16(e,r); }",
+    "P2 later vertical addition trace",
+)
+replace_once(
+    GEN,
+    "L_2880: { RT_POLL(0x2880); uint32_t e=0xFFFFBC90u; uint32_t m=1u<<(4u&7); uint32_t v=RD8(e); c->z=!(v&m); }",
+    "L_2880: { RT_POLL(0x2880); md_coop_p2_trace_motion(\"f2880-y-add-after\",c); uint32_t e=0xFFFFBC90u; uint32_t m=1u<<(4u&7); uint32_t v=RD8(e); c->z=!(v&m); }",
+    "P2 later vertical addition result trace",
+)
+replace_once(
+    GEN,
+    "L_2984: { RT_POLL(0x2984); uint32_t v=0xFFE0u; uint32_t d=0xFFFFBD20u; WR16(d,v); fl_logic(c,v,16); }",
+    "L_2984: { RT_POLL(0x2984); md_coop_p2_trace_motion(\"f2984-y-clamp-before\",c); uint32_t v=0xFFE0u; uint32_t d=0xFFFFBD20u; WR16(d,v); fl_logic(c,v,16); }",
+    "P2 vertical clamp trace",
+)
+replace_once(
+    GEN,
+    "L_298A: { RT_POLL(0x298A); uint32_t s=0xFFFFBCC4u; uint32_t v=RD32(s); DSET(1,32,v); fl_logic(c,v,32); }",
+    "L_298A: { RT_POLL(0x298A); md_coop_p2_trace_motion(\"f298a-y-clamp-after\",c); uint32_t s=0xFFFFBCC4u; uint32_t v=RD32(s); DSET(1,32,v); fl_logic(c,v,32); }",
+    "P2 vertical clamp result trace",
+)
+replace_once(
+    GEN,
+    "L_29AC: { RT_POLL(0x29AC); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,D(1),v,16); WR16(e,r); }",
+    "L_29AC: { RT_POLL(0x29AC); md_coop_p2_trace_motion(\"f29ac-y-sub-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_sub(c,D(1),v,16); WR16(e,r); }",
+    "P2 late vertical subtraction trace",
+)
+replace_once(
+    GEN,
+    "L_29B0: { RT_POLL(0x29B0); uint32_t e=0xFFFFBCD8u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "L_29B0: { RT_POLL(0x29B0); md_coop_p2_trace_motion(\"f29b0-y-sub-after\",c); uint32_t e=0xFFFFBCD8u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "P2 late vertical subtraction result trace",
+)
+replace_once(
+    GEN,
+    "L_2AE6: { RT_POLL(0x2AE6); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(7),v,16); WR16(e,r); }",
+    "L_2AE6: { RT_POLL(0x2AE6); md_coop_p2_trace_motion(\"f2ae6-y-add-before\",c); uint32_t e=0xFFFFBD20u; uint32_t v=RD16(e); uint32_t r=op_add(c,D(7),v,16); WR16(e,r); }",
+    "P2 final vertical addition trace",
+)
+replace_once(
+    GEN,
+    "L_2AEA: { RT_POLL(0x2AEA); { uint32_t _r=0x2AEEu; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3222(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "L_2AEA: { RT_POLL(0x2AEA); md_coop_p2_trace_motion(\"f2aea-y-add-after\",c); { uint32_t _r=0x2AEEu; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3222(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "P2 final vertical addition result trace",
+)
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -858,6 +1023,7 @@ checks = {
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
     "P2 map collision branch and call-site are traced": "md_coop_p2_trace_floor(\"f2502-branch\",c)" in g and "md_coop_p2_trace_floor(\"f2504-call\",c)" in g and "md_coop_p2_trace_floor(\"f2508-after\",c)" in g,
+    "P2 records each native BD20 vertical movement branch": "md_coop_p2_trace_motion(\\"f24f2-optional-branch\\",c)" in g and "md_coop_p2_trace_motion(\\"f2452-vertical-branch\\",c)" in g and "md_coop_p2_trace_motion(\\"f2480-y-add-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f2484-y-add-after\\",c)" in g and "md_coop_p2_trace_motion(\\"f227a-y-sub-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f2818-y-store-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f287c-y-add-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f2984-y-clamp-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f29ac-y-sub-before\\",c)" in g and "md_coop_p2_trace_motion(\\"f2ae6-y-add-before\\",c)" in g and "event=p2-motion" in h,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
