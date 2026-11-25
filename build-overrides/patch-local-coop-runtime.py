@@ -883,8 +883,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
     md_coop_p2_set_active(0);
-    md_coop_p2_log("sprite-scratch-reset", 0x5D8Au,
-                   "native f_5D8A cleared P2-private FCE8 and initialized BD24/BD25");
+    /* Continue with the original native phase order. The helper logger lives
+       in harness.c and is intentionally not called from this generated TU. */
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
@@ -1338,7 +1338,7 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
-    "P2 runs native f_2130 then f_5D8A sprite scratch initialization before f_3B38": all(x in g for x in ("md_coop_p2_call_actor(p2, 0x00002130u)", "md_coop_p2_call_actor(p2, 0x00005D8Au)", "md_coop_p2_call_actor(p2, 0x00003B38u)")) and g.index("0x00002130u") < g.index("0x00005D8Au") < g.index("0x00003B38u") and "md_coop_p2_log(\"sprite-scratch-reset\"" in g,
+    "P2 runs native f_2130 then f_5D8A sprite scratch initialization before f_3B38": all(x in g for x in ("md_coop_p2_call_actor(p2, 0x00002130u)", "md_coop_p2_call_actor(p2, 0x00005D8Au)", "md_coop_p2_call_actor(p2, 0x00003B38u)")) and g.index("0x00002130u") < g.index("0x00005D8Au") < g.index("0x00003B38u"),
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
     "P2 f3222 post-movement collision path is traced": "md_coop_p2_trace_motion(\"f3222-enter\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf5-zero-branch\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf6-load\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-first-before\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-second-after\",c)" in g and "md_coop_p2_trace_motion(\"f3222-normal-return\",c)" in g and "BCF5=%02X BCF6=%02X" in h,
