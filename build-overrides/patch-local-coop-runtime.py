@@ -539,9 +539,14 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_m68k.usp = 0x00F0FFFCu;
         md_coop_p2_m68k.ret = 0;
 
-        /* Place P2 beside P1 without changing the shared camera. */
+        /* Place P2 beside P1 without changing the shared camera. The
+           native f_1BDE respawn path rebuilds BD1E from BF0E (viewport origin)
+           and BF12 (the saved player X/Y). Keep P2's saved X aligned with the
+           live spawn offset or its next native respawn would collapse onto P1. */
         md_coop_p2_put_word(0xBD1E,
             (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0010u));
+        md_coop_p2_put_word(0xBF12,
+            (uint16_t)(md_coop_p2_word(0xBF12) + 0x0010u));
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
                        "one-time P1 state seed; P2 spawn offset +0x10; independent CPU and F0FFFC stack");
@@ -1214,6 +1219,7 @@ checks = {
         "md_coop_p2_mark(0xBC44, 0xBC4B)", "md_coop_p2_mark(0xBC4C, 0xBC53)",
         "md_coop_p2_mark(0xBC5A, 0xBC61)")),
     "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
+    "P2 live spawn offset matches its native respawn X snapshot": "md_coop_p2_put_word(0xBF12" in h and "md_coop_p2_word(0xBF12) + 0x0010u" in h,
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
