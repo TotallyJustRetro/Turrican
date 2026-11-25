@@ -300,7 +300,7 @@ const M68K *md_coop_p2_collision_seed_context(void) {
 }
 
 void md_coop_p2_capture_spatial_seed(M68K *primary) {
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+    if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_spatial_seed_valid = 0;
         return;
     }
@@ -316,7 +316,7 @@ const M68K *md_coop_p2_spatial_seed_context(void) {
 }
 
 void md_coop_p2_capture_motion_seed(M68K *primary) {
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+    if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_motion_seed_valid = 0;
         return;
     }
@@ -333,7 +333,7 @@ const M68K *md_coop_p2_motion_seed_context(void) {
 void md_coop_p2_capture_collision_descriptors(M68K *primary) {
     unsigned count;
     FILE *f;
-    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+    if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_primary_collision_desc_valid = 0;
         return;
     }
