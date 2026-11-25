@@ -51,6 +51,8 @@ static M68K md_coop_p2_spatial_seed;
 static int md_coop_p2_spatial_seed_valid = 0;
 static M68K md_coop_p2_motion_seed;
 static int md_coop_p2_motion_seed_valid = 0;
+static M68K md_coop_p2_setup_seed;
+static int md_coop_p2_setup_seed_valid = 0;
 static uint8_t md_coop_p2_primary_collision_desc[0x1E0];
 static unsigned md_coop_p2_primary_collision_count = 0;
 static int md_coop_p2_primary_collision_desc_valid = 0;
@@ -320,6 +322,20 @@ void md_coop_p2_capture_motion_seed(M68K *primary) {
 
 const M68K *md_coop_p2_motion_seed_context(void) {
     return md_coop_p2_motion_seed_valid ? &md_coop_p2_motion_seed : NULL;
+}
+
+void md_coop_p2_capture_setup_seed(M68K *primary) {
+    if (!primary || md_coop_p2_disabled || !md_player2_connected) {
+        md_coop_p2_setup_seed_valid = 0;
+        return;
+    }
+    /* f_2130 executes at the head of the native frame sequence. */
+    memcpy(&md_coop_p2_setup_seed, primary, sizeof md_coop_p2_setup_seed);
+    md_coop_p2_setup_seed_valid = 1;
+}
+
+const M68K *md_coop_p2_setup_seed_context(void) {
+    return md_coop_p2_setup_seed_valid ? &md_coop_p2_setup_seed : NULL;
 }
 
 void md_coop_p2_capture_collision_descriptors(M68K *primary) {
