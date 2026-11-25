@@ -810,6 +810,25 @@ replace_once(
     "P2 map collision exit trace",
 )
 
+replace_once(
+    GEN,
+    "L_2502: { RT_POLL(0x2502); if(cond(c,11)) goto L_2508; }",
+    "L_2502: { RT_POLL(0x2502); md_coop_p2_trace_floor(\"f2502-branch\",c); if(cond(c,11)) goto L_2508; }",
+    "P2 map collision branch decision trace",
+)
+replace_once(
+    GEN,
+    "L_2504: { RT_POLL(0x2504); { uint32_t _r=0x2508u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3650(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "L_2504: { RT_POLL(0x2504); md_coop_p2_trace_floor(\"f2504-call\",c); { uint32_t _r=0x2508u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3650(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "P2 map collision call-site trace",
+)
+replace_once(
+    GEN,
+    "L_2508: { RT_POLL(0x2508); uint32_t e=0xFFFFBCF3u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "L_2508: { RT_POLL(0x2508); md_coop_p2_trace_floor(\"f2508-after\",c); uint32_t e=0xFFFFBCF3u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "P2 map collision branch continuation trace",
+)
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
@@ -838,6 +857,7 @@ checks = {
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
+    "P2 map collision branch and call-site are traced": "md_coop_p2_trace_floor(\"f2502-branch\",c)" in g and "md_coop_p2_trace_floor(\"f2504-call\",c)" in g and "md_coop_p2_trace_floor(\"f2508-after\",c)" in g,
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
