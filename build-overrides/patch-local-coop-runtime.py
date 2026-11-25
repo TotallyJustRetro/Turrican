@@ -787,6 +787,7 @@ extern M68K *md_coop_p2_cpu(void);
 extern const M68K *md_coop_p2_frame_seed_context(void);
 extern const M68K *md_coop_p2_collision_seed_context(void);
 extern const M68K *md_coop_p2_spatial_seed_context(void);
+extern const M68K *md_coop_p2_motion_seed_context(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
@@ -852,6 +853,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     const M68K *frame_seed;
     const M68K *collision_seed;
     const M68K *spatial_seed;
+    const M68K *motion_seed;
     if (!primary || !md_coop_p2_is_ready()) return;
     md_coop_p2_refresh();
     if (!md_coop_p2_is_ready()) return;
@@ -859,7 +861,8 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     frame_seed = md_coop_p2_frame_seed_context();
     collision_seed = md_coop_p2_collision_seed_context();
     spatial_seed = md_coop_p2_spatial_seed_context();
-    if (!p2 || !frame_seed || !collision_seed || !spatial_seed) return;
+    motion_seed = md_coop_p2_motion_seed_context();
+    if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
