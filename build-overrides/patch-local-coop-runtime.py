@@ -1323,7 +1323,11 @@ shared_ranges = {
     "shared world-object list BC28..BC3B": (0xBC28, 0xBC3B),
     "shared sprite queue BC54..BC59": (0xBC54, 0xBC59),
     "shared viewport origin DFD4..DFD7": (0xDFD4, 0xDFD7),
+    "shared gameplay flags BC68..BC69": (0xBC68, 0xBC69),
     "global continue counter BF3A": (0xBF3A, 0xBF3A),
+    "shared object-pool cursor BF3C": (0xBF3C, 0xBF3C),
+    "shared viewport world bounds DFDC": (0xDFDC, 0xDFDC),
+    "shared viewport world bounds DFE4": (0xDFE4, 0xDFE4),
 }
 for label, (first, last) in shared_ranges.items():
     checks[label + " remain world-owned"] = not any(
@@ -1336,4 +1340,4 @@ for label, passed in checks.items():
         raise SystemExit("local co-op verification failed: " + label)
 
 print("Installed guarded native P2 actor prototype: isolated f_3B38/f_56CE preparation, 40-entry 12-byte BD28 table, private collision-result contexts, and native f_3D80 resolver.")
-print("Ownership contracts keep world objects, sprite queue, viewport origin, and continue flow shared; gameplay still requires in-game verification.")
+print("Ownership contracts keep world objects, sprite queue, game-flow flags, object-pool cursor, viewport origin/bounds, and continue flow shared; gameplay still requires in-game verification.")
