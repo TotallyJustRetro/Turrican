@@ -49,6 +49,8 @@ static M68K md_coop_p2_collision_seed;
 static int md_coop_p2_collision_seed_valid = 0;
 static M68K md_coop_p2_spatial_seed;
 static int md_coop_p2_spatial_seed_valid = 0;
+static M68K md_coop_p2_motion_seed;
+static int md_coop_p2_motion_seed_valid = 0;
 static uint8_t md_coop_p2_primary_collision_desc[0x1E0];
 static unsigned md_coop_p2_primary_collision_count = 0;
 static int md_coop_p2_primary_collision_desc_valid = 0;
