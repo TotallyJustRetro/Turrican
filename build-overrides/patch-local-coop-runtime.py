@@ -575,6 +575,10 @@ void md_coop_p2_trace_motion_setup(const char *stage, M68K *cpu) {
     fclose(f);
 }
 
+int md_coop_p2_needs_f2150(void) {
+    return md_coop_p2_word(0xBF28u) == 0u;
+}
+
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_player2_connected && md_coop_primary_m68k != NULL;
@@ -840,6 +844,7 @@ extern const M68K *md_coop_p2_spatial_seed_context(void);
 extern const M68K *md_coop_p2_motion_seed_context(void);
 extern const M68K *md_coop_p2_setup_seed_context(void);
 extern void md_coop_p2_trace_motion_setup(const char *stage, M68K *cpu);
+extern int md_coop_p2_needs_f2150(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
@@ -946,7 +951,7 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     /* Mirror f_156A's conditional native f_2150 per-player state update.
        The original dispatcher runs it while BF28 is zero; test P2's private
        BF28 so the two players do not share a timer/respawn decision. */
-    if (md_coop_p2_word(0xBF28u) == 0u) {
+    if (md_coop_p2_needs_f2150()) {
         md_coop_p2_trace_motion_setup("before-f2150", p2);
         md_coop_p2_sync_call_context(p2, motion_seed);
         md_coop_p2_set_active(1);
