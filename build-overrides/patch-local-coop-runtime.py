@@ -864,6 +864,17 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     motion_seed = md_coop_p2_motion_seed_context();
     if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
+    /* f_2130 rebuilds P2's player-local descriptor/work pointer and constants.
+       Its writes stay inside the P2-private BCBC/BD work area. */
+    md_coop_p2_sync_call_context(p2, motion_seed);
+    md_coop_p2_set_active(1);
+    if (!md_coop_p2_call_actor(p2, 0x00002130u)) {
+        md_coop_p2_abort("P2 player-state setup f_2130 did not restore its CPU stack/return frame", 0x2130u);
+        md_coop_p2_finish();
+        return;
+    }
+    md_coop_p2_set_active(0);
+
     /* Re-run only the native player-local collision-state reset for P2.
        It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
        and performs no VDP or shared-object-pool operation. */
@@ -875,6 +886,20 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
         return;
     }
     md_coop_p2_set_active(0);
+
+    /* Mirror f_156A's conditional native f_2150 per-player state update.
+       The original dispatcher runs it while BF28 is zero; test P2's private
+       BF28 so the two players do not share a timer/respawn decision. */
+    if (md_coop_p2_word(0xBF28u) == 0u) {
+        md_coop_p2_sync_call_context(p2, motion_seed);
+        md_coop_p2_set_active(1);
+        if (!md_coop_p2_call_actor(p2, 0x00002150u)) {
+            md_coop_p2_abort("P2 conditional player-state update f_2150 did not restore its CPU stack/return frame", 0x2150u);
+            md_coop_p2_finish();
+            return;
+        }
+        md_coop_p2_set_active(0);
+    }
 
     /* Rebuild P2's spatial collision candidates with the game's native
        f_56CE pass. It reads the shared BC28 object list, but its F268/F2A8
