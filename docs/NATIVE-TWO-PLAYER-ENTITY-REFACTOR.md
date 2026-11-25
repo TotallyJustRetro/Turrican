@@ -10,7 +10,9 @@ This is a structural step, not a claim that full two-player gameplay is finished
 
 The generated Mega Turrican frame loop in f_156A contains these important player-local phases:
 
-1. f_3B38: reset per-frame player collision state and descriptor cursor.
+1. f_2130: initialize the player's private BCBC work pointer, BCC0 constant, and BCF3/BCF4 state.
+2. f_5D8A: clear 29 longwords in the private FCE8 multipart-sprite scratch table and initialize the player's BD24/BD25 sprite scratch flags. This must run after f_2130 and before the sprite builder.
+3. f_3B38: reset per-frame player collision state and descriptor cursor.
 2. Descriptor-selected callbacks through BC3C, BC44, and BC4C.
 3. f_56CE: rebuild collision candidates from the shared world-object list into player work buffers.
 4. f_3D80: resolve this player's collision descriptors and write per-player contact results into their 24-byte result/context records.
@@ -20,6 +22,8 @@ The generated Mega Turrican frame loop in f_156A contains these important player
 8. BC20: descriptor-selected post-actor callback.
 
 Other phases in the same frame are world-wide services, not second-player services. In particular, f_5432 updates the shared world-object list, f_552A traverses the shared object/render list, and f_5472 operates on the shared sprite queue and object list. These must not be replayed as though P2 owns a second world.
+
+The Build #645 runtime log showed that P2's actor callback returned and the renderer ran, but the newly added f_2130 phase was immediately followed by f_3B38. The P2 runner had omitted the original intervening f_5D8A call. Because FCE8..FD57 and BD24/BD25 are explicitly inside P2's private bank and f_5DB2 reads/writes the same FCE8/BD24/BD25 state, the omission is a strong candidate for the invisible-P2 regression. The follow-up patch restores f_5D8A in its native order and logs a sprite-scratch-reset event; gameplay visibility still requires confirmation in-game.
 
 ## Ownership added in this revision
 
