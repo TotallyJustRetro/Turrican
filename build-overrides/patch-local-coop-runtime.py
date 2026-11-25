@@ -222,7 +222,7 @@ void md_coop_p2_trace_motion(const char *stage, M68K *cpu) {
         "event=p2-motion stage=%s frame=%lu xy=%04X,%04X "
         "BCEC=%04X BCEE=%04X BCD8=%02X BCD9=%02X "
         "BCE0=%04X BCE2=%04X BCE5=%02X BCE6=%08X "
-        "BCDA=%08X BCDC=%04X BCF3=%02X BCF7=%02X BCF8=%02X "
+        "BCDA=%08X BCDC=%04X BCF3=%02X BCF5=%02X BCF6=%02X BCF7=%02X BCF8=%02X "
         "BCFC=%02X BCFE=%02X BC90=%02X%02X "
         "BD02=%02X BD04=%02X BD1D=%02X BD22=%02X "
         "BCC8=%04X BCEA=%04X",
@@ -233,7 +233,8 @@ void md_coop_p2_trace_motion(const char *stage, M68K *cpu) {
         md_coop_p2_word(0xBCE0), md_coop_p2_word(0xBCE2),
         md_coop_p2_ram[0xBCE5], (unsigned)md_coop_p2_long(0xBCE6),
         (unsigned)md_coop_p2_long(0xBCDA), md_coop_p2_word(0xBCDC),
-        md_coop_p2_ram[0xBCF3], md_coop_p2_ram[0xBCF7],
+        md_coop_p2_ram[0xBCF3], md_coop_p2_ram[0xBCF5],
+        md_coop_p2_ram[0xBCF6], md_coop_p2_ram[0xBCF7],
         md_coop_p2_ram[0xBCF8], md_coop_p2_ram[0xBCFC],
         md_coop_p2_ram[0xBCFE], md_coop_p2_ram[0xBC90],
         md_coop_p2_ram[0xBC91], md_coop_p2_ram[0xBD02],
@@ -909,6 +910,62 @@ replace_once(
 )
 
 
+
+replace_once(
+    GEN,
+    "L_3222: { RT_POLL(0x3222); uint32_t e=0xFFFFBCF5u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "L_3222: { RT_POLL(0x3222); md_coop_p2_trace_motion(\"f3222-enter\",c); uint32_t e=0xFFFFBCF5u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "P2 f3222 entry trace",
+)
+replace_once(
+    GEN,
+    "L_3226: { RT_POLL(0x3226); if(cond(c,7)) { f_3284(c); return; } }",
+    "L_3226: { RT_POLL(0x3226); md_coop_p2_trace_motion(\"f3222-bcf5-zero-branch\",c); if(cond(c,7)) { md_coop_p2_trace_motion(\"f3222-empty-pre-f3284\",c); f_3284(c); md_coop_p2_trace_motion(\"f3222-empty-return\",c); return; } }",
+    "P2 f3222 empty-count branch trace",
+)
+replace_once(
+    GEN,
+    "L_3232: { RT_POLL(0x3232); uint32_t e=0xFFFFBCF5u; uint32_t v=RD8(e); uint32_t r=op_sub(c,1,v,8); WR8(e,r); }",
+    "L_3232: { RT_POLL(0x3232); md_coop_p2_trace_motion(\"f3222-bcf5-decrement\",c); uint32_t e=0xFFFFBCF5u; uint32_t v=RD8(e); uint32_t r=op_sub(c,1,v,8); WR8(e,r); }",
+    "P2 f3222 BCF5 decrement trace",
+)
+replace_once(
+    GEN,
+    "L_3240: { RT_POLL(0x3240); uint32_t e=0xFFFFBCF6u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "L_3240: { RT_POLL(0x3240); md_coop_p2_trace_motion(\"f3222-bcf6-load\",c); uint32_t e=0xFFFFBCF6u; uint32_t v=RD8(e); uint32_t r=v; fl_logic(c,r,8); }",
+    "P2 f3222 BCF6 load trace",
+)
+replace_once(
+    GEN,
+    "L_3244: { RT_POLL(0x3244); if(cond(c,7)) goto L_3256; }",
+    "L_3244: { RT_POLL(0x3244); md_coop_p2_trace_motion(\"f3222-bcf6-branch\",c); if(cond(c,7)) goto L_3256; }",
+    "P2 f3222 BCF6 branch trace",
+)
+replace_once(
+    GEN,
+    "L_324C: { RT_POLL(0x324C); { uint32_t _r=0x3250u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3514(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "L_324C: { RT_POLL(0x324C); md_coop_p2_trace_motion(\"f3222-f3514-first-before\",c); { uint32_t _r=0x3250u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3514(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } md_coop_p2_trace_motion(\"f3222-f3514-first-after\",c); }",
+    "P2 f3222 first f3514 call trace",
+)
+replace_once(
+    GEN,
+    "L_3262: { RT_POLL(0x3262); { uint32_t _r=0x3266u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3514(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } }",
+    "L_3262: { RT_POLL(0x3262); md_coop_p2_trace_motion(\"f3222-f3514-second-before\",c); { uint32_t _r=0x3266u; A(7)-=4; WR32(A(7),_r); rt_shadow[rt_sp++]=_r; f_3514(c); rt_sp--; if(c->ret!=_r && !rt_fix_ret(c,_r)) return; } md_coop_p2_trace_motion(\"f3222-f3514-second-after\",c); }",
+    "P2 f3222 second f3514 call trace",
+)
+replace_once(
+    GEN,
+    "L_327C: { RT_POLL(0x327C); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "L_327C: { RT_POLL(0x327C); md_coop_p2_trace_motion(\"f3222-normal-return\",c); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "P2 f3222 normal return trace",
+)
+replace_once(
+    GEN,
+    "L_3282: { RT_POLL(0x3282); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "L_3282: { RT_POLL(0x3282); md_coop_p2_trace_motion(\"f3222-fallback-return\",c); { c->ret=RD32(A(7)); A(7)+=4; return; } }",
+    "P2 f3222 fallback return trace",
+)
+
 replace_once(
     GEN,
     "L_3650: { RT_POLL(0x3650); uint32_t s=0xFFFFBCE6u; uint32_t v=RD32(s); A(7)-=4; uint32_t d=A(7); WR32(d,v); fl_logic(c,v,32);",
@@ -1083,6 +1140,7 @@ checks = {
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
+    "P2 f3222 post-movement collision path is traced": "md_coop_p2_trace_motion(\"f3222-enter\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf5-zero-branch\",c)" in g and "md_coop_p2_trace_motion(\"f3222-bcf6-load\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-first-before\",c)" in g and "md_coop_p2_trace_motion(\"f3222-f3514-second-after\",c)" in g and "md_coop_p2_trace_motion(\"f3222-normal-return\",c)" in g and "BCF5=%02X BCF6=%02X" in h,
     "P2 ground-check entry and exit are traced": "md_coop_p2_trace_ground(\"f3284-enter\",c)" in g and "md_coop_p2_trace_ground(\"f3284-exit\",c)" in g and "event=p2-ground" in h,
     "P2 map collision f_3650 entry and exit are traced": "md_coop_p2_trace_floor(\"f3650-enter\",c)" in g and "md_coop_p2_trace_floor(\"f3650-exit\",c)" in g and "event=p2-floor" in h and "F226=" in h,
     "P2 map collision branch and call-site are traced": "md_coop_p2_trace_floor(\"f2502-branch\",c)" in g and "md_coop_p2_trace_floor(\"f2504-call\",c)" in g and "md_coop_p2_trace_floor(\"f2508-after\",c)" in g,
