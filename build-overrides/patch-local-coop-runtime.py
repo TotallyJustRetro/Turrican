@@ -546,10 +546,12 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC4C, 0xBC53); /* descriptor-selected callback and descriptor pointer */
         md_coop_p2_mark(0xBC5A, 0xBC61); /* dynamic state callback and callback context */
         md_coop_p2_mark(0xBF0E, 0xBF17); /* per-player camera/position snapshot used by lifecycle */
+        md_coop_p2_mark(0xBF18, 0xBF1D); /* descriptor-derived per-player identity/context */
         md_coop_p2_mark(0xBC62, 0xBC65); /* main actor callback */ 
         md_coop_p2_mark(0xBC6C, 0xBC6C);
         md_coop_p2_mark(0xBC70, 0xBC70);
         md_coop_p2_mark(0xBC84, 0xBC8B); /* includes f_3B38 collision flags */
+        md_coop_p2_mark(0xBC8C, 0xBC8C); /* player initialization state installed by f_19FA */
         md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
         md_coop_p2_mark(0xBCA4, 0xBCA7);
@@ -1269,6 +1271,8 @@ checks = {
         "md_coop_p2_mark(0xBC44, 0xBC4B)", "md_coop_p2_mark(0xBC4C, 0xBC53)",
         "md_coop_p2_mark(0xBC5A, 0xBC61)")),
     "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
+    "P2 owns f_19FA player init state BC8C": "md_coop_p2_mark(0xBC8C, 0xBC8C)" in h,
+    "P2 owns f_19FA descriptor state BF18..BF1D": "md_coop_p2_mark(0xBF18, 0xBF1D)" in h,
     "P2 live spawn offset matches its native respawn X snapshot": "md_coop_p2_put_word(0xBF12" in h and "md_coop_p2_word(0xBF12) + 0x0010u" in h,
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
@@ -1283,7 +1287,8 @@ checks = {
     "P2 redirects descriptors to private collision-result contexts through offset +8": "md_coop_p2_long(record + 8u)" in h and "md_coop_p2_put_long(record + 8u, 0xFFFF0000u" in h,
     "P2 shadows up to 40 collision-result contexts in private scratch": "uint32_t old_ptrs[40]" in h and "old_count >= 40u" in h and "md_coop_p2_mark(0xEA00, 0xEEFF)" in h and "md_coop_p2_ram[dest + 11u] = 0;" in h and "md_coop_p2_put_long(dest + 16u, 0);" in h and "(ptr & 0x00FF0000u) != 0x00FF0000u" in h,
     "P2 runs native f_3D80 with isolated collision-result contexts": "md_coop_p2_call_actor(p2, 0x00003D80u)" in g and "md_coop_p2_import_collision_descriptors()" in g,
-    "P2 and P1 collision results are traced independently": "md_coop_p2_trace_collision_results(void)" in h and "p1_flag=%02X p2_flag=%02X" in h and "md_coop_p2_trace_collision_results();" in g,\n    "P2 native object hit target writes are traced on both sides": "md_coop_p2_trace_hit_target(const char *stage, M68K *cpu)" in h and "before-object-hit-write" in g and "after-object-hit-write" in g,
+    "P2 and P1 collision results are traced independently": "md_coop_p2_trace_collision_results(void)" in h and "p1_flag=%02X p2_flag=%02X" in h and "md_coop_p2_trace_collision_results();" in g,
+    "P2 native object hit target writes are traced on both sides": "md_coop_p2_trace_hit_target(const char *stage, M68K *cpu)" in h and "before-object-hit-write" in g and "after-object-hit-write" in g,
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
