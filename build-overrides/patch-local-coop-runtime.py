@@ -533,6 +533,64 @@ void md_coop_p2_trace_hit_target(const char *stage, M68K *cpu) {
     fclose(f);
 }
 
+void md_coop_p2_trace_sprite_build(const char *stage, M68K *cpu) {
+    FILE *f;
+    unsigned i, p2_nonzero = 0, p1_nonzero = 0;
+    uint32_t p2_hash = 2166136261u, p1_hash = 2166136261u;
+    uint32_t queue_ptr;
+    uint16_t queue_count;
+    if (md_coop_p2_frame_count > 12u &&
+        md_coop_p2_frame_count != 60u &&
+        md_coop_p2_frame_count != 120u &&
+        md_coop_p2_frame_count != 240u &&
+        md_coop_p2_frame_count != 360u) return;
+    f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+    if (!f) return;
+    for (i = 0; i < 29u; ++i) {
+        unsigned at = 0xFCE8u + i * 4u;
+        uint32_t p2v = md_coop_p2_long(at);
+        uint32_t p1v = ((uint32_t)ram[at] << 24) |
+                       ((uint32_t)ram[at + 1u] << 16) |
+                       ((uint32_t)ram[at + 2u] << 8) |
+                       (uint32_t)ram[at + 3u];
+        if (p2v) ++p2_nonzero;
+        if (p1v) ++p1_nonzero;
+        p2_hash = (p2_hash ^ p2v) * 16777619u;
+        p1_hash = (p1_hash ^ p1v) * 16777619u;
+    }
+    queue_ptr = ((uint32_t)ram[0xBC54] << 24) |
+                ((uint32_t)ram[0xBC55] << 16) |
+                ((uint32_t)ram[0xBC56] << 8) | (uint32_t)ram[0xBC57];
+    queue_count = (uint16_t)(((uint16_t)ram[0xBC58] << 8) | ram[0xBC59]);
+    fprintf(f,
+        "event=p2-sprite-build stage=%s frame=%lu connected=%d forced=%d "
+        "p2_parts=%u p2_hash=%08X p1_parts=%u p1_hash=%08X "
+        "queue_ptr=%08X queue_count=%04X "
+        "p2_BD24=%02X p2_BD25=%02X p2_BD02=%02X p2_BD22=%02X p2_BC86=%02X "
+        "p2_camera=%04X,%04X p1_camera=%04X,%04X",
+        stage ? stage : "-", md_coop_p2_frame_count,
+        md_player2_connected, md_local_coop_enabled,
+        p2_nonzero, (unsigned)p2_hash, p1_nonzero, (unsigned)p1_hash,
+        (unsigned)queue_ptr, (unsigned)queue_count,
+        (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25],
+        (unsigned)md_coop_p2_ram[0xBD02], (unsigned)md_coop_p2_ram[0xBD22],
+        (unsigned)md_coop_p2_ram[0xBC86],
+        (unsigned)md_coop_p2_word(0xDFD8), (unsigned)md_coop_p2_word(0xDFDA),
+        (unsigned)(((uint16_t)ram[0xDFD8] << 8) | ram[0xDFD9]),
+        (unsigned)(((uint16_t)ram[0xDFDA] << 8) | ram[0xDFDB]));
+    if (cpu) fprintf(f, " A0=%08X A1=%08X A2=%08X D0=%08X D7=%08X SR=%04X",
+                     (unsigned)cpu->a[0], (unsigned)cpu->a[1],
+                     (unsigned)cpu->a[2], (unsigned)cpu->d[0],
+                     (unsigned)cpu->d[7], (unsigned)cpu->sr_sys);
+    fprintf(f, " p2_entries=");
+    for (i = 0; i < 29u; ++i) {
+        uint32_t v = md_coop_p2_long(0xFCE8u + i * 4u);
+        if (v) fprintf(f, "%s%u:%08X", i ? "," : "", i, (unsigned)v);
+    }
+    fprintf(f, "\n");
+    fclose(f);
+}
+
 int md_coop_p2_is_ready(void) {
     return md_coop_p2_ready && !md_coop_p2_disabled &&
            md_coop_p2_requested() && md_coop_primary_m68k != NULL;
@@ -798,6 +856,7 @@ extern const M68K *md_coop_p2_spatial_seed_context(void);
 extern int md_coop_p2_import_collision_descriptors(void);
 extern int md_coop_p2_is_ready(void);
 extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
+extern void md_coop_p2_trace_sprite_build(const char *stage, M68K *cpu);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
 extern void md_coop_p2_finish(void);
 
@@ -940,11 +999,13 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
        passes; f_3B38/f_56CE/f_3D80 state changes remain in P2's private RAM. */
     md_coop_p2_sync_call_context(p2, frame_seed);
     md_coop_p2_set_active(1);
+    md_coop_p2_trace_sprite_build("before-f5db2", p2);
     if (!md_coop_p2_call_renderer(p2)) {
         md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
         md_coop_p2_finish();
         return;
     }
+    md_coop_p2_trace_sprite_build("after-f5db2", p2);
 
     /* Initial implementation follows the game's verified native player actor.
        A different callback is treated as an unsupported state, not guessed. */
@@ -1360,6 +1421,7 @@ checks = {
     "P2 keeps its renderer register results for movement": "md_coop_p2_sync_call_context(p2, frame_seed);" in g and "md_coop_p2_sync_call_context(p2, primary);" not in g,
     "P2 actor trace captures CPU and private state": "p2_state_BC62_BD26=" in h and "p2_cpu d:" in h,
     "P2 renderer uses native f_5DB2": "f_5DB2(p2);" in g,
+    "P2 sprite diagnostics bracket f_5DB2 and inspect 29 private parts plus shared queue": "md_coop_p2_trace_sprite_build(\"before-f5db2\", p2)" in g and "md_coop_p2_trace_sprite_build(\"after-f5db2\", p2)" in g and "event=p2-sprite-build" in h and "for (i = 0; i < 29u; ++i)" in h and "queue_count=%04X" in h,
     "P2 callback is guarded": "callback != 0x0000224Cu" in g,
     "global events suspend P2 memory view": "md_coop_p2_service_event(c)" in r and "md_coop_p2_service_irq(c)" in r,
     "DMA raw reads remain untouched": "uint16_t vdp_dma_read" in h and "rd8_raw(a)" in h and "rd8_raw(a + 1)" in h,
