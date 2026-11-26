@@ -151,6 +151,22 @@ void md_coop_p2_flush_audit(void) {
 
 /* Physical pad 2 enables P2 automatically; the persistent Game Options
    override can also force the actor on when no second controller is attached. */
+/* Convert the SDL logical mask to the exact native 16-bit Genesis
+   active-low player word consumed at BC90/BC91. The hardware layout is:
+   UP/DOWN/LEFT/RIGHT -> bits 8..11, B/C/A/START -> bits 12/13/14/15.
+   The existing P2 trace verifies B=EFFF, B+START=6FFF, B+RIGHT=E7FF. */
+static uint16_t md_coop_encode_genesis_input(unsigned mask) {
+    static const uint16_t bits[8] = {
+        0x0100u, 0x0200u, 0x0400u, 0x0800u,
+        0x4000u, 0x1000u, 0x2000u, 0x8000u
+    };
+    uint16_t value = 0xFFFFu;
+    unsigned i;
+    for (i = 0; i < 8u; ++i)
+        if (mask & (1u << i)) value = (uint16_t)(value & (uint16_t)~bits[i]);
+    return value;
+}
+
 static int md_coop_p2_requested(void) {
     const unsigned player = md_coop_cur + 1u; /* slot 0 is P2, slot 1 is P3, ... */
     if (player >= 4u) return 0;
@@ -804,7 +820,8 @@ void md_coop_p2_refresh(void) {
         md_coop_p2_ram[0xBC90] = ram[0xBC92];
         md_coop_p2_ram[0xBC91] = ram[0xBC93];
     } else {
-        const uint16_t active_low = (uint16_t)~(uint16_t)md_player_live_masks[player];
+        const uint16_t active_low = md_coop_encode_genesis_input(
+            (unsigned)md_player_live_masks[player]);
         md_coop_p2_ram[0xBC90] = (uint8_t)(active_low >> 8);
         md_coop_p2_ram[0xBC91] = (uint8_t)active_low;
     }
@@ -1600,7 +1617,8 @@ checks = {
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
     "P2 input retains the verified native port-2 pair": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h and "md_coop_p2_ram[0xBC91] = ram[0xBC93]" in h,
-    "P3/P4 receive independent active-low input pairs": "md_player_live_masks[player]" in h and "const uint16_t active_low" in h and "active_low >> 8" in h,
+    "P3/P4 receive independent Genesis active-low input pairs": "md_player_live_masks[player]" in h and "md_coop_encode_genesis_input" in h and "active_low >> 8" in h,
+    "Genesis button input encodes the traced B and Start bit positions": "0x1000u" in h and "0x8000u" in h and "0x0800u" in h,
     "per-slot activation uses each player's own physical controller": "md_player_connected[player]" in h and "return player == 1u && md_local_coop_enabled;" in h,
     "P2 Game Options override remains backward-compatible": "return player == 1u && md_local_coop_enabled;" in h,
     "P2 seed capture and readiness honor forced mode": h.count("!md_coop_p2_requested()") >= 5 and "md_coop_p2_requested() && md_coop_primary_m68k != NULL" in h,
