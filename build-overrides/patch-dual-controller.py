@@ -148,6 +148,10 @@ inject=r"""
   const dualControllerSettingsForLaunch = normalizeControllerSettings(settings);
   process.env.MEGATURRICAN_PAD1_MAP = dualControllerSettingsForLaunch.padMap.join(',');
   process.env.MEGATURRICAN_PAD2_MAP = dualControllerSettingsForLaunch.pad2Map.join(',');
+  // P3/P4 use the same known-good Genesis defaults until their own launcher
+  // profile tabs are added. These can be overridden without changing the game.
+  process.env.MEGATURRICAN_PAD3_MAP = process.env.MEGATURRICAN_PAD3_MAP || '12,13,14,15,2,0,1,9';
+  process.env.MEGATURRICAN_PAD4_MAP = process.env.MEGATURRICAN_PAD4_MAP || '12,13,14,15,2,0,1,9';
 """# Ensure newly selected controller maps win over stale values retained from config.ini.
 if inject not in main:
     main=main.replace(write_anchor,inject+"\n"+write_anchor,1)
@@ -345,27 +349,37 @@ if "pad2Map:S.pad2Map" not in html:
     raise SystemExit("dual-controller patch: P2 bindings are not preserved on launch")
 HTML.write_text(html,encoding="utf-8")
 
-# 3. SDL: second controller handle, independent mappings, and live P2 mask.
+# 3. SDL: expose four independent controller masks to the scalable player slots.
 s=SDL.read_text(encoding="utf-8-sig")
 for header in ("#include <stdlib.h>","#include <stdio.h>"):
     if header not in s:
         include_pos=s.find("#include")
         if include_pos<0: raise SystemExit("dual-controller patch: SDL include section missing")
-        newline=s.find(chr(10),include_pos)
+        newline=s.find("\n",include_pos)
         if newline<0: raise SystemExit("dual-controller patch: SDL include line is unterminated")
-        s=s[:newline+1]+header+chr(10)+s[newline+1:]
+        s=s[:newline+1]+header+"\n"+s[newline+1:]
+
 if "static SDL_GameController *pad2 = NULL;" not in s:
     decl=re.search(r"(?m)^\s*static\s+SDL_GameController\s*\*\s*pad\s*(?:=\s*NULL)?\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: SDL primary pad declaration not found")
     s=s[:decl.end()]+"\nstatic SDL_GameController *pad2 = NULL;\n"+s[decl.end():]
+for old,new,label in (
+    ("static SDL_GameController *pad2 = NULL;","static SDL_GameController *pad2 = NULL;\nstatic SDL_GameController *pad3 = NULL;\nstatic SDL_GameController *pad4 = NULL;","four controller handles"),
+):
+    if "static SDL_GameController *pad4 = NULL;" not in s:
+        if old not in s: raise SystemExit("dual-controller patch: P2 handle declaration missing")
+        s=s.replace(old,new,1)
+
 if "static int pad2_map[8]" not in s:
     decl=re.search(r"(?m)^\s*static\s+int\s+pad_map\s*\[\s*8\s*\]\s*=\s*\{[^}]*\}\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: P1 pad_map declaration not found")
-    s=s[:decl.end()]+"\nstatic int pad2_map[8] = {12,13,14,15,2,0,1,9};\nint md_player2_live_mask=0;\nint md_player2_connected=0;\nint md_local_coop_enabled=0;"+s[decl.end():]
+    s=s[:decl.end()]+"\nstatic int pad2_map[8] = {12,13,14,15,2,0,1,9};\nint md_player2_live_mask=0;\nint md_player2_connected=0;"+s[decl.end():]
+if "static int pad4_map[8]" not in s:
+    decl=re.search(r"(?m)^\s*static\s+int\s+pad2_map\s*\[\s*8\s*\]\s*=\s*\{[^}]*\}\s*;",s)
+    if not decl: raise SystemExit("dual-controller patch: P2 pad_map declaration not found")
+    s=s[:decl.end()]+"\nstatic int pad3_map[8] = {12,13,14,15,2,0,1,9};\nstatic int pad4_map[8] = {12,13,14,15,2,0,1,9};\nint md_player3_live_mask=0;\nint md_player3_connected=0;\nint md_player4_live_mask=0;\nint md_player4_connected=0;\nint md_player_live_masks[4]={0,0,0,0};\nint md_player_connected[4]={1,0,0,0};"+s[decl.end():]
 
-# Parse P2 map keys from config.ini.
-# P2 mapping is read from MEGATURRICAN_PAD2_MAP during open_pad().
-# Make mapping helper device-agnostic and keep the existing P1 function.
+# Generalize the P1 mapper so P2/P3/P4 use the same SDL binding semantics.
 if "mapped_controller_button_for" not in s:
     a,b=func_span(s,r"static\s+int\s+mapped_controller_button\s*\(\s*int\s+binding\s*\)","mapped_controller_button")
     block=s[a:b]
@@ -374,8 +388,8 @@ if "mapped_controller_button_for" not in s:
     block=block.replace("SDL_GameControllerGetAxis(pad,","SDL_GameControllerGetAxis(device,")
     s=s[:a]+block+s[b:]
 s=s.replace("mapped_controller_button(pad_map[i])","mapped_controller_button_for(pad,pad_map[i])")
-if "static int readpad2(void)" not in s:
-    reader=r"""
+
+readers=r"""
 static int readpad2(void){
     int m=0;
     if(!pad2||!SDL_GameControllerGetAttached(pad2))return 0;
@@ -383,59 +397,88 @@ static int readpad2(void){
     for(int i=0;i<8;i++)if(mapped_controller_button_for(pad2,pad2_map[i]))m|=bits[i];
     return m;
 }
+static int readpad3(void){
+    int m=0;
+    if(!pad3||!SDL_GameControllerGetAttached(pad3))return 0;
+    static const int bits[8]={B_U,B_D,B_L,B_R,B_A,B_B,B_C,B_S};
+    for(int i=0;i<8;i++)if(mapped_controller_button_for(pad3,pad3_map[i]))m|=bits[i];
+    return m;
+}
+static int readpad4(void){
+    int m=0;
+    if(!pad4||!SDL_GameControllerGetAttached(pad4))return 0;
+    static const int bits[8]={B_U,B_D,B_L,B_R,B_A,B_B,B_C,B_S};
+    for(int i=0;i<8;i++)if(mapped_controller_button_for(pad4,pad4_map[i]))m|=bits[i];
+    return m;
+}
 """
+if "static int readpad4(void)" not in s:
     a,b=func_span(s,r"static\s+int\s+readpad\s*\(\s*void\s*\)","readpad")
-    s=s[:b]+reader+s[b:]
+    s=s[:b]+readers+s[b:]
 
-open_pad=r"""static void open_pad(void){
-    static int p1_map_env_loaded=0;
-    static int p2_map_env_loaded=0;
-    if(!p1_map_env_loaded){
-        const char *map=getenv("MEGATURRICAN_PAD1_MAP");
-        if(map){
-            int values[8];
-            if(sscanf(map,"%d,%d,%d,%d,%d,%d,%d,%d",
-                      &values[0],&values[1],&values[2],&values[3],
-                      &values[4],&values[5],&values[6],&values[7])==8){
-                for(int i=0;i<8;i++)if(values[i]>=-8&&values[i]<=15)pad_map[i]=values[i];
-            }
-        }
-        p1_map_env_loaded=1;
+open_pad=r"""static void md_load_controller_map(const char *name,int map[8]){
+    const char *value=getenv(name);
+    if(!value)return;
+    int values[8];
+    if(sscanf(value,"%d,%d,%d,%d,%d,%d,%d,%d",
+              &values[0],&values[1],&values[2],&values[3],
+              &values[4],&values[5],&values[6],&values[7])==8){
+        for(int i=0;i<8;i++)if(values[i]>=-8&&values[i]<=15)map[i]=values[i];
     }
-    if(!p2_map_env_loaded){
-        const char *map=getenv("MEGATURRICAN_PAD2_MAP");
-        if(map){
-            int values[8];
-            if(sscanf(map,"%d,%d,%d,%d,%d,%d,%d,%d",
-                      &values[0],&values[1],&values[2],&values[3],
-                      &values[4],&values[5],&values[6],&values[7])==8){
-                for(int i=0;i<8;i++)if(values[i]>=-8&&values[i]<=15)pad2_map[i]=values[i];
-            }
-        }
-        p2_map_env_loaded=1;
+}
+static void open_pad(void){
+    static int maps_loaded=0;
+    if(!maps_loaded){
+        md_load_controller_map("MEGATURRICAN_PAD1_MAP",pad_map);
+        md_load_controller_map("MEGATURRICAN_PAD2_MAP",pad2_map);
+        md_load_controller_map("MEGATURRICAN_PAD3_MAP",pad3_map);
+        md_load_controller_map("MEGATURRICAN_PAD4_MAP",pad4_map);
+        maps_loaded=1;
     }
     if(pad){SDL_GameControllerClose(pad);pad=NULL;}
     if(pad2){SDL_GameControllerClose(pad2);pad2=NULL;}
+    if(pad3){SDL_GameControllerClose(pad3);pad3=NULL;}
+    if(pad4){SDL_GameControllerClose(pad4);pad4=NULL;}
     for(int i=0;i<SDL_NumJoysticks();i++){
         if(!SDL_IsGameController(i))continue;
         SDL_GameController *candidate=SDL_GameControllerOpen(i);
         if(!candidate)continue;
         if(!pad)pad=candidate;
         else if(!pad2)pad2=candidate;
+        else if(!pad3)pad3=candidate;
+        else if(!pad4)pad4=candidate;
         else SDL_GameControllerClose(candidate);
-        if(pad&&pad2)break;
+        if(pad&&pad2&&pad3&&pad4)break;
     }
     md_player2_connected=(pad2&&SDL_GameControllerGetAttached(pad2))?1:0;
+    md_player3_connected=(pad3&&SDL_GameControllerGetAttached(pad3))?1:0;
+    md_player4_connected=(pad4&&SDL_GameControllerGetAttached(pad4))?1:0;
 }"""
 s=replace_func(s,r"\bstatic\s+void\s+open_pad\s*\(\s*void\s*\)",open_pad,"open_pad")
 s=re.sub(r"if\s*\(\s*e\.type\s*==\s*SDL_CONTROLLERDEVICEREMOVED\s*&&\s*pad\s*\)\s*\{[^{}]*open_pad\(\)\s*;[^{}]*\}",
-         "if(e.type==SDL_CONTROLLERDEVICEREMOVED){open_pad();}",s)
-if "md_player2_live_mask=md_player2_connected?readpad2():0;" not in s:
-    m=re.search(r"(?m)^(\s*)md_live_mask\s*=\s*[^;]*readpad\(\)[^;]*;",s)
-    if not m: raise SystemExit("dual-controller patch: md_frame_hook P1 input line not found")
+         "if(e.type==SDL_CONTROLLERDEVICEREMOVED || e.type==SDL_CONTROLLERDEVICEADDED){open_pad();}",s)
+
+if "md_player_live_masks[3]=md_player4_live_mask;" not in s:
+    m=re.search(r"(?m)^(\s*)md_player2_live_mask\s*=\s*md_player2_connected\s*\?\s*readpad2\(\)\s*:\s*0\s*;",s)
+    if not m: raise SystemExit("dual-controller patch: P2 live-mask sampling line not found")
     indent=m.group(1)
-    s=s[:m.end()]+f"\n{indent}md_player2_connected=(pad2&&SDL_GameControllerGetAttached(pad2))?1:0;\n{indent}md_player2_live_mask=md_player2_connected?readpad2():0;"+s[m.end():]
+    extra=(
+        f"\n{indent}md_player3_connected=(pad3&&SDL_GameControllerGetAttached(pad3))?1:0;"
+        f"\n{indent}md_player3_live_mask=md_player3_connected?readpad3():0;"
+        f"\n{indent}md_player4_connected=(pad4&&SDL_GameControllerGetAttached(pad4))?1:0;"
+        f"\n{indent}md_player4_live_mask=md_player4_connected?readpad4():0;"
+        f"\n{indent}md_player_live_masks[0]=md_live_mask;"
+        f"\n{indent}md_player_live_masks[1]=md_player2_live_mask;"
+        f"\n{indent}md_player_live_masks[2]=md_player3_live_mask;"
+        f"\n{indent}md_player_live_masks[3]=md_player4_live_mask;"
+        f"\n{indent}md_player_connected[0]=1;"
+        f"\n{indent}md_player_connected[1]=md_player2_connected;"
+        f"\n{indent}md_player_connected[2]=md_player3_connected;"
+        f"\n{indent}md_player_connected[3]=md_player4_connected;"
+    )
+    s=s[:m.end()]+extra+s[m.end():]
 SDL.write_text(s,encoding="utf-8")
+
 
 # 4. Expose controller port 2 through the emulator's existing pad_read(int p).
 h=HARNESS.read_text(encoding="utf-8-sig")
@@ -455,12 +498,13 @@ HARNESS.write_text(h,encoding="utf-8")
 checks={
  "launcher passes both maps without mutating cfg": "MEGATURRICAN_PAD1_MAP" in main and "MEGATURRICAN_PAD2_MAP" in main and "cfg.push(...dualPadConfigForLaunch)" not in main,
  "launcher offers separate profile tabs": 'id="p1Profile"' in html and 'id="p2Profile"' in html,
- "SDL opens two controller handles": "static SDL_GameController *pad2 = NULL;" in s and "SDL_GameControllerOpen(i)" in s,
- "SDL loads the saved P2 map": "MEGATURRICAN_PAD2_MAP" in s and "sscanf(map" in s,
- "SDL has independent P2 input reader": "static int readpad2(void)" in s,
- "P2 mask is sampled each frame": "md_player2_live_mask=md_player2_connected?readpad2():0;" in s,
+ "SDL opens four independent controller handles": all(x in s for x in ("static SDL_GameController *pad2 = NULL;","static SDL_GameController *pad3 = NULL;","static SDL_GameController *pad4 = NULL;")) and "SDL_GameControllerOpen(i)" in s,
+ "SDL loads separate maps for P2-P4": all(x in s for x in ("MEGATURRICAN_PAD2_MAP","MEGATURRICAN_PAD3_MAP","MEGATURRICAN_PAD4_MAP")),
+ "SDL has independent readers for P2-P4": all(x in s for x in ("static int readpad2(void)","static int readpad3(void)","static int readpad4(void)")),
+ "P2-P4 masks are sampled every frame": all(x in s for x in ("md_player2_live_mask=md_player2_connected?readpad2():0;","md_player3_live_mask=md_player3_connected?readpad3():0;","md_player4_live_mask=md_player4_connected?readpad4():0;")),
+ "runtime sees four separate controller masks": "int md_player_live_masks[4]" in s and "int md_player_connected[4]" in s,
  "Genesis port 2 consumes P2 mask": "int b = (p == 1) ? md_player2_live_mask : buttons();" in h
 }
 for label,ok in checks.items():
     if not ok: raise SystemExit("dual-controller verification failed: "+label)
-print("Installed two independent Genesis controller profiles and separate physical port-2 input.")
+print("Installed four independent Genesis controller inputs; P1/P2 retain their saved profiles and P3/P4 use configurable defaults.")

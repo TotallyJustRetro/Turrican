@@ -13,8 +13,22 @@ This is deliberately a constrained prototype:
 It does not enable the launcher multiplayer UI or claim full co-op completion.
 """
 from pathlib import Path
+import os
 import re
 import sys
+
+# ---------------------------------------------------------------------------
+# PLAYER COUNT. Change this one number (or set env MT_COOP_PLAYERS) to get
+# 2, 3 or 4 players. Player 1 is the original game actor; every additional
+# player is a private "slot" (own CPU context, stack, player RAM bank, scratch).
+# ---------------------------------------------------------------------------
+COOP_PLAYERS = max(2, min(4, int(os.environ.get("MT_COOP_PLAYERS", "2"))))
+# 0 = extra players get a private, never-drained DMA queue (safe default).
+# 1 = extra players append to the real shared VDP DMA queue.
+VDP_QUEUE_SHARED = int(os.environ.get("MT_COOP_VDP_QUEUE_SHARED", "0"))
+# Skip an extra player's sprite build when fewer than this many free records
+# remain in the shared 79-record object pool (one character needs up to 29).
+POOL_RESERVE = int(os.environ.get("MT_COOP_POOL_RESERVE", "36"))
 
 ROOT = Path(sys.argv[1]).resolve()
 GEN = ROOT / "recomp_gen.c"
@@ -33,46 +47,117 @@ for path in (GEN, HARNESS, RT_HEADER):
     if not path.is_file():
         raise SystemExit(f"local co-op patch: required source file missing: {path}")
 
-# 1) Add independent P2 memory, CPU bus view and interrupt/event handoff.
+# 1) Add independent per-player memory slots, CPU bus views and event handoff.
 HARNESS_HELPERS = r"""
 /* Mega Turrican local co-op: isolated P2 actor memory view. */
 #include <string.h>
-extern int md_player2_connected;
-extern int md_player2_live_mask;
 extern int md_local_coop_enabled;
+extern int md_player_live_masks[4];
+extern int md_player_connected[4];
+
+#ifndef MT_COOP_PLAYERS
+#define MT_COOP_PLAYERS 2
+#endif
+#ifndef MT_COOP_VDP_QUEUE_SHARED
+#define MT_COOP_VDP_QUEUE_SHARED 0
+#endif
+#ifndef MT_COOP_POOL_RESERVE
+#define MT_COOP_POOL_RESERVE 36
+#endif
+#define MT_COOP_SLOTS (MT_COOP_PLAYERS - 1)
+
+/* One slot per additional player. The legacy md_coop_p2_* names below are
+   macros that always resolve to the CURRENT slot, so every routine written for
+   "P2" runs unchanged for P2, P3, P4... The runner selects the slot first. */
+typedef struct {
+    uint8_t ram[0x10000];
+    uint8_t priv[0x10000];
+    uint8_t stack[0x10000];
+    uint8_t shared_w[0x10000];          /* audit: shared bytes this slot wrote */
+    uint8_t shared_w_reported[0x10000];
+    M68K m68k, frame_seed, collision_seed, spatial_seed, motion_seed;
+    int collision_seed_valid, spatial_seed_valid, motion_seed_valid;
+    uint8_t primary_collision_desc[0x1E0];
+    unsigned primary_collision_count;
+    int primary_collision_desc_valid;
+    unsigned collision_shadow_count;
+    uint32_t collision_result_log_frames;
+    int frame_seed_valid, ready, disabled;
+    unsigned long frame_count, abort_frame;
+    unsigned abort_count;
+    unsigned pool_skips;
+} md_coop_slot_t;
 
 int md_coop_p2_active = 0;
-static uint8_t md_coop_p2_ram[0x10000];
-static uint8_t md_coop_p2_private[0x10000];
-static uint8_t md_coop_p2_stack[0x10000];
-static M68K md_coop_p2_m68k;
-static M68K md_coop_p2_frame_seed;
-static M68K md_coop_p2_collision_seed;
-static int md_coop_p2_collision_seed_valid = 0;
-static M68K md_coop_p2_spatial_seed;
-static int md_coop_p2_spatial_seed_valid = 0;
-static M68K md_coop_p2_motion_seed;
-static int md_coop_p2_motion_seed_valid = 0;
-static uint8_t md_coop_p2_primary_collision_desc[0x1E0];
-static unsigned md_coop_p2_primary_collision_count = 0;
-static int md_coop_p2_primary_collision_desc_valid = 0;
-static unsigned md_coop_p2_collision_shadow_count = 0;
-static uint32_t md_coop_p2_collision_result_log_frames = 0;
+/* Pad bytes (BC90/BC91 layout) for players 3+; slot 0 (P2) reads port 2. */
+static md_coop_slot_t md_coop_slots[MT_COOP_SLOTS];
+static unsigned md_coop_cur = 0;
+#define MD_CUR (md_coop_slots[md_coop_cur])
+#define md_coop_p2_ram MD_CUR.ram
+#define md_coop_p2_private MD_CUR.priv
+#define md_coop_p2_stack MD_CUR.stack
+#define md_coop_p2_m68k MD_CUR.m68k
+#define md_coop_p2_frame_seed MD_CUR.frame_seed
+#define md_coop_p2_collision_seed MD_CUR.collision_seed
+#define md_coop_p2_collision_seed_valid MD_CUR.collision_seed_valid
+#define md_coop_p2_spatial_seed MD_CUR.spatial_seed
+#define md_coop_p2_spatial_seed_valid MD_CUR.spatial_seed_valid
+#define md_coop_p2_motion_seed MD_CUR.motion_seed
+#define md_coop_p2_motion_seed_valid MD_CUR.motion_seed_valid
+#define md_coop_p2_primary_collision_desc MD_CUR.primary_collision_desc
+#define md_coop_p2_primary_collision_count MD_CUR.primary_collision_count
+#define md_coop_p2_primary_collision_desc_valid MD_CUR.primary_collision_desc_valid
+#define md_coop_p2_collision_shadow_count MD_CUR.collision_shadow_count
+#define md_coop_p2_collision_result_log_frames MD_CUR.collision_result_log_frames
+#define md_coop_p2_frame_seed_valid MD_CUR.frame_seed_valid
+#define md_coop_p2_ready MD_CUR.ready
+#define md_coop_p2_disabled MD_CUR.disabled
+#define md_coop_p2_frame_count MD_CUR.frame_count
+#define md_coop_p2_abort_frame MD_CUR.abort_frame
+#define md_coop_p2_abort_count MD_CUR.abort_count
 static M68K *md_coop_primary_m68k = NULL;
-static int md_coop_p2_frame_seed_valid = 0;
-static int md_coop_p2_ready = 0;
-static int md_coop_p2_disabled = 0;
-static unsigned long md_coop_p2_frame_count = 0;
-/* Soft-abort retry: after a stack/contract fault, P2 waits this many frames
-   before re-seeding from P1 state. Permanent disable only if faults happen
-   faster than the minimum safe re-seed interval. */
-static unsigned long md_coop_p2_abort_frame = 0;
-static unsigned md_coop_p2_abort_count = 0;
+/* Each extra player starts 0x10 px further right than the previous one. */
+#define MD_COOP_SPAWN_DX (0x0010u * (md_coop_cur + 1u))
+
+unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
+void md_coop_p2_select(unsigned slot) { md_coop_cur = slot < MT_COOP_SLOTS ? slot : 0u; }
+
+/* Shared-write audit. While an extra player's code runs, every byte it writes
+   OUTSIDE its private bank is recorded. Anything unexpected in
+   MegaTurrican-coop-shared-writes.txt is a shared-state leak, which is exactly
+   what produces glitches like a corrupted HUD or scroll. */
+void md_coop_p2_note_shared_write(unsigned a, unsigned len) {
+    unsigned i;
+    for (i = 0; i < len; ++i) MD_CUR.shared_w[(a + i) & 0xFFFFu] = 1;
+}
+
+void md_coop_p2_flush_audit(void) {
+    unsigned i, start;
+    FILE *f = NULL;
+    for (i = 0; i < 0x10000u; ) {
+        if (MD_CUR.shared_w[i] && !MD_CUR.shared_w_reported[i]) {
+            start = i;
+            while (i < 0x10000u && MD_CUR.shared_w[i] && !MD_CUR.shared_w_reported[i]) {
+                MD_CUR.shared_w_reported[i] = 1; ++i;
+            }
+            if (!f) f = fopen("MegaTurrican-coop-shared-writes.txt", "a");
+            if (!f) return;
+            fprintf(f, "slot=%u frame=%lu new_shared_write FF%04X-FF%04X\n",
+                    md_coop_cur + 2u, md_coop_p2_frame_count, start, i - 1u);
+        } else ++i;
+    }
+    if (f) fclose(f);
+}
 
 /* Physical pad 2 enables P2 automatically; the persistent Game Options
    override can also force the actor on when no second controller is attached. */
 static int md_coop_p2_requested(void) {
-    return md_player2_connected || md_local_coop_enabled;
+    const unsigned player = md_coop_cur + 1u; /* slot 0 is P2, slot 1 is P3, ... */
+    if (player >= 4u) return 0;
+    if (md_player_connected[player]) return 1;
+    /* Preserve the existing Game Options override for P2 only. P3/P4 require
+       their own detected controller, so enabling P2 never creates idle extra actors. */
+    return player == 1u && md_local_coop_enabled;
 }
 
 static void md_coop_p2_mark(unsigned first, unsigned last) {
@@ -108,9 +193,10 @@ static uint32_t md_coop_p2_long(unsigned at) {
 static void md_coop_p2_log(const char *event, uint32_t callback, const char *detail) {
     FILE *f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f) return;
-    fprintf(f, "event=%s frame=%lu connected=%d forced=%d callback=%06X p2_x=%04X p2_y=%04X input=%02X%02X detail=%s\n",
-            event, md_coop_p2_frame_count, md_player2_connected,
-            md_local_coop_enabled, callback,
+    fprintf(f, "slot=%u event=%s frame=%lu connected=%d forced=%d callback=%06X p2_x=%04X p2_y=%04X input=%02X%02X detail=%s\n",
+            md_coop_cur + 2u, event, md_coop_p2_frame_count,
+            md_player_connected[md_coop_cur + 1u],
+            (md_coop_cur == 0u) ? md_local_coop_enabled : 0, callback,
             md_coop_p2_word(0xBD1E), md_coop_p2_word(0xBD20),
             md_coop_p2_ram[0xBC90], md_coop_p2_ram[0xBC91],
             detail ? detail : "-");
@@ -288,7 +374,7 @@ const M68K *md_coop_p2_frame_seed_context(void) {
     return md_coop_p2_frame_seed_valid ? &md_coop_p2_frame_seed : NULL;
 }
 
-void md_coop_p2_capture_collision_seed(M68K *primary) {
+static void md_coop_p2_capture_collision_seed_slot(M68K *primary) {
     if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_collision_seed_valid = 0;
         return;
@@ -304,7 +390,7 @@ const M68K *md_coop_p2_collision_seed_context(void) {
     return md_coop_p2_collision_seed_valid ? &md_coop_p2_collision_seed : NULL;
 }
 
-void md_coop_p2_capture_spatial_seed(M68K *primary) {
+static void md_coop_p2_capture_spatial_seed_slot(M68K *primary) {
     if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_spatial_seed_valid = 0;
         return;
@@ -320,7 +406,7 @@ const M68K *md_coop_p2_spatial_seed_context(void) {
     return md_coop_p2_spatial_seed_valid ? &md_coop_p2_spatial_seed : NULL;
 }
 
-void md_coop_p2_capture_motion_seed(M68K *primary) {
+static void md_coop_p2_capture_motion_seed_slot(M68K *primary) {
     if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
         md_coop_p2_motion_seed_valid = 0;
         return;
@@ -335,7 +421,7 @@ const M68K *md_coop_p2_motion_seed_context(void) {
     return md_coop_p2_motion_seed_valid ? &md_coop_p2_motion_seed : NULL;
 }
 
-void md_coop_p2_capture_collision_descriptors(M68K *primary) {
+static void md_coop_p2_capture_collision_descriptors_slot(M68K *primary) {
     unsigned count;
     FILE *f;
     if (!primary || md_coop_p2_disabled || !md_coop_p2_requested()) {
@@ -574,7 +660,8 @@ void md_coop_p2_trace_sprite_build(const char *stage, M68K *cpu) {
         "p2_BD24=%02X p2_BD25=%02X p2_BD02=%02X p2_BD22=%02X p2_BC86=%02X "
         "p2_camera=%04X,%04X p1_camera=%04X,%04X",
         stage ? stage : "-", md_coop_p2_frame_count,
-        md_player2_connected, md_local_coop_enabled,
+        md_player_connected[md_coop_cur + 1u],
+        (md_coop_cur == 0u) ? md_local_coop_enabled : 0,
         p2_nonzero, (unsigned)p2_hash, p1_nonzero, (unsigned)p1_hash,
         (unsigned)queue_ptr, (unsigned)queue_count,
         (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25],
@@ -601,7 +688,7 @@ int md_coop_p2_is_ready(void) {
            md_coop_p2_requested() && md_coop_primary_m68k != NULL;
 }
 
-void md_coop_prepare_p2(M68K *primary) {
+static void md_coop_prepare_p2_slot(M68K *primary) {
     uint32_t callback;
     unsigned i;
     if (!primary) return;
@@ -642,7 +729,18 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_mark(0xBC8C, 0xBC8C); /* player initialization state installed by f_19FA */
         md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
+#if !MT_COOP_VDP_QUEUE_SHARED
+        /* $FFBCA4 = DMA queue write index, $FFBCA6 = busy flag, queue entries
+           live at $FFD2DA + index*16 (see MAKER-ACTOR-RESEARCH). They are WORLD
+           state drained by f_554 in VBlank, which only ever resets the REAL
+           index. Giving a player a private index with a never-reset counter made
+           its f_71C enqueues march through RAM and overwrite the HUD, tilemap
+           and scroll data. In the default isolate mode the player gets a private
+           index AND a private queue buffer that is reset every frame, so its
+           transfers are safely discarded. */
         md_coop_p2_mark(0xBCA4, 0xBCA7);
+        md_coop_p2_mark(0xD2DA, 0xD8D9); /* 96 private queue entries */
+#endif
         md_coop_p2_mark(0xBCBC, 0xBD26);
         md_coop_p2_mark(0xBD28, 0xBF07); /* 40 x 12-byte per-player collision descriptors */
         md_coop_p2_mark(0xEA00, 0xEEFF); /* up to 40 shadow copies of mutable collision targets */
@@ -666,14 +764,14 @@ void md_coop_prepare_p2(M68K *primary) {
         md_coop_p2_m68k.usp = 0x00F0FFFCu;
         md_coop_p2_m68k.ret = 0;
 
-        /* Place P2 beside P1 without changing the shared camera. The
+        /* Place this player beside P1 (offset grows per slot) without changing the shared camera. The
            native f_1BDE respawn path rebuilds BD1E from BF0E (viewport origin)
            and BF12 (the saved player X/Y). Keep P2's saved X aligned with the
            live spawn offset or its next native respawn would collapse onto P1. */
         md_coop_p2_put_word(0xBD1E,
-            (uint16_t)(md_coop_p2_word(0xBD1E) + 0x0010u));
+            (uint16_t)(md_coop_p2_word(0xBD1E) + MD_COOP_SPAWN_DX));
         md_coop_p2_put_word(0xBF12,
-            (uint16_t)(md_coop_p2_word(0xBF12) + 0x0010u));
+            (uint16_t)(md_coop_p2_word(0xBF12) + MD_COOP_SPAWN_DX));
 
         /* BCF5 is tested and decremented by f_3222 as a movement-lock countdown.
            BCF6..BCF8 are adjacent movement/state branch bytes. Do not inherit
@@ -697,12 +795,24 @@ void md_coop_prepare_p2(M68K *primary) {
 }
 
 void md_coop_p2_refresh(void) {
-    if (!md_coop_p2_is_ready()) return;
-    /* Port 2 is latched by the normal Genesis input path into BC92/BC93.
-       The native player code consumes BC90/BC91, so present those bytes in
-       the private P2 view. The camera is shared and follows P1 for now. */
-    md_coop_p2_ram[0xBC90] = ram[0xBC92];
-    md_coop_p2_ram[0xBC91] = ram[0xBC93];
+    unsigned player = md_coop_cur + 1u; /* Genesis player number: P2=1, P3=2, P4=3 */
+    if (!md_coop_p2_is_ready() || player >= 4u) return;
+    /* P2 keeps the verified native port-2 bytes. P3/P4 receive their own
+       controller mask converted to the same active-low 16-bit Genesis input
+       pair at the player-local BC90/BC91 addresses. */
+    if (player == 1u) {
+        md_coop_p2_ram[0xBC90] = ram[0xBC92];
+        md_coop_p2_ram[0xBC91] = ram[0xBC93];
+    } else {
+        const uint16_t active_low = (uint16_t)~(uint16_t)md_player_live_masks[player];
+        md_coop_p2_ram[0xBC90] = (uint8_t)(active_low >> 8);
+        md_coop_p2_ram[0xBC91] = (uint8_t)active_low;
+    }
+#if !MT_COOP_VDP_QUEUE_SHARED
+    /* Private DMA queue: restart empty every frame so it can never run away. */
+    md_coop_p2_ram[0xBCA4] = 0; md_coop_p2_ram[0xBCA5] = 0;
+    md_coop_p2_ram[0xBCA6] = 0; md_coop_p2_ram[0xBCA7] = 0;
+#endif
     md_coop_p2_ram[0xDFD8] = ram[0xDFD8];
     md_coop_p2_ram[0xDFD9] = ram[0xDFD9];
     md_coop_p2_ram[0xDFDA] = ram[0xDFDA];
@@ -719,6 +829,7 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
         md_coop_p2_abort_count = 0u;
     if (md_coop_p2_frame_count > 10u && (md_coop_p2_frame_count % 60u) != 0u)
         return;
+    md_coop_p2_flush_audit();
     md_coop_p2_log("actor-frame", callback, "P2 renderer and actor callback returned");
     f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f || !cpu) { if (f) fclose(f); return; }
@@ -752,6 +863,9 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f, "\np2_player_scratch_F200_F9FF=");
     for (i = 0xF200u; i <= 0xF9FFu; ++i)
         fprintf(f, "%02X", (unsigned)md_coop_p2_ram[i]);
+    fprintf(f, "\np2_vdp_queue_idx_BCA4=%04X shared_idx=%04X pool_skips=%u",
+            (unsigned)md_coop_p2_word(0xBCA4),
+            (unsigned)(((unsigned)ram[0xBCA4] << 8) | ram[0xBCA5]), MD_CUR.pool_skips);
     fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
             (unsigned)md_coop_p2_ram[0xDFDA],
@@ -788,12 +902,32 @@ void md_coop_p2_abort(const char *reason, uint32_t callback) {
 }
 
 void md_coop_p2_finish(void) {
+    md_coop_p2_active = 0; /* primary pointer stays valid for the next slot */
+}
+
+void md_coop_p2_end_frame(void) {
     md_coop_p2_active = 0;
     md_coop_primary_m68k = NULL;
+    md_coop_cur = 0;
 }
+
+/* Public hook entry points used by the generated code: fan out to every slot. */
+#define MD_COOP_FANOUT(NAME) \
+    void NAME(M68K *primary) { \
+        unsigned s_; \
+        for (s_ = 0; s_ < MT_COOP_SLOTS; ++s_) { md_coop_cur = s_; NAME##_slot(primary); } \
+        md_coop_cur = 0; \
+    }
+MD_COOP_FANOUT(md_coop_prepare_p2)
+MD_COOP_FANOUT(md_coop_p2_capture_collision_seed)
+MD_COOP_FANOUT(md_coop_p2_capture_spatial_seed)
+MD_COOP_FANOUT(md_coop_p2_capture_motion_seed)
+MD_COOP_FANOUT(md_coop_p2_capture_collision_descriptors)
 
 /* RT_POLL runs inside P2's generated actor code. VDP/audio events and IRQs
    must execute against the real P1/global RAM view and the primary CPU. */
+void md_coop_p2_note_pool_skip(void) { ++MD_CUR.pool_skips; }
+
 void md_coop_p2_service_event(M68K *unused) {
     int was_active = md_coop_p2_active;
     M68K *primary = md_coop_primary_m68k ? md_coop_primary_m68k : unused;
@@ -811,6 +945,10 @@ void md_coop_p2_service_irq(M68K *unused) {
 }
 """
 
+HARNESS_HELPERS = (HARNESS_HELPERS
+    .replace("#define MT_COOP_PLAYERS 2", f"#define MT_COOP_PLAYERS {COOP_PLAYERS}", 1)
+    .replace("#define MT_COOP_VDP_QUEUE_SHARED 0", f"#define MT_COOP_VDP_QUEUE_SHARED {VDP_QUEUE_SHARED}", 1)
+    .replace("#define MT_COOP_POOL_RESERVE 36", f"#define MT_COOP_POOL_RESERVE {POOL_RESERVE}", 1))
 if "Mega Turrican local co-op: isolated P2 actor memory view." not in HARNESS.read_text(encoding="utf-8"):
     replace_once(
         HARNESS,
@@ -853,14 +991,15 @@ insert_after_ram_mask(
     HARNESS,
     r"void\s+bus_wr8\s*\(\s*uint32_t\s+a\s*,\s*uint8_t\s+v\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ md_coop_p2_stack[a & 0xFFFFu]=v; return; }\n"
-    "  if(md_coop_p2_active && a >= 0xE00000u && md_coop_p2_private[a & 0xFFFFu]){ md_coop_p2_ram[a & 0xFFFFu]=v; return; }\n",
+    "  if(md_coop_p2_active && a >= 0xE00000u && md_coop_p2_private[a & 0xFFFFu]){ md_coop_p2_ram[a & 0xFFFFu]=v; return; }\n"
+    "  if(md_coop_p2_active && a >= 0xE00000u) md_coop_p2_note_shared_write(a,1u);\n",
     "bus_wr8",
 )
 insert_after_ram_mask(
     HARNESS,
     r"void\s+bus_wr16\s*\(\s*uint32_t\s+a\s*,\s*uint16_t\s+v\s*\)",
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ unsigned o=a&0xFFFFu; md_coop_p2_stack[o]=(uint8_t)(v>>8); md_coop_p2_stack[(o+1u)&0xFFFFu]=(uint8_t)v; return; }\n"
-    "  if(md_coop_p2_active && a >= 0xE00000u){ unsigned o=a&0xFFFFu, n=(o+1u)&0xFFFFu; if(md_coop_p2_private[o]) md_coop_p2_ram[o]=(uint8_t)(v>>8); else ram[o]=(uint8_t)(v>>8); if(md_coop_p2_private[n]) md_coop_p2_ram[n]=(uint8_t)v; else ram[n]=(uint8_t)v; return; }\n",
+    "  if(md_coop_p2_active && a >= 0xE00000u){ unsigned o=a&0xFFFFu, n=(o+1u)&0xFFFFu; if(md_coop_p2_private[o]) md_coop_p2_ram[o]=(uint8_t)(v>>8); else { ram[o]=(uint8_t)(v>>8); md_coop_p2_note_shared_write(o,1u); } if(md_coop_p2_private[n]) md_coop_p2_ram[n]=(uint8_t)v; else { ram[n]=(uint8_t)v; md_coop_p2_note_shared_write(n,1u); } return; }\n",
     "bus_wr16",
 )
 
@@ -894,6 +1033,9 @@ RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 GEN_RUNNER = r"""
 
 /* First native Mega Turrican P2 actor runner. */
+#ifndef MT_COOP_POOL_RESERVE
+#define MT_COOP_POOL_RESERVE __POOL_RESERVE__
+#endif
 extern void md_coop_prepare_p2(M68K *primary);
 extern void md_coop_p2_refresh(void);
 extern void md_coop_p2_set_active(int active);
@@ -908,6 +1050,20 @@ extern void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback);
 extern void md_coop_p2_trace_sprite_build(const char *stage, M68K *cpu);
 extern void md_coop_p2_abort(const char *reason, uint32_t callback);
 extern void md_coop_p2_finish(void);
+extern void md_coop_p2_end_frame(void);
+extern unsigned md_coop_p2_slot_count(void);
+extern void md_coop_p2_select(unsigned slot);
+extern void md_coop_p2_note_pool_skip(void);
+
+/* Free records left in the shared 79-record object pool (free list at $FFBC2C,
+   next pointer at +0). f_5300 hands out the shared fallback record at $FFBF3C
+   when this runs dry, which makes every sprite part share one record. */
+static unsigned md_coop_pool_free_records(void) {
+    uint32_t n = RD32(0xFFFFBC2Cu);
+    unsigned c = 0;
+    while ((n & 0x00FF0000u) == 0x00FF0000u && c <= 80u) { ++c; n = RD32(n); }
+    return c;
+}
 
 /* Player state persists in P2 RAM, but the game's callback also receives live
    per-frame D/A register inputs from its caller. Refresh those inputs for each
@@ -963,7 +1119,7 @@ static int md_coop_p2_call_actor(M68K *p2, uint32_t target) {
     return ok;
 }
 
-void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
+static void md_coop_run_local_slot(M68K *primary, uint32_t callback) {
     M68K *p2;
     const M68K *frame_seed;
     const M68K *collision_seed;
@@ -1031,14 +1187,22 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     /* Return to the exact pre-render registers for P2's sprite and movement
        passes; f_3B38/f_56CE/f_3D80 state changes remain in P2's private RAM. */
     md_coop_p2_sync_call_context(p2, frame_seed);
-    md_coop_p2_set_active(1);
-    md_coop_p2_trace_sprite_build("before-f5db2", p2);
-    if (!md_coop_p2_call_renderer(p2)) {
-        md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
-        md_coop_p2_finish();
-        return;
+    /* active is 0 here, so this reads the real shared pool. */
+    if (md_coop_pool_free_records() >= (unsigned)MT_COOP_POOL_RESERVE) {
+        md_coop_p2_set_active(1);
+        md_coop_p2_trace_sprite_build("before-f5db2", p2);
+        if (!md_coop_p2_call_renderer(p2)) {
+            md_coop_p2_abort("P2 sprite builder did not restore its CPU stack/return frame", 0);
+            md_coop_p2_finish();
+            return;
+        }
+        md_coop_p2_trace_sprite_build("after-f5db2", p2);
+    } else {
+        /* Pool nearly full: omit this player's sprite this frame (brief flicker)
+           instead of draining the pool and corrupting list/fallback state. */
+        md_coop_p2_note_pool_skip();
+        md_coop_p2_set_active(1);
     }
-    md_coop_p2_trace_sprite_build("after-f5db2", p2);
 
     /* Initial implementation follows the game's verified native player actor.
        A different callback is treated as an unsupported state, not guessed. */
@@ -1068,9 +1232,20 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     md_coop_p2_actor_complete(p2, callback);
     md_coop_p2_finish();
 }
+
+/* Run every extra player in order (P2, P3, ...), then restore the primary view. */
+void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
+    unsigned s, n = md_coop_p2_slot_count();
+    for (s = 0; s < n; ++s) {
+        md_coop_p2_select(s);
+        md_coop_run_local_slot(primary, callback);
+    }
+    md_coop_p2_end_frame();
+}
 """
 
 gen = GEN.read_text(encoding="utf-8")
+GEN_RUNNER = GEN_RUNNER.replace("__POOL_RESERVE__", str(POOL_RESERVE))
 if "First native Mega Turrican P2 actor runner." not in gen:
     gen += GEN_RUNNER
     GEN.write_text(gen, encoding="utf-8", newline="\n")
@@ -1410,7 +1585,7 @@ h = HARNESS.read_text(encoding="utf-8")
 g = GEN.read_text(encoding="utf-8")
 r = RT_HEADER.read_text(encoding="utf-8")
 checks = {
-    "P2 owns persistent M68K context": "static M68K md_coop_p2_m68k;" in h,
+    "P2 owns persistent M68K context": "M68K m68k, frame_seed" in h and "#define md_coop_p2_m68k MD_CUR.m68k" in h,
     "P2 uses a separate synthetic stack": "0x00F0FFFCu" in h and "md_coop_p2_stack" in h,
     "P2 private RAM uses explicit allowlist": "md_coop_p2_mark(0xBCBC, 0xBD26)" in h,
     "P2 owns its original descriptor callback slots": all(x in h for x in (
@@ -1421,15 +1596,17 @@ checks = {
     "P2 owns f_19FA player init state BC8C": "md_coop_p2_mark(0xBC8C, 0xBC8C)" in h,
     "P2 init state is included in runtime trace": "BC8C=%02X BF18=%08X BF1C=%04X" in h,
     "P2 owns f_19FA descriptor state BF18..BF1D": "md_coop_p2_mark(0xBF18, 0xBF1D)" in h,
-    "P2 live spawn offset matches its native respawn X snapshot": "md_coop_p2_put_word(0xBF12" in h and "md_coop_p2_word(0xBF12) + 0x0010u" in h,
+    "P2 live spawn offset matches its native respawn X snapshot": "md_coop_p2_put_word(0xBF12" in h and "md_coop_p2_word(0xBF12) + MD_COOP_SPAWN_DX" in h,
     "P2 descriptor and lifecycle state are included in runtime trace": "p2_callback_slots BC18=%08X" in h and "BF0E=%08X BF12=%08X" in h,
     "P2 owns full indexed player work area": "md_coop_p2_mark(0xF200, 0xF9FF)" in h and "p2_player_scratch_F200_F9FF=" in h,
-    "P2 input is sourced from port 2": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h,
-    "P2 activation accepts physical detection or forced Game Options mode": "extern int md_local_coop_enabled;" in h and "return md_player2_connected || md_local_coop_enabled;" in h,
+    "P2 input retains the verified native port-2 pair": "md_coop_p2_ram[0xBC90] = ram[0xBC92]" in h and "md_coop_p2_ram[0xBC91] = ram[0xBC93]" in h,
+    "P3/P4 receive independent active-low input pairs": "md_player_live_masks[player]" in h and "const uint16_t active_low" in h and "active_low >> 8" in h,
+    "per-slot activation uses each player's own physical controller": "md_player_connected[player]" in h and "return player == 1u && md_local_coop_enabled;" in h,
+    "P2 Game Options override remains backward-compatible": "return player == 1u && md_local_coop_enabled;" in h,
     "P2 seed capture and readiness honor forced mode": h.count("!md_coop_p2_requested()") >= 5 and "md_coop_p2_requested() && md_coop_primary_m68k != NULL" in h,
     "P2 trace records whether multiplayer was forced": "connected=%d forced=%d callback=%06X" in h,
     "P2 actor runs immediately before P1 actor": "md_coop_run_local_p2(c,_t); rt_call_addr(c,_t);" in g,
-    "P2 captures the original pre-render frame context": "static M68K md_coop_p2_frame_seed;" in h and "md_coop_p2_frame_seed_context" in g,
+    "P2 captures the original pre-render frame context": "#define md_coop_p2_frame_seed MD_CUR.frame_seed" in h and "md_coop_p2_frame_seed_context" in g,
     "P2 captures the native collision-reset register context": "md_coop_p2_capture_collision_seed(c)" in g and "md_coop_p2_collision_seed_context" in g,
     "P2 captures the native f_56CE spatial-builder context": "md_coop_p2_capture_spatial_seed(c)" in g and "md_coop_p2_spatial_seed_context" in g,
     "P2 rebuilds f_56CE collision candidates every frame": "md_coop_p2_call_actor(p2, 0x000056CEu)" in g,
@@ -1463,6 +1640,12 @@ checks = {
         "md_coop_p2_ram[0xBCF5] = 0;", "md_coop_p2_ram[0xBCF6] = 0;",
         "md_coop_p2_ram[0xBCF7] = 0;", "md_coop_p2_ram[0xBCF8] = 0;")),
     "P2 velocity accumulators are zeroed at spawn": "md_coop_p2_put_word(0xBCEC, 0)" in h and "md_coop_p2_put_word(0xBCEE, 0)" in h,
+    "DMA queue is isolated or deliberately shared, never half-banked": ("md_coop_p2_mark(0xD2DA, 0xD8D9)" in h) and ("md_coop_p2_mark(0xBCA4, 0xBCA7)" in h) and "md_coop_p2_ram[0xBCA4] = 0" in h,
+    "extra players are slots, not singletons": "md_coop_slot_t md_coop_slots[MT_COOP_SLOTS]" in h and "md_coop_run_local_slot(primary, callback)" in g,
+    "slot count is bounded to two through four total players": "max(2, min(4, int(os.environ.get(\"MT_COOP_PLAYERS\", \"2\"))))" in Path(__file__).read_text(encoding="utf-8"),
+    "four controller slots are visible to runtime": "extern int md_player_live_masks[4];" in h and "extern int md_player_connected[4];" in h,
+    "object pool guard before extra-player sprite build": "md_coop_pool_free_records() >= (unsigned)MT_COOP_POOL_RESERVE" in g,
+    "shared-write audit installed on the bus": h.count("md_coop_p2_note_shared_write") >= 3,
     "P2 uses soft abort with retry instead of permanent disable on first fault": "soft-abort" in h and "md_coop_p2_abort_count" in h and "md_coop_p2_ready = 0" in h,
 }
 # Enforce the ownership boundary: these ranges belong to the one shared

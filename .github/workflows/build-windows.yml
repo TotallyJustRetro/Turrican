@@ -2,8 +2,18 @@ name: Build Mega Turrican for Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      coop_players:
+        description: "Total local co-op player count"
+        required: true
+        type: choice
+        options:
+          - "2"
+          - "3"
+          - "4"
+        default: "2"
   push:
-    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation, feature/level-builder-standalone-game-screen, feature/level-builder-maker-ui-vdp, feature/native-two-player-entity-refactor]
+    branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation, feature/level-builder-standalone-game-screen, feature/level-builder-maker-ui-vdp, feature/native-two-player-entity-refactor, feature/scalable-local-coop-slots]
     paths:
       - '.github/workflows/build-windows.yml'
       - 'build-overrides/**'
@@ -190,6 +200,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing the read-only player descriptor trace failed.' }
 
       - name: Install guarded native local co-op actor
+        env:
+          MT_COOP_PLAYERS: ${{ inputs.coop_players || '2' }}
         shell: pwsh
         run: |
           $patch = Join-Path $PWD 'build-overrides/patch-local-coop-runtime.py'
