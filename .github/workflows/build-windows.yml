@@ -11,7 +11,7 @@ on:
           - "2"
           - "3"
           - "4"
-        default: "2"
+        default: "3"
   push:
     branches: [main, fix/genesis-controller-port-bits, feature/remember-rom-location, feature/audio-settings-and-icon, fix/quit-to-title-build210, fix/persist-game-options-and-gameplay-pause, fix/portable-settings-and-gameplay-pause, feature/imgui-level-builder-foundation, feature/level-builder-standalone-game-screen, feature/level-builder-maker-ui-vdp, feature/native-two-player-entity-refactor, feature/scalable-local-coop-slots]
     paths:
@@ -201,7 +201,7 @@ jobs:
 
       - name: Install guarded native local co-op actor
         env:
-          MT_COOP_PLAYERS: ${{ inputs.coop_players || '2' }}
+          MT_COOP_PLAYERS: ${{ inputs.coop_players || '3' }}
         shell: pwsh
         run: |
           $patch = Join-Path $PWD 'build-overrides/patch-local-coop-runtime.py'

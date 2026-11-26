@@ -22,7 +22,7 @@ import sys
 # 2, 3 or 4 players. Player 1 is the original game actor; every additional
 # player is a private "slot" (own CPU context, stack, player RAM bank, scratch).
 # ---------------------------------------------------------------------------
-COOP_PLAYERS = max(2, min(4, int(os.environ.get("MT_COOP_PLAYERS", "2"))))
+COOP_PLAYERS = max(2, min(4, int(os.environ.get("MT_COOP_PLAYERS", "3"))))
 # 0 = extra players get a private, never-drained DMA queue (safe default).
 # 1 = extra players append to the real shared VDP DMA queue.
 VDP_QUEUE_SHARED = int(os.environ.get("MT_COOP_VDP_QUEUE_SHARED", "0"))
@@ -1642,7 +1642,7 @@ checks = {
     "P2 velocity accumulators are zeroed at spawn": "md_coop_p2_put_word(0xBCEC, 0)" in h and "md_coop_p2_put_word(0xBCEE, 0)" in h,
     "DMA queue is isolated or deliberately shared, never half-banked": ("md_coop_p2_mark(0xD2DA, 0xD8D9)" in h) and ("md_coop_p2_mark(0xBCA4, 0xBCA7)" in h) and "md_coop_p2_ram[0xBCA4] = 0" in h,
     "extra players are slots, not singletons": "md_coop_slot_t md_coop_slots[MT_COOP_SLOTS]" in h and "md_coop_run_local_slot(primary, callback)" in g,
-    "slot count is bounded to two through four total players": "max(2, min(4, int(os.environ.get(\"MT_COOP_PLAYERS\", \"2\"))))" in Path(__file__).read_text(encoding="utf-8"),
+    "slot count is bounded to two through four total players": "max(2, min(4, int(os.environ.get(\"MT_COOP_PLAYERS\", \"3\"))))" in Path(__file__).read_text(encoding="utf-8"),
     "four controller slots are visible to runtime": "extern int md_player_live_masks[4];" in h and "extern int md_player_connected[4];" in h,
     "object pool guard before extra-player sprite build": "md_coop_pool_free_records() >= (unsigned)MT_COOP_POOL_RESERVE" in g,
     "shared-write audit installed on the bus": h.count("md_coop_p2_note_shared_write") >= 3,
