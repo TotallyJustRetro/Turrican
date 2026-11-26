@@ -373,7 +373,7 @@ for old,new,label in (
 if "static int pad2_map[8]" not in s:
     decl=re.search(r"(?m)^\s*static\s+int\s+pad_map\s*\[\s*8\s*\]\s*=\s*\{[^}]*\}\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: P1 pad_map declaration not found")
-    s=s[:decl.end()]+"\nstatic int pad2_map[8] = {12,13,14,15,2,0,1,9};\nint md_player2_live_mask=0;\nint md_player2_connected=0;"+s[decl.end():]
+    s=s[:decl.end()]+"\nstatic int pad2_map[8] = {12,13,14,15,2,0,1,9};\nint md_player2_live_mask=0;\nint md_player2_connected=0;\nint md_local_coop_enabled=0;"+s[decl.end():]
 if "static int pad4_map[8]" not in s:
     decl=re.search(r"(?m)^\s*static\s+int\s+pad2_map\s*\[\s*8\s*\]\s*=\s*\{[^}]*\}\s*;",s)
     if not decl: raise SystemExit("dual-controller patch: P2 pad_map declaration not found")
@@ -517,6 +517,7 @@ checks={
  "P2-P4 masks are sampled every frame": all(x in s for x in ("md_player2_live_mask=md_player2_connected?readpad2():0;","md_player3_live_mask=md_player3_connected?readpad3():0;","md_player4_live_mask=md_player4_connected?readpad4():0;")),
  "P2 sample is installed on clean source": "md_live_mask" in s and "md_player2_live_mask=md_player2_connected?readpad2():0;" in s,
  "runtime sees four separate controller masks": "int md_player_live_masks[4]" in s and "int md_player_connected[4]" in s,
+ "P2 forced multiplayer option retains its shared runtime flag": "int md_local_coop_enabled=0;" in s,
  "Genesis port 2 consumes P2 mask": "int b = (p == 1) ? md_player2_live_mask : buttons();" in h
 }
 for label,ok in checks.items():
