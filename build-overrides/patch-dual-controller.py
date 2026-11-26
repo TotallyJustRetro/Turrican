@@ -459,10 +459,23 @@ s=re.sub(r"if\s*\(\s*e\.type\s*==\s*SDL_CONTROLLERDEVICEREMOVED\s*&&\s*pad\s*\)\
          "if(e.type==SDL_CONTROLLERDEVICEREMOVED || e.type==SDL_CONTROLLERDEVICEADDED){open_pad();}",s)
 
 if "md_player_live_masks[3]=md_player4_live_mask;" not in s:
-    m=re.search(r"(?m)^(\s*)md_player2_live_mask\s*=\s*md_player2_connected\s*\?\s*readpad2\(\)\s*:\s*0\s*;",s)
-    if not m: raise SystemExit("dual-controller patch: P2 live-mask sampling line not found")
-    indent=m.group(1)
-    extra=(
+    p2_line=re.search(r"(?m)^(\s*)md_player2_live_mask\s*=\s*md_player2_connected\s*\?\s*readpad2\(\)\s*:\s*0\s*;",s)
+    if p2_line:
+        indent=p2_line.group(1)
+        insert_at=p2_line.end()
+        prefix=""
+    else:
+        # The clean source has only the P1 readpad() latch. Preserve the original
+        # P2 insertion, then sample P3/P4 beside it in the same frame hook.
+        p1_line=re.search(r"(?m)^(\s*)md_live_mask\s*=\s*[^;]*readpad\(\)[^;]*;",s)
+        if not p1_line: raise SystemExit("dual-controller patch: P1 live-mask sampling line not found")
+        indent=p1_line.group(1)
+        insert_at=p1_line.end()
+        prefix=(
+            f"\n{indent}md_player2_connected=(pad2&&SDL_GameControllerGetAttached(pad2))?1:0;"
+            f"\n{indent}md_player2_live_mask=md_player2_connected?readpad2():0;"
+        )
+    extra=prefix+(
         f"\n{indent}md_player3_connected=(pad3&&SDL_GameControllerGetAttached(pad3))?1:0;"
         f"\n{indent}md_player3_live_mask=md_player3_connected?readpad3():0;"
         f"\n{indent}md_player4_connected=(pad4&&SDL_GameControllerGetAttached(pad4))?1:0;"
@@ -476,7 +489,7 @@ if "md_player_live_masks[3]=md_player4_live_mask;" not in s:
         f"\n{indent}md_player_connected[2]=md_player3_connected;"
         f"\n{indent}md_player_connected[3]=md_player4_connected;"
     )
-    s=s[:m.end()]+extra+s[m.end():]
+    s=s[:insert_at]+extra+s[insert_at:]
 SDL.write_text(s,encoding="utf-8")
 
 
@@ -502,6 +515,7 @@ checks={
  "SDL loads separate maps for P2-P4": all(x in s for x in ("MEGATURRICAN_PAD2_MAP","MEGATURRICAN_PAD3_MAP","MEGATURRICAN_PAD4_MAP")),
  "SDL has independent readers for P2-P4": all(x in s for x in ("static int readpad2(void)","static int readpad3(void)","static int readpad4(void)")),
  "P2-P4 masks are sampled every frame": all(x in s for x in ("md_player2_live_mask=md_player2_connected?readpad2():0;","md_player3_live_mask=md_player3_connected?readpad3():0;","md_player4_live_mask=md_player4_connected?readpad4():0;")),
+ "P2 sample is installed on clean source": "md_live_mask" in s and "md_player2_live_mask=md_player2_connected?readpad2():0;" in s,
  "runtime sees four separate controller masks": "int md_player_live_masks[4]" in s and "int md_player_connected[4]" in s,
  "Genesis port 2 consumes P2 mask": "int b = (p == 1) ? md_player2_live_mask : buttons();" in h
 }
