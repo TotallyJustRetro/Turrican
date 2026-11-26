@@ -16,7 +16,7 @@ body {
   height: 100%;
   color: #c8dff5;
   background-color: #000000;
-  font-family: Courier New;
+  font-family: Silkscreen;
   font-size: 10px;
 }
 
