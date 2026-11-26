@@ -692,7 +692,7 @@ void md_coop_prepare_p2(M68K *primary) {
 
         md_coop_p2_ready = 1;
         md_coop_p2_log("initialized", callback,
-                       "one-time P1 state seed; P2 spawn offset +0x10; independent CPU and F0FFFC stack; per-frame f_2130+f_5D8A phases active");
+                       "one-time P1 state seed; P2 spawn offset +0x10; independent CPU and F0FFFC stack");
     }
 }
 
@@ -979,47 +979,16 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     motion_seed = md_coop_p2_motion_seed_context();
     if (!p2 || !frame_seed || !collision_seed || !spatial_seed || !motion_seed) return;
 
-    /* Restore the full native per-frame player initialisation sequence.
-       The native f_156A order is: f_2130, f_5D8A, f_3B38, descriptor callbacks,
-       f_56CE, f_3D80, f_5DB2, f_224C, f_3BD8, BC20.
-       Build #645 added f_2130 alone and P2 became invisible because f_5D8A was
-       omitted: f_5DB2 reads FCE8/BD24/BD25, which f_5D8A must clear each frame.
-       Build #655 added f_5D8A alone without f_2130: P2 became visible but kept
-       falling because BCF3/BCF4 (reset by f_2130 each frame) accumulated stale
-       state across frames, driving f_224C into the wrong movement branch.
-       Both must run, in native order, before f_3B38.
-       Both are safe with the collision_seed context: their writes are exclusively
-       to private BCBC..BD26, FCE8..FD57, and BD24/BD25, all of which are inside
-       the established P2 private bank. The BCBC base address is the same for P1
-       and P2 (0xFFFFBCBC); bus banking routes all reads and writes to P2 RAM. */
+    /* Keep the last known-visible Build #644 actor phase order.
+       P2 is seeded at the native render seam; Build #645 first replayed
+       f_2130 inside the isolated P2 context, after which P2 stopped appearing.
+       The later f_5D8A replay was also never present in the visible build.
+       Leave both initializers out of the P2 runner until their private-side
+       effects can be validated independently from the render path. */
 
-    /* Phase 1: f_2130 — reset BCF3/BCF4 frame state and BCC0 constant.
-       Without this, BCF3/BCF4 carry values written by the previous frame's
-       f_224C. f_224C branches on BCF3/BCF4 to decide ground-contact state;
-       stale values cause it to stay in an airborne/falling branch permanently. */
-    md_coop_p2_sync_call_context(p2, collision_seed);
-    md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_actor(p2, 0x00002130u)) {
-        md_coop_p2_abort("P2 per-frame state initialiser f_2130 did not restore its CPU stack/return frame", 0x2130u);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_set_active(0);
-
-    /* Phase 2: f_5D8A — clear FCE8 multipart-sprite scratch and reset BD24/BD25.
-       f_5DB2 reads these fields to build the sprite; without this per-frame clear
-       the sprite builder reads stale part data and P2 becomes invisible. */
-    md_coop_p2_sync_call_context(p2, collision_seed);
-    md_coop_p2_set_active(1);
-    if (!md_coop_p2_call_actor(p2, 0x00005D8Au)) {
-        md_coop_p2_abort("P2 sprite-scratch clear f_5D8A did not restore its CPU stack/return frame", 0x5D8Au);
-        md_coop_p2_finish();
-        return;
-    }
-    md_coop_p2_set_active(0);
-
-    /* Phase 3: f_3B38 — per-frame collision-state reset.
-       Runs after f_2130/f_5D8A, matching the native order. */
+    /* Re-run only the native player-local collision-state reset for P2.
+       It writes P2-banked RAM (BC8A/B, BCE4/BCF0-2, BD14-1D, BF08/0C),
+       and performs no VDP or shared-object-pool operation. */
     md_coop_p2_sync_call_context(p2, collision_seed);
     md_coop_p2_set_active(1);
     if (!md_coop_p2_call_actor(p2, 0x00003B38u)) {
@@ -1474,7 +1443,7 @@ checks = {
     "P2 isolates the f_56CE scratch outputs": "md_coop_p2_mark(0xF200, 0xF9FF)" in h,
     "P2 collision flags and descriptor cursor have isolated storage": "md_coop_p2_mark(0xBC84, 0xBC8B)" in h and "md_coop_p2_mark(0xBD28, 0xBF07)" in h and "md_coop_p2_mark(0xBF08, 0xBF0D)" in h and "md_coop_p2_mark(0xFE58, 0xFE58)" in h,
     "P2 replays only native f_3B38 collision-state reset": "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
-    "P2 runs native frame initialisation in verified native order f_2130 then f_5D8A then f_3B38": "md_coop_p2_call_actor(p2, 0x00002130u)" in g and "md_coop_p2_call_actor(p2, 0x00005D8Au)" in g and "md_coop_p2_call_actor(p2, 0x00003B38u)" in g and g.index("0x00002130u") < g.index("0x00005D8Au") < g.index("0x00003B38u"),
+    "P2 preserves the Build #644 visible actor phase order without replaying f_2130 or f_5D8A": "md_coop_p2_call_actor(p2, 0x00002130u)" not in g and "md_coop_p2_call_actor(p2, 0x00005D8Au)" not in g and "md_coop_p2_call_actor(p2, 0x00003B38u)" in g,
     "P2 waits for the original native motion-state seed before running": "motion_seed = md_coop_p2_motion_seed_context();" in g and "|| !motion_seed" in g,
     "P2 runs native post-actor contact finalizer f_3BD8": "md_coop_p2_call_actor(p2, 0x00003BD8u)" in g,
     "P2 f3284 internal collision decision points are traced": "md_coop_p2_trace_ground(\"f3284-bcea-loaded\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit2-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-input-bit3-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcfe-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-first-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-second-bound-result\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-branch\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bcd8-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bce5-write\",c)" in g and "md_coop_p2_trace_ground(\"f3284-bd22-write\",c)" in g,
