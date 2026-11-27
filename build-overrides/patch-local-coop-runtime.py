@@ -886,7 +886,7 @@ static void md_coop_diag_frame(void) {
         fprintf(df,
             "# F=slot frame S=player; camera=DFD4/DFD6; inputs=BC90/BC91; "
             "positions=BD1E/BD20. Changes are ADDR:old>new. "
-            "Pose/animation bytes include BCC0 and surrounding state.\\n");
+            "Pose/animation bytes include BCC0 and surrounding state.\n");
     }
     snprintf(slot_tag, sizeof slot_tag, "P%u", md_coop_cur + 2u);
     n = snprintf(buf, sizeof buf,
@@ -914,7 +914,7 @@ static void md_coop_diag_frame(void) {
     input_changed = (sig != last_sig[md_coop_cur]);
     last_sig[md_coop_cur] = sig;
     if (n == base && !input_changed && (frame % 30u) != 0u) return;
-    bytes += (unsigned long)fprintf(df, "%s\\n", buf);
+    bytes += (unsigned long)fprintf(df, "%s\n", buf);
     if ((frame % 30u) == 0u) fflush(df);
 #endif
 }
