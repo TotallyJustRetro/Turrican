@@ -29,6 +29,7 @@ VDP_QUEUE_SHARED = int(os.environ.get("MT_COOP_VDP_QUEUE_SHARED", "0"))
 # Skip an extra player's sprite build when fewer than this many free records
 # remain in the shared 79-record object pool (one character needs up to 29).
 POOL_RESERVE = int(os.environ.get("MT_COOP_POOL_RESERVE", "36"))
+OBJ_OWNER = int(os.environ.get("MT_COOP_OBJ_OWNER", "1"))
 
 ROOT = Path(sys.argv[1]).resolve()
 GEN = ROOT / "recomp_gen.c"
@@ -63,6 +64,9 @@ extern int md_player_connected[4];
 #endif
 #ifndef MT_COOP_POOL_RESERVE
 #define MT_COOP_POOL_RESERVE 36
+#endif
+#ifndef MT_COOP_OBJ_OWNER
+#define MT_COOP_OBJ_OWNER 1
 #endif
 #define MT_COOP_SLOTS (MT_COOP_PLAYERS - 1)
 #ifndef MT_COOP_DIAG
@@ -123,6 +127,52 @@ static M68K *md_coop_primary_m68k = NULL;
 #define MD_COOP_SPAWN_DX (0x0010u * (md_coop_cur + 1u))
 
 unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
+
+/* Object ownership: pool records remain in the shared world list, but an
+   object created while an extra player is active remembers that player.
+   Its per-frame handler then runs with that player's private RAM/CPU view. */
+static uint8_t md_obj_owner[0x10000];
+static int md_obj_ctx = 0;
+unsigned long md_obj_dispatch_count = 0;
+
+void md_obj_note_alloc(M68K *c) {
+#if MT_COOP_OBJ_OWNER
+    uint32_t rec;
+    if (!c) return;
+    rec = c->a[0] & 0xFFFFu;
+    if (rec == 0xBF3Cu) return; /* shared fallback record is never owned */
+    md_obj_owner[rec] = md_coop_p2_active ? (uint8_t)(md_coop_cur + 1u) : 0u;
+#else
+    (void)c;
+#endif
+}
+
+void md_obj_enter(M68K *c) {
+#if MT_COOP_OBJ_OWNER
+    unsigned o;
+    if (!c) return;
+    o = md_obj_owner[c->a[5] & 0xFFFFu];
+    md_obj_ctx = 0;
+    if (o != 0u && o <= MT_COOP_SLOTS && !md_coop_p2_active &&
+        md_coop_slots[o - 1u].ready && !md_coop_slots[o - 1u].disabled) {
+        md_coop_cur = o - 1u;
+        md_coop_p2_active = 1;
+        md_obj_ctx = 1;
+        ++md_obj_dispatch_count;
+    }
+#else
+    (void)c;
+#endif
+}
+
+void md_obj_leave(void) {
+    if (md_obj_ctx) {
+        md_coop_p2_active = 0;
+        md_coop_cur = 0u;
+        md_obj_ctx = 0;
+    }
+}
+
 void md_coop_p2_select(unsigned slot) { md_coop_cur = slot < MT_COOP_SLOTS ? slot : 0u; }
 
 /* Shared-write audit. While an extra player's code runs, every byte it writes
@@ -890,10 +940,10 @@ static void md_coop_diag_frame(void) {
     }
     snprintf(slot_tag, sizeof slot_tag, "P%u", md_coop_cur + 2u);
     n = snprintf(buf, sizeof buf,
-        "F=%lu S=%u cam=%02X%02X,%02X%02X rawP2=%02X%02X "
+        "F=%lu S=%u own=%lu cam=%02X%02X,%02X%02X rawP2=%02X%02X "
         "P1in=%02X%02X %sin=%02X%02X "
         "P1xy=%02X%02X,%02X%02X %sxy=%02X%02X,%02X%02X",
-        frame, md_coop_cur + 2u,
+        frame, md_coop_cur + 2u, md_obj_dispatch_count,
         ram[0xDFD4], ram[0xDFD5], ram[0xDFD6], ram[0xDFD7],
         ram[0xBC92], ram[0xBC93],
         ram[0xBC90], ram[0xBC91],
@@ -1110,7 +1160,7 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL macro anchor missing")
-    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
+    decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_obj_note_alloc(M68K *c);\nvoid md_obj_enter(M68K *c);\nvoid md_obj_leave(void);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
 poll = re.compile(
@@ -1344,6 +1394,43 @@ void md_coop_run_local_p2(M68K *primary, uint32_t callback) {
     md_coop_p2_end_frame();
 }
 """
+
+
+# ---- Attribute allocated world objects to the active local player. ----
+def install_owner_hooks() -> None:
+    if not OBJ_OWNER:
+        print("Object ownership hooks disabled by MT_COOP_OBJ_OWNER=0.")
+        return
+    g = GEN.read_text(encoding="utf-8")
+    if "md_obj_enter(c);" in g and "md_obj_note_alloc(c);" in g:
+        print("Object-ownership hooks already present.")
+        return
+    hooks = []
+    for label, pc in (("L_5380", "0x5380"), ("L_53D4", "0x53D4")):
+        rx = re.compile(
+            r"(" + label + r":\s*\{\s*RT_POLL\(" + pc + r"\);\s*)"
+            r"(\{\s*c->ret=RD32\(A\(7\)\);\s*A\(7\)\+=4;\s*return;\s*\}\s*\})"
+        )
+        g, n = rx.subn(r"\1md_obj_note_alloc(c); \2", g, count=1)
+        hooks.append((label, n))
+    rx = re.compile(
+        r"(L_5448:\s*\{[^\n]*?rt_shadow\[rt_sp\+\+\]=_r;\s*)rt_call_addr\(c,_t\);"
+    )
+    g, n = rx.subn(
+        r"\1md_obj_enter(c); rt_call_addr(c,_t); md_obj_leave();",
+        g,
+        count=1,
+    )
+    hooks.append(("L_5448", n))
+    if all(n == 1 for _, n in hooks):
+        GEN.write_text(g, encoding="utf-8", newline="\n")
+        print("Installed object-ownership hooks (f_5300, f_5382, f_5432 dispatch).")
+    else:
+        missing = ", ".join(label for label, n in hooks if n != 1)
+        print("WARNING: object-ownership hooks NOT installed (anchors not found: "
+              + missing + "). P2 rope/shot objects may still act on P1.")
+
+install_owner_hooks()
 
 gen = GEN.read_text(encoding="utf-8")
 GEN_RUNNER = GEN_RUNNER.replace("__POOL_RESERVE__", str(POOL_RESERVE))
@@ -1750,6 +1837,8 @@ checks = {
     "shared-write audit installed on the bus": h.count("md_coop_p2_note_shared_write") >= 3,
     "P2 uses soft abort with retry instead of permanent disable on first fault": "soft-abort" in h and "md_coop_p2_abort_count" in h and "md_coop_p2_ready = 0" in h,
     "per-frame diagnostic log captures player state and pose bytes": "MegaTurrican-coop-diag.txt" in h and "md_diag_ranges" in h and "0xBCBCu, 0xBD26u" in h and "md_coop_diag_frame();" in h,
+    "object ownership metadata and dispatch helpers are installed": "md_obj_owner[0x10000]" in h and "md_obj_note_alloc(M68K *c)" in h and "md_obj_enter(M68K *c)" in h and "md_obj_leave(void)" in h,
+    "object dispatch count is included in diagnostics": "own=%lu" in h and "md_obj_dispatch_count" in h,
     "motion trace covers the later fall window": "md_coop_p2_frame_count > 420u" in h,
 }
 # Enforce the ownership boundary: these ranges belong to the one shared
