@@ -1257,9 +1257,9 @@ if "void md_body_fix_dest(M68K *c);" not in header:
         raise SystemExit("local co-op patch: RT_POLL declaration anchor missing for body-sprite hooks")
     header = header.replace(
         marker,
-        "extern unsigned md_coop_run_stamp;\\n"
-        "void md_body_fix_dest(M68K *c);\\n"
-        "void md_body_fix_tile(M68K *c);\\n" + marker,
+        "extern unsigned md_coop_run_stamp;\n"
+        "void md_body_fix_dest(M68K *c);\n"
+        "void md_body_fix_tile(M68K *c);\n" + marker,
         1,
     )
 
