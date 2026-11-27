@@ -2045,7 +2045,7 @@ checks = {
     "per-player body sprite DMA and tile hooks are defined": "md_body_fix_dest(M68K *c)" in h and "md_body_fix_tile(M68K *c)" in h,
     "body tile slots reserve enough VRAM for every extra player": "MT_COOP_SLOTS * 0x600u > 0x10000u" in h and "v < 0x4000u" in h,
     "a configured body slot switches the extra-player DMA queue to shared": "return MT_COOP_VDP_QUEUE_SHARED || md_p2_tile_addr() != 0u;" in h,
-    "generated body-renderer hook installer is present": "install_body_hooks()" in s and "L_3864:" in s and "L_3898:" in s and "L_37EE:" in s,
+    "generated body-renderer hooks are installed in generated ROM code": "md_body_fix_dest(c);" in g and "md_body_fix_tile(c);" in g,
     "runtime emits VRAM capacity report": "md_coop_vram_report_tick" in SDL_MAIN.read_text(encoding="utf-8") and "required contiguous run" in SDL_MAIN.read_text(encoding="utf-8"),
     "motion trace covers the later fall window": "md_coop_p2_frame_count > 420u" in h,
 }
