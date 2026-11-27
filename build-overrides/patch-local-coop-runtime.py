@@ -65,6 +65,9 @@ extern int md_player_connected[4];
 #define MT_COOP_POOL_RESERVE 36
 #endif
 #define MT_COOP_SLOTS (MT_COOP_PLAYERS - 1)
+#ifndef MT_COOP_DIAG
+#define MT_COOP_DIAG 1
+#endif
 
 /* One slot per additional player. The legacy md_coop_p2_* names below are
    macros that always resolve to the CURRENT slot, so every routine written for
@@ -333,7 +336,7 @@ void md_coop_p2_trace_floor(const char *stage, M68K *cpu) {
 void md_coop_p2_trace_motion(const char *stage, M68K *cpu) {
     FILE *f;
     if (!md_coop_p2_active || !md_coop_p2_ready ||
-        md_coop_p2_frame_count > 60u) return;
+        md_coop_p2_frame_count > 420u) return;
     f = fopen("MegaTurrican-local-coop-runtime.txt", "a");
     if (!f) return;
     fprintf(f,
@@ -836,9 +839,90 @@ void md_coop_p2_refresh(void) {
     ++md_coop_p2_frame_count;
 }
 
+
+/* Per-frame change log for each independent local player. This captures the
+   pose/state bytes around BCC0, movement/collision state, inputs and positions
+   so tests can distinguish shared animation state from independent state. */
+static const unsigned md_diag_ranges[3][2] = {
+    {0xBC84u, 0xBC8Cu}, {0xBCBCu, 0xBD26u}, {0xBF08u, 0xBF29u}
+};
+static uint8_t md_diag_prev[MT_COOP_SLOTS + 1u][0x10000];
+
+static int md_diag_changes(char *out, int n, int cap, const char *tag,
+                           const uint8_t *cur, uint8_t *prev) {
+    unsigned r, a;
+    int start = n, first = 1;
+    for (r = 0; r < 3u; ++r) {
+        for (a = md_diag_ranges[r][0]; a <= md_diag_ranges[r][1]; ++a) {
+            if (cur[a] != prev[a]) {
+                if (first) {
+                    n += snprintf(out + n, (size_t)(cap - n), " %s", tag);
+                    first = 0;
+                }
+                if (n < cap - 24)
+                    n += snprintf(out + n, (size_t)(cap - n),
+                                  " %04X:%02X>%02X", a, prev[a], cur[a]);
+                prev[a] = cur[a];
+            }
+        }
+    }
+    return n > start ? n : start;
+}
+
+static void md_coop_diag_frame(void) {
+#if MT_COOP_DIAG
+    static FILE *df = NULL;
+    static unsigned long bytes = 0;
+    static unsigned last_sig[MT_COOP_SLOTS];
+    char buf[4096], slot_tag[8];
+    int n, base;
+    unsigned long frame = md_coop_p2_frame_count;
+    unsigned sig;
+    int input_changed;
+    if (bytes > 12000000ul) return;
+    if (!df) {
+        df = fopen("MegaTurrican-coop-diag.txt", "w");
+        if (!df) { bytes = 12000001ul; return; }
+        fprintf(df,
+            "# F=slot frame S=player; camera=DFD4/DFD6; inputs=BC90/BC91; "
+            "positions=BD1E/BD20. Changes are ADDR:old>new. "
+            "Pose/animation bytes include BCC0 and surrounding state.\\n");
+    }
+    snprintf(slot_tag, sizeof slot_tag, "P%u", md_coop_cur + 2u);
+    n = snprintf(buf, sizeof buf,
+        "F=%lu S=%u cam=%02X%02X,%02X%02X rawP2=%02X%02X "
+        "P1in=%02X%02X %sin=%02X%02X "
+        "P1xy=%02X%02X,%02X%02X %sxy=%02X%02X,%02X%02X",
+        frame, md_coop_cur + 2u,
+        ram[0xDFD4], ram[0xDFD5], ram[0xDFD6], ram[0xDFD7],
+        ram[0xBC92], ram[0xBC93],
+        ram[0xBC90], ram[0xBC91],
+        slot_tag, md_coop_p2_ram[0xBC90], md_coop_p2_ram[0xBC91],
+        ram[0xBD1E], ram[0xBD1F], ram[0xBD20], ram[0xBD21],
+        slot_tag, md_coop_p2_ram[0xBD1E], md_coop_p2_ram[0xBD1F],
+        md_coop_p2_ram[0xBD20], md_coop_p2_ram[0xBD21]);
+    base = n;
+    if (md_coop_cur == 0u)
+        n = md_diag_changes(buf, n, (int)sizeof buf, "P1",
+                            ram, md_diag_prev[0]);
+    n = md_diag_changes(buf, n, (int)sizeof buf, slot_tag,
+                        md_coop_p2_ram, md_diag_prev[md_coop_cur + 1u]);
+    sig = ((unsigned)ram[0xBC90] << 24) |
+          ((unsigned)ram[0xBC91] << 16) |
+          ((unsigned)md_coop_p2_ram[0xBC90] << 8) |
+          md_coop_p2_ram[0xBC91];
+    input_changed = (sig != last_sig[md_coop_cur]);
+    last_sig[md_coop_cur] = sig;
+    if (n == base && !input_changed && (frame % 30u) != 0u) return;
+    bytes += (unsigned long)fprintf(df, "%s\\n", buf);
+    if ((frame % 30u) == 0u) fflush(df);
+#endif
+}
+
 void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     unsigned i;
     FILE *f;
+    md_coop_diag_frame();
     /* Reset the abort fault counter after 300 consecutive successful frames
        so sporadic stack noise events do not accumulate toward permanent disable. */
     if (md_coop_p2_abort_count > 0u &&
@@ -1665,6 +1749,8 @@ checks = {
     "object pool guard before extra-player sprite build": "md_coop_pool_free_records() >= (unsigned)MT_COOP_POOL_RESERVE" in g,
     "shared-write audit installed on the bus": h.count("md_coop_p2_note_shared_write") >= 3,
     "P2 uses soft abort with retry instead of permanent disable on first fault": "soft-abort" in h and "md_coop_p2_abort_count" in h and "md_coop_p2_ready = 0" in h,
+    "per-frame diagnostic log captures player state and pose bytes": "MegaTurrican-coop-diag.txt" in h and "md_diag_ranges" in h and "0xBCBCu, 0xBD26u" in h and "md_coop_diag_frame();" in h,
+    "motion trace covers the later fall window": "md_coop_p2_frame_count > 420u" in h,
 }
 # Enforce the ownership boundary: these ranges belong to the one shared
 # world/renderer/game-flow instance and must never enter P2's private bank.
