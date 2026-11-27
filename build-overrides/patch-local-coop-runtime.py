@@ -35,6 +35,7 @@ ROOT = Path(sys.argv[1]).resolve()
 GEN = ROOT / "recomp_gen.c"
 HARNESS = ROOT / "runtime" / "harness.c"
 RT_HEADER = ROOT / "runtime" / "m68k_rt.h"
+SDL_MAIN = ROOT / "runtime" / "sdl_main.c"
 
 def replace_once(path: Path, old: str, new: str, label: str) -> None:
     source = path.read_text(encoding="utf-8")
@@ -44,7 +45,7 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
         raise SystemExit(f"local co-op patch: missing {label} anchor in {path}")
     path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
 
-for path in (GEN, HARNESS, RT_HEADER):
+for path in (GEN, HARNESS, RT_HEADER, SDL_MAIN):
     if not path.is_file():
         raise SystemExit(f"local co-op patch: required source file missing: {path}")
 
@@ -52,6 +53,7 @@ for path in (GEN, HARNESS, RT_HEADER):
 HARNESS_HELPERS = r"""
 /* Mega Turrican local co-op: isolated P2 actor memory view. */
 #include <string.h>
+#include <stdlib.h>
 extern int md_local_coop_enabled;
 extern int md_player_live_masks[4];
 extern int md_player_connected[4];
@@ -126,6 +128,66 @@ static M68K *md_coop_primary_m68k = NULL;
 /* Each extra player starts 0x10 px further right than the previous one. */
 #define MD_COOP_SPAWN_DX (0x0010u * (md_coop_cur + 1u))
 
+
+/* ---- Independent player body sprites ------------------------------------
+   f_374E uploads the current player pose to VRAM $6CC0 (48 tiles / $600
+   bytes) and builds the corresponding body sprite entries with tile base
+   $366. Every player currently uses that same slot. When a safe base is
+   configured, each extra player gets one consecutive $600-byte region.
+   The first extra player (P2) uses base; P3 uses base+$600, etc.
+   Configure MegaTurrican-coop-p2tile.txt with a VRAM byte address in hex.
+   The value is read once per game launch. Missing/zero keeps legacy behavior.
+*/
+#ifndef MT_COOP_P2_TILE_VRAM
+#define MT_COOP_P2_TILE_VRAM 0
+#endif
+static unsigned md_p2_tile_cfg = 0xFFFFFFFFu;
+static unsigned md_p2_tile_addr(void) {
+    if (md_p2_tile_cfg == 0xFFFFFFFFu) {
+        FILE *tf = fopen("MegaTurrican-coop-p2tile.txt", "r");
+        unsigned v = (unsigned)MT_COOP_P2_TILE_VRAM;
+        const char *e = getenv("MT_COOP_P2_TILE_VRAM");
+        if (e && *e) v = (unsigned)strtoul(e, NULL, 16);
+        if (tf) {
+            char b[64] = {0};
+            if (fgets(b, sizeof b, tf)) v = (unsigned)strtoul(b, NULL, 16);
+            fclose(tf);
+        }
+        if (v != 0u &&
+            ((v & 0x1Fu) != 0u || v < 0x4000u ||
+             v + MT_COOP_SLOTS * 0x600u > 0x10000u)) {
+            FILE *log = fopen("MegaTurrican-local-coop-runtime.txt", "a");
+            if (log) {
+                fprintf(log,
+                    "event=body-vram-slot status=invalid address=%04X slots=%u required_bytes=%u\n",
+                    v & 0xFFFFu, (unsigned)MT_COOP_SLOTS,
+                    (unsigned)(MT_COOP_SLOTS * 0x600u));
+                fclose(log);
+            }
+            v = 0u;
+        }
+        md_p2_tile_cfg = v;
+    }
+    return md_p2_tile_cfg;
+}
+static int md_coop_queue_shared(void) {
+    return MT_COOP_VDP_QUEUE_SHARED || md_p2_tile_addr() != 0u;
+}
+
+/* Called from the generated f_374E body renderer at the native instruction
+   sites that set the DMA destination and the body sprite's starting tile. */
+void md_body_fix_dest(M68K *c) {
+    unsigned base = md_p2_tile_addr();
+    if (c && base && md_coop_p2_active)
+        c->a[1] = base + md_coop_cur * 0x600u;
+}
+void md_body_fix_tile(M68K *c) {
+    unsigned base = md_p2_tile_addr();
+    if (c && base && md_coop_p2_active)
+        c->d[4] = (c->d[4] & 0xFFFF0000u) |
+                  (((base + md_coop_cur * 0x600u) >> 5) & 0x7FFu);
+}
+
 unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
 
 /* Object ownership: pool records remain in the shared world list, but an
@@ -141,6 +203,7 @@ static md_obj_context_t md_obj_context_stack[MD_OBJ_CONTEXT_MAX];
 static unsigned md_obj_context_depth = 0u;
 static unsigned md_obj_context_overflow = 0u;
 unsigned long md_obj_dispatch_count = 0;
+unsigned md_coop_run_stamp = 0u;
 
 void md_obj_note_alloc(M68K *c) {
 #if MT_COOP_OBJ_OWNER
@@ -816,18 +879,14 @@ static void md_coop_prepare_p2_slot(M68K *primary) {
         md_coop_p2_mark(0xBC8C, 0xBC8C); /* player initialization state installed by f_19FA */
         md_coop_p2_mark(0xBC90, 0xBC91);
         md_coop_p2_mark(0xBC9C, 0xBC9F);
-#if !MT_COOP_VDP_QUEUE_SHARED
-        /* $FFBCA4 = DMA queue write index, $FFBCA6 = busy flag, queue entries
-           live at $FFD2DA + index*16 (see MAKER-ACTOR-RESEARCH). They are WORLD
-           state drained by f_554 in VBlank, which only ever resets the REAL
-           index. Giving a player a private index with a never-reset counter made
-           its f_71C enqueues march through RAM and overwrite the HUD, tilemap
-           and scroll data. In the default isolate mode the player gets a private
-           index AND a private queue buffer that is reset every frame, so its
-           transfers are safely discarded. */
+if (!md_coop_queue_shared()) {
+        /* Without a configured body slot, isolate this queue because it is not
+           drained by VBlank. With individual sprites enabled, f_374E needs its
+           pose DMA to reach VRAM, so the extra player's queue uses the real VDP
+           queue instead of a private queue that would be discarded. */
         md_coop_p2_mark(0xBCA4, 0xBCA7);
         md_coop_p2_mark(0xD2DA, 0xD8D9); /* 96 private queue entries */
-#endif
+    }
         md_coop_p2_mark(0xBCBC, 0xBD26);
         md_coop_p2_mark(0xBD28, 0xBF07); /* 40 x 12-byte per-player collision descriptors */
         md_coop_p2_mark(0xEA00, 0xEEFF); /* up to 40 shadow copies of mutable collision targets */
@@ -896,11 +955,12 @@ void md_coop_p2_refresh(void) {
         md_coop_p2_ram[0xBC90] = (uint8_t)(active_low >> 8);
         md_coop_p2_ram[0xBC91] = (uint8_t)active_low;
     }
-#if !MT_COOP_VDP_QUEUE_SHARED
-    /* Private DMA queue: restart empty every frame so it can never run away. */
-    md_coop_p2_ram[0xBCA4] = 0; md_coop_p2_ram[0xBCA5] = 0;
-    md_coop_p2_ram[0xBCA6] = 0; md_coop_p2_ram[0xBCA7] = 0;
-#endif
+if (!md_coop_queue_shared()) {
+        /* Only reset the private discard queue. Configured body slots use the
+           shared VDP queue and must preserve the game's real write index. */
+        md_coop_p2_ram[0xBCA4] = 0; md_coop_p2_ram[0xBCA5] = 0;
+        md_coop_p2_ram[0xBCA6] = 0; md_coop_p2_ram[0xBCA7] = 0;
+    }
     md_coop_p2_ram[0xDFD8] = ram[0xDFD8];
     md_coop_p2_ram[0xDFD9] = ram[0xDFD9];
     md_coop_p2_ram[0xDFDA] = ram[0xDFDA];
@@ -1075,9 +1135,16 @@ void md_coop_p2_finish(void) {
 }
 
 void md_coop_p2_end_frame(void) {
+    unsigned i;
     md_coop_p2_active = 0;
     md_coop_primary_m68k = NULL;
     md_coop_cur = 0;
+    for (i = 0; i < MT_COOP_SLOTS; ++i) {
+        if (md_coop_slots[i].ready && !md_coop_slots[i].disabled) {
+            ++md_coop_run_stamp;
+            break;
+        }
+    }
 }
 
 /* Public hook entry points used by the generated code: fan out to every slot. */
@@ -1182,6 +1249,20 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
     decls = "extern int md_coop_p2_active;\nvoid md_coop_prepare_p2(M68K *primary);\nvoid md_coop_p2_capture_collision_seed(M68K *primary);\nvoid md_coop_p2_capture_spatial_seed(M68K *primary);\nvoid md_coop_p2_capture_motion_seed(M68K *primary);\nvoid md_coop_p2_capture_collision_descriptors(M68K *primary);\nvoid md_coop_run_local_p2(M68K *primary, uint32_t callback);\nvoid md_coop_p2_service_event(M68K *c);\nvoid md_obj_note_alloc(M68K *c);\nvoid md_obj_enter(M68K *c);\nvoid md_obj_leave(void);\nvoid md_coop_p2_service_irq(M68K *c);\nvoid md_coop_p2_trace_ground(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_floor(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_motion(const char *stage, M68K *cpu);\nvoid md_coop_p2_trace_collision_results(void);\nvoid md_coop_p2_trace_hit_target(const char *stage, M68K *cpu);\n"
     header = header.replace(marker, decls + marker, 1)
 
+# These sprite hooks are separate from the original RT_POLL declarations, so
+# declare them even when this header already contains the scalable co-op API.
+if "void md_body_fix_dest(M68K *c);" not in header:
+    marker = "#define RT_POLL(pc)"
+    if marker not in header:
+        raise SystemExit("local co-op patch: RT_POLL declaration anchor missing for body-sprite hooks")
+    header = header.replace(
+        marker,
+        "extern unsigned md_coop_run_stamp;\\n"
+        "void md_body_fix_dest(M68K *c);\\n"
+        "void md_body_fix_tile(M68K *c);\\n" + marker,
+        1,
+    )
+
 poll = re.compile(
     r"if\s*\(\s*--rt_budget\s*<\s*0\s*\)\s*rt_event\(c\)\s*;\s*"
     r"if\s*\(\s*rt_irq_pending\s*\)\s*rt_irq_service\(c\)\s*;"
@@ -1196,6 +1277,77 @@ if "md_coop_p2_service_event(c)" not in header:
     if count != 1:
         raise SystemExit("local co-op patch: could not safely wrap RT_POLL event/IRQ dispatch")
 RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
+
+
+# ---- Report unused VRAM runs for independent body-sprite slots. ----
+VRAM_REPORT_CODE = r"""
+extern unsigned md_coop_run_stamp;
+extern unsigned md_coop_p2_slot_count(void);
+
+static void md_coop_vram_report(void) {
+    FILE *f;
+    unsigned t, run = 0, start = 0;
+    unsigned slots = md_coop_p2_slot_count();
+    unsigned required_tiles = 48u * slots; /* one 0x600-byte slot per player */
+    f = fopen("MegaTurrican-coop-vram.txt", "w");
+    if (!f) return;
+    fprintf(f, "VDP regs: planeA=%04X window=%04X planeB=%04X SAT=%04X hscroll=%04X\n",
+            (unsigned)vdp.reg[2] << 10, (unsigned)vdp.reg[3] << 10,
+            (unsigned)vdp.reg[4] << 13, (unsigned)vdp.reg[5] << 9,
+            (unsigned)vdp.reg[13] << 10);
+    fprintf(f, "Body slot: P1 uses VRAM 6CC0 (tile 366), up to 600 bytes. "
+               "Each extra player needs one consecutive 600-byte / 48-tile slot.\n");
+    fprintf(f, "Configured extra players: %u; required contiguous run: %u tiles (%u bytes).\n",
+            slots, required_tiles, required_tiles * 32u);
+    fprintf(f, "Game also DMAs to 6FC0 72C0 77C0 79C0 7BC0 7DC0.\n");
+    fprintf(f, "Completely empty runs of >= %u tiles (candidates; avoid every VDP table above):\n",
+            required_tiles);
+    for (t = 0; t <= 0x800u; ++t) {
+        int empty = 0;
+        if (t < 0x800u) {
+            unsigned k;
+            empty = 1;
+            for (k = 0; k < 32u; ++k) {
+                if (vdp.vram[t * 32u + k]) { empty = 0; break; }
+            }
+        }
+        if (empty) {
+            if (!run) start = t;
+            ++run;
+        } else {
+            if (run >= required_tiles)
+                fprintf(f, "  %04X-%04X  (%u tiles)\n",
+                        start * 32u, t * 32u - 1u, run);
+            run = 0;
+        }
+    }
+    fclose(f);
+}
+
+static void md_coop_vram_report_tick(void) {
+    static int done = 0;
+    if (!done && md_coop_run_stamp >= 600u) {
+        done = 1;
+        md_coop_vram_report();
+    }
+}
+"""
+
+sm = SDL_MAIN.read_text(encoding="utf-8")
+if "md_coop_vram_report_tick" not in sm:
+    anchor = "void md_frame_hook(void) {"
+    if sm.count(anchor) != 1:
+        raise SystemExit("sdl_main.c: md_frame_hook anchor not unique; VRAM report was not installed")
+    sm = sm.replace(anchor, VRAM_REPORT_CODE + "\n" + anchor, 1)
+    import re as _re
+    start = sm.index(anchor)
+    shade = _re.search(r"shade\s*\(\s*w\s*,\s*h\s*\)\s*;", sm[start:])
+    if not shade:
+        raise SystemExit("sdl_main.c: shade(w,h) call not found; VRAM report was not installed")
+    at = start + shade.end()
+    sm = sm[:at] + " md_coop_vram_report_tick();" + sm[at:]
+    SDL_MAIN.write_text(sm, encoding="utf-8", newline="\n")
+    print("Installed co-op VRAM free-run report (after 600 live co-op frames).")
 
 # 3) Add native actor execution in the generated translation unit, where the
 # static f_5DB2() renderer is visible. Every call gets a private stack frame and
@@ -1450,6 +1602,38 @@ def install_owner_hooks() -> None:
               + missing + "). P2 rope/shot objects may still act on P1.")
 
 install_owner_hooks()
+
+
+# ---- Redirect f_374E's pose DMA and body sprite tile base per player. ----
+def install_body_hooks() -> None:
+    g = GEN.read_text(encoding="utf-8")
+    if "md_body_fix_dest(c);" in g:
+        return
+    lines = g.split("\n")
+    want = {
+        "L_3864:": "md_body_fix_dest(c); ",
+        "L_3898:": "md_body_fix_dest(c); ",
+        "L_37EE:": "md_body_fix_tile(c); ",
+    }
+    done = set()
+    for i, line in enumerate(lines):
+        for label, call in want.items():
+            if label in done or not line.startswith(label):
+                continue
+            stripped = line.rstrip()
+            if stripped.endswith("}"):
+                k = stripped.rfind("}")
+                lines[i] = stripped[:k] + call + stripped[k:]
+                done.add(label)
+    if len(done) == len(want):
+        GEN.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        print("Installed independent-sprite hooks (f_374E tile slot redirect; inactive until a slot is configured).")
+    else:
+        missing = ", ".join(label for label in want if label not in done)
+        print("WARNING: independent-sprite hooks NOT installed (anchors not found: "
+              + missing + "). Players will share one tile slot.")
+
+install_body_hooks()
 
 gen = GEN.read_text(encoding="utf-8")
 GEN_RUNNER = GEN_RUNNER.replace("__POOL_RESERVE__", str(POOL_RESERVE))
@@ -1858,6 +2042,11 @@ checks = {
     "per-frame diagnostic log captures player state and pose bytes": "MegaTurrican-coop-diag.txt" in h and "md_diag_ranges" in h and "0xBCBCu, 0xBD26u" in h and "md_coop_diag_frame();" in h,
     "object ownership metadata and dispatch helpers are installed": "md_obj_owner[0x10000]" in h and "md_obj_note_alloc(M68K *c)" in h and "md_obj_enter(M68K *c)" in h and "md_obj_leave(void)" in h,
     "object dispatch count is included in diagnostics": "own=%lu" in h and "md_obj_dispatch_count" in h,
+    "per-player body sprite DMA and tile hooks are defined": "md_body_fix_dest(M68K *c)" in h and "md_body_fix_tile(M68K *c)" in h,
+    "body tile slots reserve enough VRAM for every extra player": "MT_COOP_SLOTS * 0x600u > 0x10000u" in h and "v < 0x4000u" in h,
+    "a configured body slot switches the extra-player DMA queue to shared": "return MT_COOP_VDP_QUEUE_SHARED || md_p2_tile_addr() != 0u;" in h,
+    "generated body-renderer hook installer is present": "install_body_hooks()" in s and "L_3864:" in s and "L_3898:" in s and "L_37EE:" in s,
+    "runtime emits VRAM capacity report": "md_coop_vram_report_tick" in SDL_MAIN.read_text(encoding="utf-8") and "required contiguous run" in SDL_MAIN.read_text(encoding="utf-8"),
     "motion trace covers the later fall window": "md_coop_p2_frame_count > 420u" in h,
 }
 # Enforce the ownership boundary: these ranges belong to the one shared
