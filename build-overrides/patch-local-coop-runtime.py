@@ -132,7 +132,14 @@ unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
    object created while an extra player is active remembers that player.
    Its per-frame handler then runs with that player's private RAM/CPU view. */
 static uint8_t md_obj_owner[0x10000];
-static int md_obj_ctx = 0;
+typedef struct {
+    unsigned previous_slot;
+    int previous_active;
+} md_obj_context_t;
+#define MD_OBJ_CONTEXT_MAX 32u
+static md_obj_context_t md_obj_context_stack[MD_OBJ_CONTEXT_MAX];
+static unsigned md_obj_context_depth = 0u;
+static unsigned md_obj_context_overflow = 0u;
 unsigned long md_obj_dispatch_count = 0;
 
 void md_obj_note_alloc(M68K *c) {
@@ -150,14 +157,19 @@ void md_obj_note_alloc(M68K *c) {
 void md_obj_enter(M68K *c) {
 #if MT_COOP_OBJ_OWNER
     unsigned o;
+    if (md_obj_context_depth >= MD_OBJ_CONTEXT_MAX) {
+        ++md_obj_context_overflow;
+        return;
+    }
+    md_obj_context_stack[md_obj_context_depth].previous_slot = md_coop_cur;
+    md_obj_context_stack[md_obj_context_depth].previous_active = md_coop_p2_active;
+    ++md_obj_context_depth;
     if (!c) return;
     o = md_obj_owner[c->a[5] & 0xFFFFu];
-    md_obj_ctx = 0;
     if (o != 0u && o <= MT_COOP_SLOTS && !md_coop_p2_active &&
         md_coop_slots[o - 1u].ready && !md_coop_slots[o - 1u].disabled) {
         md_coop_cur = o - 1u;
         md_coop_p2_active = 1;
-        md_obj_ctx = 1;
         ++md_obj_dispatch_count;
     }
 #else
@@ -166,11 +178,17 @@ void md_obj_enter(M68K *c) {
 }
 
 void md_obj_leave(void) {
-    if (md_obj_ctx) {
-        md_coop_p2_active = 0;
-        md_coop_cur = 0u;
-        md_obj_ctx = 0;
+#if MT_COOP_OBJ_OWNER
+    if (md_obj_context_overflow) {
+        --md_obj_context_overflow;
+        return;
     }
+    if (md_obj_context_depth) {
+        --md_obj_context_depth;
+        md_coop_cur = md_obj_context_stack[md_obj_context_depth].previous_slot;
+        md_coop_p2_active = md_obj_context_stack[md_obj_context_depth].previous_active;
+    }
+#endif
 }
 
 void md_coop_p2_select(unsigned slot) { md_coop_cur = slot < MT_COOP_SLOTS ? slot : 0u; }
