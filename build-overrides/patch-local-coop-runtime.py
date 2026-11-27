@@ -1117,7 +1117,8 @@ void md_coop_p2_service_irq(M68K *unused) {
 HARNESS_HELPERS = (HARNESS_HELPERS
     .replace("#define MT_COOP_PLAYERS 2", f"#define MT_COOP_PLAYERS {COOP_PLAYERS}", 1)
     .replace("#define MT_COOP_VDP_QUEUE_SHARED 0", f"#define MT_COOP_VDP_QUEUE_SHARED {VDP_QUEUE_SHARED}", 1)
-    .replace("#define MT_COOP_POOL_RESERVE 36", f"#define MT_COOP_POOL_RESERVE {POOL_RESERVE}", 1))
+    .replace("#define MT_COOP_POOL_RESERVE 36", f"#define MT_COOP_POOL_RESERVE {POOL_RESERVE}", 1)
+    .replace("#define MT_COOP_OBJ_OWNER 1", f"#define MT_COOP_OBJ_OWNER {OBJ_OWNER}", 1))
 if "Mega Turrican local co-op: isolated P2 actor memory view." not in HARNESS.read_text(encoding="utf-8"):
     replace_once(
         HARNESS,
