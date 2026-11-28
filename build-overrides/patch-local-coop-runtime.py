@@ -1170,9 +1170,8 @@ if (!md_coop_queue_shared()) {
         md_coop_p2_ram[0xBCA4] = 0; md_coop_p2_ram[0xBCA5] = 0;
         md_coop_p2_ram[0xBCA6] = 0; md_coop_p2_ram[0xBCA7] = 0;
     }
-    md_coop_p2_ram[0xDFD8] = ram[0xDFD8];
-    md_coop_p2_ram[0xDFD9] = ram[0xDFD9];
-    md_coop_p2_ram[0xDFDA] = ram[0xDFDA];
+    /* DFD8-D9 and DFDA-DB are two full camera words; never leave DB stale. */
+    memcpy(&md_coop_p2_ram[0xDFD8], &ram[0xDFD8], 4u);
     ++md_coop_p2_frame_count;
 }
 
@@ -1316,9 +1315,9 @@ void md_coop_p2_actor_complete(M68K *cpu, uint32_t callback) {
     fprintf(f, "\np2_vdp_queue_idx_BCA4=%04X shared_idx=%04X pool_skips=%u",
             (unsigned)md_coop_p2_word(0xBCA4),
             (unsigned)(((unsigned)ram[0xBCA4] << 8) | ram[0xBCA5]), MD_CUR.pool_skips);
-    fprintf(f, "\np2_camera_DFD8_DFDA=%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
+    fprintf(f, "\np2_camera_DFD8_DFDB=%02X%02X%02X%02X sprite_scratch_FD24_25=%02X%02X\n",
             (unsigned)md_coop_p2_ram[0xDFD8], (unsigned)md_coop_p2_ram[0xDFD9],
-            (unsigned)md_coop_p2_ram[0xDFDA],
+            (unsigned)md_coop_p2_ram[0xDFDA], (unsigned)md_coop_p2_ram[0xDFDB],
             (unsigned)md_coop_p2_ram[0xBD24], (unsigned)md_coop_p2_ram[0xBD25]);
     fclose(f);
 }
@@ -2330,6 +2329,8 @@ checks = {
         "md_coop_p2_mark(0xBC5A, 0xBC61)")),
     "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
     "P2 owns the complete camera X/Y words DFD8..DFDB": "md_coop_p2_mark(0xDFD8, 0xDFDB)" in h,
+    "P2 refresh synchronizes both complete camera words": "memcpy(&md_coop_p2_ram[0xDFD8], &ram[0xDFD8], 4u)" in h,
+    "P2 camera diagnostics include all four bytes": "p2_camera_DFD8_DFDB=%02X%02X%02X%02X" in h,
     "P2 owns f_19FA player init state BC8C": "md_coop_p2_mark(0xBC8C, 0xBC8C)" in h,
     "P2 init state is included in runtime trace": "BC8C=%02X BF18=%08X BF1C=%04X" in h,
     "P2 owns f_19FA descriptor state BF18..BF1D": "md_coop_p2_mark(0xBF18, 0xBF1D)" in h,
