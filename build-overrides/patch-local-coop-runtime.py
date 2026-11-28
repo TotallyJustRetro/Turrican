@@ -82,6 +82,7 @@ def install_crimson_asset_header() -> None:
             asset = zlib.decompress(compressed[2:-4], -zlib.MAX_WBITS)
         except Exception as exc:
             raise SystemExit(f"local co-op patch: cannot decompress Crimson P2 sprite asset: {exc}")
+    # This pins the decoded CRP2 payload, not the compressed zlib wrapper.
     expected_sha256 = "3383f83344601fc6d2c6237dd4fa883a785ca6eb7e82ced43be56e508aa07dea"
     actual_sha256 = hashlib.sha256(asset).hexdigest()
     if actual_sha256 != expected_sha256:
