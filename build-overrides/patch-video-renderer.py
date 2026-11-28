@@ -184,11 +184,74 @@ def patch_runtime_renderer_readout(project: Path) -> None:
     p.write_text(s,encoding="utf-8")
     print("Added actual SDL renderer name to the game window title and MegaTurrican-renderer.txt.")
 
+def patch_runtime_frame_metrics(project: Path) -> None:
+    p=project/"runtime"/"sdl_main.c"
+    s=p.read_text(encoding="utf-8-sig")
+    if "MegaTurrican-renderer-performance.txt" in s:
+        return
+
+    # Instrument the real SDL present call without claiming this is a GPU
+    # timestamp. SDL_RenderPresent may include driver overhead and VSync wait.
+    pattern=re.compile(
+        r'(?m)^(?P<indent>[ \t]*)SDL_RenderPresent\s*\(\s*(?P<renderer>[A-Za-z_]\w*)\s*\)\s*;'
+    )
+    matches=list(pattern.finditer(s))
+    if not matches:
+        raise RuntimeError("Could not locate SDL_RenderPresent for frame-pacing diagnostics.")
+
+    def instrument(m: re.Match[str]) -> str:
+        indent=m.group("indent")
+        renderer=m.group("renderer")
+        return f"""
+{indent}{{
+{indent}    static Uint64 mt_diag_last_end = 0;
+{indent}    static Uint64 mt_diag_frame_ticks = 0;
+{indent}    static Uint64 mt_diag_present_ticks = 0;
+{indent}    static unsigned mt_diag_frames = 0;
+{indent}    Uint64 mt_diag_start = SDL_GetPerformanceCounter();
+{indent}    SDL_RenderPresent({renderer});
+{indent}    Uint64 mt_diag_end = SDL_GetPerformanceCounter();
+{indent}    if (mt_diag_last_end) mt_diag_frame_ticks += mt_diag_end - mt_diag_last_end;
+{indent}    mt_diag_present_ticks += mt_diag_end - mt_diag_start;
+{indent}    mt_diag_last_end = mt_diag_end;
+{indent}    if (++mt_diag_frames >= 120) {{
+{indent}        Uint64 mt_diag_frequency = SDL_GetPerformanceFrequency();
+{indent}        double mt_diag_avg_frame_ms = mt_diag_frequency
+{indent}            ? (1000.0 * (double)mt_diag_frame_ticks / (double)mt_diag_frequency / 119.0) : 0.0;
+{indent}        double mt_diag_avg_present_ms = mt_diag_frequency
+{indent}            ? (1000.0 * (double)mt_diag_present_ticks / (double)mt_diag_frequency / 120.0) : 0.0;
+{indent}        double mt_diag_fps = mt_diag_avg_frame_ms > 0.0 ? 1000.0 / mt_diag_avg_frame_ms : 0.0;
+{indent}        SDL_RendererInfo mt_diag_info;
+{indent}        const char *mt_diag_name = "unknown";
+{indent}        if (SDL_GetRendererInfo({renderer}, &mt_diag_info) == 0 && mt_diag_info.name)
+{indent}            mt_diag_name = mt_diag_info.name;
+{indent}        FILE *mt_diag_file = fopen("MegaTurrican-renderer-performance.txt", "w");
+{indent}        if (mt_diag_file) {{
+{indent}            fprintf(mt_diag_file,
+{indent}                "renderer=%s\\nsample_frames=120\\naverage_frame_ms=%.4f\\napprox_fps=%.2f\\naverage_present_call_ms=%.4f\\n"
+{indent}                "present_measurement=CPU-side wall-clock including possible vsync wait; not GPU execution time\\n",
+{indent}                mt_diag_name, mt_diag_avg_frame_ms, mt_diag_fps, mt_diag_avg_present_ms);
+{indent}            fclose(mt_diag_file);
+{indent}        }}
+{indent}        mt_diag_frames = 0;
+{indent}        mt_diag_frame_ticks = 0;
+{indent}        mt_diag_present_ticks = 0;
+{indent}    }}
+{indent}}}
+"""
+
+    # Instrument every present site; each lexical site keeps independent
+    # counters, so a menu loop cannot corrupt a gameplay loop's sample.
+    s=pattern.sub(instrument,s)
+    p.write_text(s,encoding="utf-8")
+    print(f"Added CPU-observed frame pacing diagnostics at {len(matches)} SDL present site(s).")
+
 def patch(project: Path) -> None:
     patch_html(project)
     patch_main(project)
     patch_runtime_renderer_readout(project)
-    print("Added persistent Video tab and actual SDL renderer reporting.")
+    patch_runtime_frame_metrics(project)
+    print("Added persistent Video tab, actual SDL renderer reporting, and frame-pacing diagnostics.")
 
 if __name__=="__main__":
     if len(sys.argv)!=2: raise SystemExit("usage: patch-video-renderer.py PROJECT_ROOT")
