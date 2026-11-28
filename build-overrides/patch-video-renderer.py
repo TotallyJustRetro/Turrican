@@ -96,13 +96,26 @@ def patch_html(project: Path) -> None:
 def patch_main(project: Path) -> None:
     p=project/"launcher"/"main.js"
     s=p.read_text(encoding="utf-8-sig")
+    # Build a clean child-process environment. In Automatic mode we remove
+    # inherited SDL_RENDER_DRIVER instead of passing the string "undefined".
+    # That guarantees SDL can perform its normal renderer selection.
+    spawn_anchor="    const child = spawn(exe, [romPath, configPath], {"
+    setup="""    const childEnv = {
+      ...process.env,
+      MEGATURRICAN_CONFIG_DIR: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'))
+    };
+    if (settings.renderer === 'opengl') childEnv.SDL_RENDER_DRIVER = 'opengl';
+    else if (settings.renderer === 'direct3d11') childEnv.SDL_RENDER_DRIVER = 'direct3d11';
+    else delete childEnv.SDL_RENDER_DRIVER;
+"""
+    if "const childEnv = {" not in s:
+        s=once(s,spawn_anchor,setup+spawn_anchor,"native process environment setup")
     old="env: { ...process.env, MEGATURRICAN_CONFIG_DIR: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')) },"
-    new="""env: {
-        ...process.env,
-        MEGATURRICAN_CONFIG_DIR: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')),
-        SDL_RENDER_DRIVER: settings.renderer === 'opengl' ? 'opengl' : settings.renderer === 'direct3d11' ? 'direct3d11' : undefined
-      },"""
-    if "SDL_RENDER_DRIVER:" not in s: s=once(s,old,new,"native process renderer environment")
+    new="env: childEnv,"
+    if old in s:
+        s=s.replace(old,new,1)
+    elif "env: childEnv," not in s:
+        raise RuntimeError("Could not connect renderer preferences to the native game process environment.")
     p.write_text(s,encoding="utf-8")
 
 def patch(project: Path) -> None:
