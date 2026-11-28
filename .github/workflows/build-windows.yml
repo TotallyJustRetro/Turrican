@@ -173,6 +173,7 @@ jobs:
           $launcherMain = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/main.js') -Raw
           $launcherPreload = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/preload.js') -Raw
           $launcherHtml = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/index.html') -Raw
+          $launcherVideo = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/video-settings.js') -Raw
           $runtimeMain = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'runtime/sdl_main.c') -Raw
           foreach ($marker in @('const childEnv = {', "childEnv.SDL_RENDER_DRIVER = 'opengl'", "childEnv.SDL_RENDER_DRIVER = 'direct3d11'", 'delete childEnv.SDL_RENDER_DRIVER')) {
             if (-not $launcherMain.Contains($marker)) { throw "Renderer process handoff is missing: $marker" }
@@ -180,9 +181,10 @@ jobs:
           foreach ($marker in @('id="t-video"', 'videoRenderer', 'video-settings.js', 'getMegaTurricanVideoSettings()')) {
             if (-not $launcherHtml.Contains($marker)) { throw "Launcher Video Options UI is missing: $marker" }
           }
-          foreach ($marker in @('videoRefreshDiagnostics', 'videoRendererDiagnostics', 'rendererDiagnostics')) {
+          foreach ($marker in @('videoRefreshDiagnostics', 'videoRendererDiagnostics')) {
             if (-not $launcherHtml.Contains($marker)) { throw "Launcher renderer diagnostics UI is missing: $marker" }
           }
+          if (-not $launcherVideo.Contains('rendererDiagnostics')) { throw 'Renderer diagnostics UI logic is missing from video-settings.js.' }
           if (-not $launcherPreload.Contains('md-renderer-diagnostics')) { throw 'Renderer diagnostics preload bridge is missing.' }
           if (-not $launcherMain.Contains('md-renderer-diagnostics')) { throw 'Renderer diagnostics IPC handler is missing.' }
           if ($launcherMain.Contains('SDL_RENDER_DRIVER: settings.renderer')) { throw 'Unsafe undefined SDL_RENDER_DRIVER assignment is still present.' }
