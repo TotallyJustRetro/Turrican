@@ -16,9 +16,6 @@ from pathlib import Path
 import os
 import re
 import sys
-import struct
-import zlib
-import hashlib
 
 # ---------------------------------------------------------------------------
 # PLAYER COUNT. Change this one number (or set env MT_COOP_PLAYERS) to get
@@ -61,65 +58,6 @@ def ensure_header_decls(lines) -> None:
 for path in (GEN, HARNESS, RT_HEADER, SDL_MAIN):
     if not path.is_file():
         raise SystemExit(f"local co-op patch: required source file missing: {path}")
-
-# Decode the compact Crimson Red Knight tile pack into a build-time C header.
-CRIMSON_ASSET_PATH = Path(__file__).resolve().parent / "assets" / "crimson-p2-32x48-4bpp.bin.z"
-ASSET_HEADER = HARNESS.parent / "crimson_p2_asset.h"
-
-def install_crimson_asset_header() -> None:
-    if not CRIMSON_ASSET_PATH.is_file():
-        raise SystemExit(f"local co-op patch: missing Crimson P2 sprite asset: {CRIMSON_ASSET_PATH}")
-    compressed = CRIMSON_ASSET_PATH.read_bytes()
-    try:
-        asset = zlib.decompress(compressed)
-    except zlib.error:
-        # The first packaged copy can have a damaged Adler trailer even when
-        # the deflate payload is intact. Retry raw inflate, then verify the
-        # complete decoded bytes against the known source-pack SHA-256.
-        try:
-            if len(compressed) <= 6:
-                raise ValueError("compressed payload is too short")
-            asset = zlib.decompress(compressed[2:-4], -zlib.MAX_WBITS)
-        except Exception as exc:
-            raise SystemExit(f"local co-op patch: cannot decompress Crimson P2 sprite asset: {exc}")
-    # This pins the decoded CRP2 payload, not the compressed zlib wrapper.
-    expected_sha256 = "3383f83344601fc6d2c6237dd4fa883a785ca6eb7e82ced43be56e508aa07dea"
-    actual_sha256 = hashlib.sha256(asset).hexdigest()
-    if actual_sha256 != expected_sha256:
-        raise SystemExit(f"local co-op patch: Crimson P2 sprite asset SHA-256 mismatch ({actual_sha256})")
-    if len(asset) < 42:
-        raise SystemExit("local co-op patch: Crimson P2 sprite asset header is truncated")
-    magic, version, frame_count, width, height, frame_bytes = struct.unpack_from(">4sBBBBH", asset, 0)
-    if (magic != b"CRP2" or version != 1 or frame_count != 35 or width != 32 or height != 48 or frame_bytes != 0x300):
-        raise SystemExit("local co-op patch: Crimson P2 sprite asset has an unsupported header")
-    if len(asset) != 42 + frame_count * frame_bytes:
-        raise SystemExit(f"local co-op patch: Crimson P2 sprite asset size mismatch ({len(asset)})")
-    palette = struct.unpack_from(">16H", asset, 10)
-    pixel_data = asset[42:]
-    lines = [
-        "#ifndef CRIMSON_P2_ASSET_H",
-        "#define CRIMSON_P2_ASSET_H",
-        "#include <stdint.h>",
-        "#define MD_CRIMSON_P2_FRAME_COUNT 35u",
-        "#define MD_CRIMSON_P2_FRAME_BYTES 0x300u",
-        "static const uint16_t md_crimson_p2_palette[16] = {",
-        "    " + ", ".join(f"0x{value:04X}u" for value in palette),
-        "};",
-        "static const uint8_t md_crimson_p2_frames[35][0x300] = {",
-    ]
-    for frame in range(frame_count):
-        chunk = pixel_data[frame * frame_bytes:(frame + 1) * frame_bytes]
-        lines.append("  {")
-        for offset in range(0, len(chunk), 16):
-            lines.append("    " + ", ".join(f"0x{value:02X}" for value in chunk[offset:offset + 16]) + ",")
-        lines.append("  }" + ("," if frame + 1 < frame_count else ""))
-    lines.extend(["};", "#endif", ""])
-    ASSET_HEADER.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-
-install_crimson_asset_header()
-harness_source = HARNESS.read_text(encoding="utf-8")
-if '#include "crimson_p2_asset.h"' not in harness_source:
-    HARNESS.write_text('#include "crimson_p2_asset.h"\n' + harness_source, encoding="utf-8", newline="\n")
 
 # 1) Add independent per-player memory slots, CPU bus views and event handoff.
 HARNESS_HELPERS = r"""
@@ -323,51 +261,15 @@ static int md_coop_queue_shared(void) {
     return MT_COOP_VDP_QUEUE_SHARED || md_p2_tile_addr() != 0u;
 }
 
-/* Crimson Red Knight: replace only P2's body DMA source. Each pose has a
-   stable synthetic address so a queued VBlank DMA cannot see a later frame. */
-static void md_crimson_p2_upload_palette(void) {
-    static unsigned long last_palette_frame = ~0ul;
-    unsigned i;
-    if (last_palette_frame == md_coop_p2_frame_count) return;
-    /* Palette 3 is isolated from P1's palette selection for this experiment. */
-    bus_wr32(0xC00004u, 0xC0300000u);
-    for (i = 0; i < 16u; ++i) bus_wr16(0xC00000u, md_crimson_p2_palette[i]);
-    last_palette_frame = md_coop_p2_frame_count;
-}
-void md_body_fix_source(M68K *c) {
-    unsigned state;
-    FILE *f;
-    static unsigned long last_log_frame = ~0ul;
-    if (!c || !md_coop_p2_active || md_coop_cur != 0u) return;
-    state = ((unsigned)md_coop_p2_ram[0xBCC0] << 8) | (unsigned)md_coop_p2_ram[0xBCC1];
-    if (state >= MD_CRIMSON_P2_FRAME_COUNT) state = 0u;
-    c->a[0] = 0xF10000u + state * MD_CRIMSON_P2_FRAME_BYTES;
-    md_crimson_p2_upload_palette();
-    if (md_coop_p2_frame_count < 120u && last_log_frame != md_coop_p2_frame_count) {
-        f = fopen("MegaTurrican-crimson-p2.txt", "a");
-        if (f) {
-            fprintf(f, "frame=%lu state=%u source=%06X bytes=%u palette=3\n",
-                    md_coop_p2_frame_count, state, (unsigned)c->a[0],
-                    (unsigned)MD_CRIMSON_P2_FRAME_BYTES);
-            fclose(f);
-        }
-        last_log_frame = md_coop_p2_frame_count;
-    }
-}
-void md_body_fix_size(M68K *c) {
-    if (c && md_coop_p2_active && md_coop_cur == 0u)
-        c->d[0] = MD_CRIMSON_P2_FRAME_BYTES;
-}
+/* Called from f_374E at the DMA destination and body-sprite tile-base sites. */
 void md_body_fix_dest(M68K *c) {
     unsigned a = md_p2_slot_addr(md_coop_cur);
     if (c && a && md_coop_p2_active) c->a[1] = a;
 }
 void md_body_fix_tile(M68K *c) {
     unsigned a = md_p2_slot_addr(md_coop_cur);
-    if (c && a && md_coop_p2_active) {
-        unsigned palette = (md_coop_cur == 0u) ? 0x6000u : 0u;
-        c->d[4] = (c->d[4] & 0xFFFF0000u) | palette | ((a >> 5) & 0x7FFu);
-    }
+    if (c && a && md_coop_p2_active)
+        c->d[4] = (c->d[4] & 0xFFFF0000u) | ((a >> 5) & 0x7FFu);
 }
 
 unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
@@ -1560,13 +1462,6 @@ insert_after_ram_mask(
     "bus_wr16",
 )
 
-insert_after_ram_mask(
-    HARNESS,
-    r"static\s+uint8_t\s+rd8_raw\s*\(\s*uint32_t\s+a\s*\)",
-    "  if(a >= 0xF10000u && a < 0xF10000u + (MD_CRIMSON_P2_FRAME_COUNT * MD_CRIMSON_P2_FRAME_BYTES)) return ((const uint8_t *)md_crimson_p2_frames)[a - 0xF10000u];\n",
-    "Crimson P2 queued DMA source",
-)
-
 # 2) Let generated RT_POLL service the global VDP/IRQ side using the primary CPU.
 header = RT_HEADER.read_text(encoding="utf-8")
 if "void md_coop_p2_service_event(M68K *c);" not in header:
@@ -1578,19 +1473,17 @@ if "void md_coop_p2_service_event(M68K *c);" not in header:
 
 # These sprite hooks are separate from the original RT_POLL declarations, so
 # declare them even when this header already contains the scalable co-op API.
-body_decls = [
-    "extern unsigned md_coop_run_stamp;",
-    "void md_body_fix_dest(M68K *c);",
-    "void md_body_fix_tile(M68K *c);",
-    "void md_body_fix_source(M68K *c);",
-    "void md_body_fix_size(M68K *c);",
-]
-missing_body_decls = [decl for decl in body_decls if decl not in header]
-if missing_body_decls:
+if "void md_body_fix_dest(M68K *c);" not in header:
     marker = "#define RT_POLL(pc)"
     if marker not in header:
         raise SystemExit("local co-op patch: RT_POLL declaration anchor missing for body-sprite hooks")
-    header = header.replace(marker, "\n".join(missing_body_decls) + "\n" + marker, 1)
+    header = header.replace(
+        marker,
+        "extern unsigned md_coop_run_stamp;\n"
+        "void md_body_fix_dest(M68K *c);\n"
+        "void md_body_fix_tile(M68K *c);\n" + marker,
+        1,
+    )
 
 poll = re.compile(
     r"if\s*\(\s*--rt_budget\s*<\s*0\s*\)\s*rt_event\(c\)\s*;\s*"
@@ -1964,18 +1857,14 @@ def install_owner_hooks() -> None:
 # ---- Redirect f_374E's pose DMA and body sprite tile base per player. ----
 def install_body_hooks() -> None:
     g = GEN.read_text(encoding="utf-8")
+    if "md_body_fix_dest(c);" in g:
+        return
     lines = g.split("\n")
     want = {
-        "L_3862:": "md_body_fix_source(c); ",
         "L_3864:": "md_body_fix_dest(c); ",
-        "L_3868:": "md_body_fix_size(c); ",
-        "L_3896:": "md_body_fix_source(c); ",
         "L_3898:": "md_body_fix_dest(c); ",
-        "L_389C:": "md_body_fix_size(c); ",
         "L_37EE:": "md_body_fix_tile(c); ",
     }
-    if all(call.strip() in g for call in want.values()):
-        return
     done = set()
     for i, line in enumerate(lines):
         for label, call in want.items():
