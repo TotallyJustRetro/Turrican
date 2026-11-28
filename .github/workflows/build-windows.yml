@@ -183,6 +183,9 @@ jobs:
           foreach ($marker in @('SDL_GetRendererInfo', 'Renderer: %s', 'MegaTurrican-renderer.txt')) {
             if (-not $runtimeMain.Contains($marker)) { throw "Actual SDL renderer readout is missing: $marker" }
           }
+          foreach ($marker in @('MegaTurrican-renderer-performance.txt', 'SDL_GetPerformanceCounter', 'average_present_call_ms')) {
+            if (-not $runtimeMain.Contains($marker)) { throw "Renderer frame diagnostics are missing: $marker" }
+          }
 
 
       - name: Embed Reborn intro and persistent title branding
