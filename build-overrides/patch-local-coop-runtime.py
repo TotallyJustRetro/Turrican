@@ -18,6 +18,7 @@ import re
 import sys
 import struct
 import zlib
+import hashlib
 
 # ---------------------------------------------------------------------------
 # PLAYER COUNT. Change this one number (or set env MT_COOP_PLAYERS) to get
@@ -68,10 +69,23 @@ ASSET_HEADER = HARNESS.parent / "crimson_p2_asset.h"
 def install_crimson_asset_header() -> None:
     if not CRIMSON_ASSET_PATH.is_file():
         raise SystemExit(f"local co-op patch: missing Crimson P2 sprite asset: {CRIMSON_ASSET_PATH}")
+    compressed = CRIMSON_ASSET_PATH.read_bytes()
     try:
-        asset = zlib.decompress(CRIMSON_ASSET_PATH.read_bytes())
-    except Exception as exc:
-        raise SystemExit(f"local co-op patch: cannot decompress Crimson P2 sprite asset: {exc}")
+        asset = zlib.decompress(compressed)
+    except zlib.error:
+        # The first packaged copy can have a damaged Adler trailer even when
+        # the deflate payload is intact. Retry raw inflate, then verify the
+        # complete decoded bytes against the known source-pack SHA-256.
+        try:
+            if len(compressed) <= 6:
+                raise ValueError("compressed payload is too short")
+            asset = zlib.decompress(compressed[2:-4], -zlib.MAX_WBITS)
+        except Exception as exc:
+            raise SystemExit(f"local co-op patch: cannot decompress Crimson P2 sprite asset: {exc}")
+    expected_sha256 = "3383f83344601fc6d2c6237dd4fa883a785ca6eb7e82ced43be56e508aa07dea"
+    actual_sha256 = hashlib.sha256(asset).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise SystemExit(f"local co-op patch: Crimson P2 sprite asset SHA-256 mismatch ({actual_sha256})")
     if len(asset) < 42:
         raise SystemExit("local co-op patch: Crimson P2 sprite asset header is truncated")
     magic, version, frame_count, width, height, frame_bytes = struct.unpack_from(">4sBBBBH", asset, 0)
