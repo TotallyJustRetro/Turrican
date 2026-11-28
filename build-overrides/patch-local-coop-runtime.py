@@ -1538,13 +1538,11 @@ static void md_coop_vram_report(void) {
             (unsigned)vdp.reg[2] << 10, (unsigned)vdp.reg[3] << 10,
             (unsigned)vdp.reg[4] << 13, (unsigned)vdp.reg[5] << 9,
             (unsigned)vdp.reg[13] << 10);
-    fprintf(f, "Body slot: P1 uses VRAM 6CC0 (tile 366), up to 600 bytes. "
-               "Each extra player needs one consecutive 600-byte / 48-tile slot.\n");
-    fprintf(f, "Configured extra players: %u; required contiguous run: %u tiles (%u bytes).\n",
+    fprintf(f, "Body slot: P1 uses VRAM 6CC0 (tile 366), up to 600 bytes; each extra player needs one independent 600-byte / 48-tile block.\n");
+    fprintf(f, "Configured extra players: %u; aggregate capacity: %u tiles (%u bytes). Blocks need not be adjacent.\n",
             slots, required_tiles, required_tiles * 32u);
-    fprintf(f, "Game also DMAs to 6FC0 72C0 77C0 79C0 7BC0 7DC0.\n");
-    fprintf(f, "Completely empty runs of >= %u tiles (candidates; avoid every VDP table above):\n",
-            required_tiles);
+    fprintf(f, "Known static game DMA destinations include 6FC0 72C0 77C0 79C0 7BC0 7DC0 and additional traced sites.\n");
+    fprintf(f, "Empty runs of >= 48 tiles; each aligned 48-tile block is checked against known uploads and live VDP tables:\n");
     for (t = 0; t <= 0x800u; ++t) {
         int empty = 0;
         if (t < 0x800u) {
@@ -1558,9 +1556,18 @@ static void md_coop_vram_report(void) {
             if (!run) start = t;
             ++run;
         } else {
-            if (run >= required_tiles)
-                fprintf(f, "  %04X-%04X  (%u tiles)\n",
+            if (run >= 48u) {
+                unsigned b;
+                fprintf(f, "  empty run %04X-%04X (%u tiles)\n",
                         start * 32u, t * 32u - 1u, run);
+                for (b = start * 32u; b + 0x600u <= t * 32u; b += 0x600u) {
+                    const char *why = NULL;
+                    int ok = md_coop_tile_block_ok(b, &why);
+                    fprintf(f, "    block %04X: %s%s\n", b,
+                            ok ? "ACCEPTABLE (no known conflict)" : "REJECT - ",
+                            ok ? "" : (why ? why : "unknown conflict"));
+                }
+            }
             run = 0;
         }
     }
