@@ -45,6 +45,16 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
         raise SystemExit(f"local co-op patch: missing {label} anchor in {path}")
     path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
 
+def ensure_header_decls(lines) -> None:
+    """Append missing runtime prototypes without disturbing existing RT_POLL edits."""
+    header = RT_HEADER.read_text(encoding="utf-8")
+    add = [line for line in lines if line not in header]
+    if add:
+        RT_HEADER.write_text(
+            header.rstrip("\n") + "\n" + "\n".join(add) + "\n",
+            encoding="utf-8", newline="\n"
+        )
+
 for path in (GEN, HARNESS, RT_HEADER, SDL_MAIN):
     if not path.is_file():
         raise SystemExit(f"local co-op patch: required source file missing: {path}")
@@ -1496,6 +1506,26 @@ RT_HEADER.write_text(header, encoding="utf-8", newline="\n")
 VRAM_REPORT_CODE = r"""
 extern unsigned md_coop_run_stamp;
 extern unsigned md_coop_p2_slot_count(void);
+extern int (*md_coop_vram_check_cb)(unsigned addr, unsigned len);
+extern int md_coop_tile_block_ok(unsigned base, const char **why);
+
+/* Conservative active-table bounds from live VDP registers. */
+static int md_coop_vram_region_ok(unsigned addr, unsigned len) {
+    unsigned w = 32u << (vdp.reg[16] & 3u);
+    unsigned h = 32u << ((vdp.reg[16] >> 4) & 3u);
+    unsigned nt = w * h * 2u;
+    struct { unsigned base, size; } t[5];
+    unsigned i;
+    if (nt > 0x2000u) nt = 0x2000u;
+    t[0].base = ((unsigned)vdp.reg[2] << 10) & 0xFFFFu;  t[0].size = nt;
+    t[1].base = ((unsigned)vdp.reg[3] << 10) & 0xFFFFu;  t[1].size = 0x1000u;
+    t[2].base = ((unsigned)vdp.reg[4] << 13) & 0xFFFFu;  t[2].size = nt;
+    t[3].base = ((unsigned)vdp.reg[5] << 9) & 0xFFFFu;   t[3].size = 0x280u;
+    t[4].base = ((unsigned)vdp.reg[13] << 10) & 0xFFFFu; t[4].size = 0x400u;
+    for (i = 0; i < 5u; ++i)
+        if (addr < t[i].base + t[i].size && addr + len > t[i].base) return 0;
+    return 1;
+}
 
 static void md_coop_vram_report(void) {
     FILE *f;
@@ -1539,6 +1569,8 @@ static void md_coop_vram_report(void) {
 
 static void md_coop_vram_report_tick(void) {
     static int done = 0;
+    /* Register live table validation before any extra player can reserve VRAM. */
+    md_coop_vram_check_cb = md_coop_vram_region_ok;
     if (!done && md_coop_run_stamp >= 600u) {
         done = 1;
         md_coop_vram_report();
