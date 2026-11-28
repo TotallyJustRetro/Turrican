@@ -2387,7 +2387,7 @@ checks = {
     "per-frame diagnostic log captures player state and pose bytes": "MegaTurrican-coop-diag.txt" in h and "md_diag_ranges" in h and "0xBCBCu, 0xBD26u" in h and "md_coop_diag_frame();" in h,
     "instruction PC is stamped for every generated instruction": "md_coop_last_pc=(unsigned)(pc)" in r and "unsigned md_coop_last_pc = 0;" in h,
     "camera read probes and write flight recorder are installed": "void md_read_trace(M68K *c, unsigned tag)" in h and "md_watch_write(unsigned a, uint8_t v)" in h and "MegaTurrican-coop-flight.txt" in h and "md_read_trace(c,6);" in g,
-    "object and body hooks install after generated instruction rewrites": "install_owner_hooks()\\ninstall_body_hooks()\\ninstall_read_trace_hooks()" in Path(__file__).read_text(encoding="utf-8"),
+    "object and body hooks install after generated instruction rewrites": "install_owner_hooks()\ninstall_body_hooks()\ninstall_read_trace_hooks()" in Path(__file__).read_text(encoding="utf-8"),
     "object ownership metadata and dispatch helpers are installed": "md_obj_owner[0x10000]" in h and "md_obj_note_alloc(M68K *c)" in h and "md_obj_enter(M68K *c)" in h and "md_obj_leave(void)" in h,
     "object dispatch count is included in diagnostics": "own=%lu" in h and "md_obj_dispatch_count" in h,
     "per-player body sprite DMA and tile hooks are defined": "md_body_fix_dest(M68K *c)" in h and "md_body_fix_tile(M68K *c)" in h,
