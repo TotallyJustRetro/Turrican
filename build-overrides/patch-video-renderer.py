@@ -47,7 +47,7 @@ JS = r'''(() => {
  let renderer="auto";
  const $=id=>document.getElementById(id);
  function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"{}");if(valid.has(s.renderer))renderer=s.renderer;}catch(_){}}
- function note(){return renderer==="direct3d11"?"Requests SDL's Direct3D 11 accelerated renderer. If it is unavailable, the game may fail to create its display renderer; choose Automatic to recover.":renderer==="opengl"?"Requests SDL's OpenGL accelerated renderer. If it is unavailable, the game may fail to create its display renderer; choose Automatic to recover.":"SDL chooses the available accelerated renderer automatically.";}
+ function note(){return renderer==="direct3d11"?"Requests SDL's Direct3D 11 renderer. If it is unavailable or cannot initialize, SDL falls back to its normal default renderer.":renderer==="opengl"?"Requests SDL's OpenGL renderer. If it is unavailable or cannot initialize, SDL falls back to its normal default renderer.":"SDL chooses the available renderer automatically.";}
  function save(){localStorage.setItem(KEY,JSON.stringify({renderer}));$("videoSaveStatus").textContent="Saved on this PC · "+$("videoRenderer").selectedOptions[0].textContent;}
  function init(){load();$("videoRenderer").value=renderer;$("videoRendererNote").textContent=note();save();$("videoRenderer").addEventListener("change",e=>{renderer=valid.has(e.target.value)?e.target.value:"auto";$("videoRendererNote").textContent=note();save();});}
  window.getMegaTurricanVideoSettings=()=>({renderer});
