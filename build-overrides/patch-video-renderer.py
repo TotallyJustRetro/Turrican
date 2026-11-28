@@ -128,7 +128,7 @@ def patch_runtime_renderer_readout(project: Path) -> None:
     # creation so the readout names the backend actually selected, including
     # SDL fallback behavior, rather than repeating the launcher's preference.
     m=re.search(
-        r'(?m)^(?P<indent>[ \\t]*)(?P<renderer>[A-Za-z_]\\w*)\\s*=\\s*SDL_CreateRenderer\\s*\\(\\s*(?P<window>[A-Za-z_]\\w*)\\s*,',
+        r'(?m)^(?P<indent>[ \t]*)(?P<renderer>[A-Za-z_]\w*)\s*=\s*SDL_CreateRenderer\s*\(\s*(?P<window>[A-Za-z_]\w*)\s*,',
         s
     )
     if not m:
@@ -177,8 +177,8 @@ def patch_runtime_renderer_readout(project: Path) -> None:
 {m.group("indent")}}}
 """
     s=s[:statement_end+1]+readout+s[statement_end+1:]
-    if not re.search(r'(?m)^\\s*#include\\s*[<"]stdio\\.h[>"]',s):
-        inc=re.search(r'(?m)^#include [^\\n]+\\n',s)
+    if not re.search(r'(?m)^\s*#include\s*[<"]stdio\.h[>"]',s):
+        inc=re.search(r'(?m)^#include [^\n]+\n',s)
         if not inc: raise RuntimeError("Could not find the SDL source include section for stdio.h.")
         s=s[:inc.end()]+"#include <stdio.h>\\n"+s[inc.end():]
     p.write_text(s,encoding="utf-8")
