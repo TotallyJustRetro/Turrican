@@ -13,6 +13,8 @@ CSS = r"""
 .video-field select{width:100%}
 .video-note{font-size:12px;color:var(--mut);line-height:1.5}
 .video-status{min-height:34px;margin-top:10px;padding:9px 10px;border:1px solid #354153;border-radius:5px;background:#080c12;color:#bbc7d6;font-size:12px}
+.video-readout{white-space:pre-wrap;word-break:break-word;min-height:88px;margin:10px 0 0;padding:10px;border:1px solid #354153;border-radius:5px;background:#080c12;color:#bbc7d6;font:11px/1.55 Consolas,monospace}
+.video-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 @media(max-width:760px){.video-grid{grid-template-columns:1fr}}
 """
 MARKUP = r'''<section class="tab" id="t-video">
@@ -36,6 +38,8 @@ MARKUP = r'''<section class="tab" id="t-video">
    <p class="video-note"><strong>Direct3D 11</strong> asks SDL to use its Direct3D 11 renderer when the installed SDL build and graphics driver support it.</p>
    <p class="video-note"><strong>OpenGL</strong> asks SDL to use its OpenGL renderer when available. This can help compare driver behavior on different systems.</p>
    <p class="video-note">These choices change the existing SDL presentation renderer. They do not replace the Genesis CPU/VDP simulation or enable a separate Vulkan/Direct3D 12 backend.</p>
+   <div class="video-actions"><button class="b" id="videoRefreshDiagnostics" type="button">REFRESH LAST RUN</button></div>
+   <pre class="video-readout" id="videoRendererDiagnostics" role="status" aria-live="polite">Launch Mega Turrican and let it run for at least 120 frames, then refresh to see the actual renderer and performance sample.</pre>
   </div>
  </div>
 </section>'''
@@ -49,7 +53,8 @@ JS = r'''(() => {
  function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"{}");if(valid.has(s.renderer))renderer=s.renderer;}catch(_){}}
  function note(){return renderer==="direct3d11"?"Requests SDL's Direct3D 11 renderer. If it is unavailable or cannot initialize, SDL falls back to its normal default renderer.":renderer==="opengl"?"Requests SDL's OpenGL renderer. If it is unavailable or cannot initialize, SDL falls back to its normal default renderer.":"SDL chooses the available renderer automatically.";}
  function save(){localStorage.setItem(KEY,JSON.stringify({renderer}));$("videoSaveStatus").textContent="Saved on this PC · "+$("videoRenderer").selectedOptions[0].textContent;}
- function init(){load();$("videoRenderer").value=renderer;$("videoRendererNote").textContent=note();save();$("videoRenderer").addEventListener("change",e=>{renderer=valid.has(e.target.value)?e.target.value:"auto";$("videoRendererNote").textContent=note();save();});}
+ async function refreshDiagnostics(){const out=$("videoRendererDiagnostics");if(!window.GenesisCore||typeof window.GenesisCore.rendererDiagnostics!=="function"){out.textContent="Renderer diagnostics bridge is unavailable in this launcher build.";return;}out.textContent="Reading last game report…";try{const result=await window.GenesisCore.rendererDiagnostics();const parts=[];if(result.renderer)parts.push("ACTUAL RENDERER\\n"+result.renderer.trim());else parts.push("No renderer report yet. Launch the game once.");if(result.performance)parts.push("FRAME PACING\\n"+result.performance.trim());else parts.push("No frame-pacing sample yet. Let the game run for at least 120 frames.");out.textContent=parts.join("\\n\\n");}catch(error){out.textContent="Could not read renderer diagnostics: "+(error&&error.message?error.message:String(error));}}
+ function init(){load();$("videoRenderer").value=renderer;$("videoRendererNote").textContent=note();save();$("videoRenderer").addEventListener("change",e=>{renderer=valid.has(e.target.value)?e.target.value:"auto";$("videoRendererNote").textContent=note();save();});$("videoRefreshDiagnostics").addEventListener("click",refreshDiagnostics);}
  window.getMegaTurricanVideoSettings=()=>({renderer});
  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});else init();
 })();'''
@@ -99,6 +104,22 @@ def patch_main(project: Path) -> None:
     # Build a clean child-process environment. In Automatic mode we remove
     # inherited SDL_RENDER_DRIVER instead of passing the string "undefined".
     # That guarantees SDL can perform its normal renderer selection.
+    handler_anchor="ipcMain.handle('md-launch',"
+    handler="""ipcMain.handle('md-renderer-diagnostics', async () => {
+  const base = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
+  const read = name => {
+    try { return fs.readFileSync(path.join(base, name), 'utf8').slice(0, 8192); }
+    catch (error) { if (error && error.code === 'ENOENT') return null; throw error; }
+  };
+  return {
+    renderer: read('MegaTurrican-renderer.txt'),
+    performance: read('MegaTurrican-renderer-performance.txt')
+  };
+});
+
+"""
+    if "md-renderer-diagnostics" not in s:
+        s=once(s,handler_anchor,handler+handler_anchor,"renderer diagnostics IPC handler")
     spawn_anchor="    const child = spawn(exe, [romPath, configPath], {"
     setup="""    const childEnv = {
       ...process.env,
@@ -184,6 +205,18 @@ def patch_runtime_renderer_readout(project: Path) -> None:
     p.write_text(s,encoding="utf-8")
     print("Added actual SDL renderer name to the game window title and MegaTurrican-renderer.txt.")
 
+def patch_preload(project: Path) -> None:
+    p=project/"launcher"/"preload.js"
+    s=p.read_text(encoding="utf-8-sig")
+    if "rendererDiagnostics:" not in s:
+        s=once(
+            s,
+            "  }\n});",
+            "  },\n  rendererDiagnostics: () => ipcRenderer.invoke('md-renderer-diagnostics')\n});",
+            "renderer diagnostics preload bridge"
+        )
+        p.write_text(s,encoding="utf-8")
+
 def patch_runtime_frame_metrics(project: Path) -> None:
     p=project/"runtime"/"sdl_main.c"
     s=p.read_text(encoding="utf-8-sig")
@@ -248,10 +281,11 @@ def patch_runtime_frame_metrics(project: Path) -> None:
 
 def patch(project: Path) -> None:
     patch_html(project)
+    patch_preload(project)
     patch_main(project)
     patch_runtime_renderer_readout(project)
     patch_runtime_frame_metrics(project)
-    print("Added persistent Video tab, actual SDL renderer reporting, and frame-pacing diagnostics.")
+    print("Added Video Options, saved renderer selection, launcher diagnostics, and frame-pacing reporting.")
 
 if __name__=="__main__":
     if len(sys.argv)!=2: raise SystemExit("usage: patch-video-renderer.py PROJECT_ROOT")
