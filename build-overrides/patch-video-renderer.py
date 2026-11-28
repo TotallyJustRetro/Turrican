@@ -118,10 +118,77 @@ def patch_main(project: Path) -> None:
         raise RuntimeError("Could not connect renderer preferences to the native game process environment.")
     p.write_text(s,encoding="utf-8")
 
+def patch_runtime_renderer_readout(project: Path) -> None:
+    p=project/"runtime"/"sdl_main.c"
+    s=p.read_text(encoding="utf-8-sig")
+    if "MegaTurrican-renderer.txt" in s and "SDL_GetRendererInfo" in s:
+        return
+
+    # The native SDL renderer is created in the game process. Query SDL after
+    # creation so the readout names the backend actually selected, including
+    # SDL fallback behavior, rather than repeating the launcher's preference.
+    m=re.search(
+        r'(?m)^(?P<indent>[ \\t]*)(?P<renderer>[A-Za-z_]\\w*)\\s*=\\s*SDL_CreateRenderer\\s*\\(\\s*(?P<window>[A-Za-z_]\\w*)\\s*,',
+        s
+    )
+    if not m:
+        raise RuntimeError("Could not locate the native SDL_CreateRenderer assignment for the actual renderer readout.")
+
+    call_open=s.find("(",m.start())
+    depth=0
+    call_close=-1
+    for i in range(call_open,len(s)):
+        if s[i]=="(":
+            depth+=1
+        elif s[i]==")":
+            depth-=1
+            if depth==0:
+                call_close=i
+                break
+    if call_close<0:
+        raise RuntimeError("Could not find the end of SDL_CreateRenderer call.")
+    statement_end=call_close+1
+    while statement_end<len(s) and s[statement_end].isspace():
+        statement_end+=1
+    if statement_end>=len(s) or s[statement_end]!=";":
+        raise RuntimeError("SDL_CreateRenderer is not a simple assignment statement; refusing an unsafe renderer-readout insertion.")
+
+    renderer=m.group("renderer")
+    window=m.group("window")
+    readout=f"""
+{m.group("indent")}/* Report the renderer SDL actually initialized (requested driver may fall back). */
+{m.group("indent")}{{ 
+{m.group("indent")}    SDL_RendererInfo mt_renderer_info;
+{m.group("indent")}    if (SDL_GetRendererInfo({renderer}, &mt_renderer_info) == 0) {{
+{m.group("indent")}        const char *mt_driver_name = mt_renderer_info.name ? mt_renderer_info.name : "unknown";
+{m.group("indent")}        const char *mt_old_title = SDL_GetWindowTitle({window});
+{m.group("indent")}        char mt_renderer_title[256];
+{m.group("indent")}        snprintf(mt_renderer_title, sizeof mt_renderer_title, "%s | Renderer: %s",
+{m.group("indent")}                 (mt_old_title && *mt_old_title) ? mt_old_title : "Mega Turrican", mt_driver_name);
+{m.group("indent")}        SDL_SetWindowTitle({window}, mt_renderer_title);
+{m.group("indent")}        FILE *mt_renderer_file = fopen("MegaTurrican-renderer.txt", "w");
+{m.group("indent")}        if (mt_renderer_file) {{
+{m.group("indent")}            fprintf(mt_renderer_file, "renderer=%s\\nflags=0x%08X\\nmax_texture=%dx%d\\n",
+{m.group("indent")}                    mt_driver_name, (unsigned)mt_renderer_info.flags,
+{m.group("indent")}                    mt_renderer_info.max_texture_width, mt_renderer_info.max_texture_height);
+{m.group("indent")}            fclose(mt_renderer_file);
+{m.group("indent")}        }}
+{m.group("indent")}    }}
+{m.group("indent")}}}
+"""
+    s=s[:statement_end+1]+readout+s[statement_end+1:]
+    if not re.search(r'(?m)^\\s*#include\\s*[<"]stdio\\.h[>"]',s):
+        inc=re.search(r'(?m)^#include [^\\n]+\\n',s)
+        if not inc: raise RuntimeError("Could not find the SDL source include section for stdio.h.")
+        s=s[:inc.end()]+"#include <stdio.h>\\n"+s[inc.end():]
+    p.write_text(s,encoding="utf-8")
+    print("Added actual SDL renderer name to the game window title and MegaTurrican-renderer.txt.")
+
 def patch(project: Path) -> None:
     patch_html(project)
     patch_main(project)
-    print("Added persistent Video tab: Automatic, Direct3D 11, and OpenGL.")
+    patch_runtime_renderer_readout(project)
+    print("Added persistent Video tab and actual SDL renderer reporting.")
 
 if __name__=="__main__":
     if len(sys.argv)!=2: raise SystemExit("usage: patch-video-renderer.py PROJECT_ROOT")
