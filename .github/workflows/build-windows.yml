@@ -167,6 +167,20 @@ jobs:
           python (Join-Path $PWD 'build-overrides/patch-video-renderer.py') $env:MEGATURRICAN_PROJECT
           if ($LASTEXITCODE -ne 0) { throw 'Applying launcher video renderer selection failed.' }
 
+      - name: Verify launcher video renderer selection
+        shell: pwsh
+        run: |
+          $launcherMain = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/main.js') -Raw
+          $launcherHtml = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/index.html') -Raw
+          foreach ($marker in @('const childEnv = {', "childEnv.SDL_RENDER_DRIVER = 'opengl'", "childEnv.SDL_RENDER_DRIVER = 'direct3d11'", 'delete childEnv.SDL_RENDER_DRIVER')) {
+            if (-not $launcherMain.Contains($marker)) { throw "Renderer process handoff is missing: $marker" }
+          }
+          foreach ($marker in @('id="t-video"', 'videoRenderer', 'video-settings.js', 'getMegaTurricanVideoSettings()')) {
+            if (-not $launcherHtml.Contains($marker)) { throw "Launcher Video Options UI is missing: $marker" }
+          }
+          if ($launcherMain.Contains('SDL_RENDER_DRIVER: settings.renderer')) { throw 'Unsafe undefined SDL_RENDER_DRIVER assignment is still present.' }
+
+
       - name: Embed Reborn intro and persistent title branding
         shell: pwsh
         run: |
