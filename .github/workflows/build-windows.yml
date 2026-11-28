@@ -324,6 +324,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Launcher main.js syntax check failed.' }
           node --check (Join-Path $launcher 'preload.js')
           if ($LASTEXITCODE -ne 0) { throw 'Launcher preload.js syntax check failed.' }
+          node --check (Join-Path $launcher 'video-settings.js')
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher video-settings.js syntax check failed.' }
           $main = Get-Content (Join-Path $launcher 'main.js') -Raw
           $preload = Get-Content (Join-Path $launcher 'preload.js') -Raw
           $html = Get-Content (Join-Path $launcher 'index.html') -Raw
