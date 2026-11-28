@@ -129,63 +129,137 @@ static M68K *md_coop_primary_m68k = NULL;
 #define MD_COOP_SPAWN_DX (0x0010u * (md_coop_cur + 1u))
 
 
-/* ---- Independent player body sprites ------------------------------------
-   f_374E uploads the current player pose to VRAM $6CC0 (48 tiles / $600
-   bytes) and builds the corresponding body sprite entries with tile base
-   $366. Every player currently uses that same slot. When a safe base is
-   configured, each extra player gets one consecutive $600-byte region.
-   The first extra player (P2) uses base; P3 uses base+$600, etc.
-   Configure MegaTurrican-coop-p2tile.txt with a VRAM byte address in hex.
-   The value is read once per game launch. Missing/zero keeps legacy behavior.
+/* ---- Independent player body sprites ------------------------------------------
+   Each extra player receives its own 48-tile ($600-byte) body-art slot. Addresses
+   are configurable per player in MegaTurrican-coop-p2tile.txt. A slot is rejected
+   when it overlaps P1, a known static game DMA destination, a live VDP table, or
+   another configured extra-player slot. Passing checks means "no known conflict",
+   not proof that data-driven uploads never use the region.
 */
 #ifndef MT_COOP_P2_TILE_VRAM
 #define MT_COOP_P2_TILE_VRAM 0
 #endif
-static unsigned md_p2_tile_cfg = 0xFFFFFFFFu;
-static unsigned md_p2_tile_addr(void) {
-    if (md_p2_tile_cfg == 0xFFFFFFFFu) {
-        FILE *tf = fopen("MegaTurrican-coop-p2tile.txt", "r");
-        unsigned v = (unsigned)MT_COOP_P2_TILE_VRAM;
-        const char *e = getenv("MT_COOP_P2_TILE_VRAM");
-        if (e && *e) v = (unsigned)strtoul(e, NULL, 16);
-        if (tf) {
-            char b[64] = {0};
-            if (fgets(b, sizeof b, tf)) v = (unsigned)strtoul(b, NULL, 16);
-            fclose(tf);
-        }
-        if (v != 0u &&
-            ((v & 0x1Fu) != 0u || v < 0x4000u ||
-             v + MT_COOP_SLOTS * 0x600u > 0x10000u)) {
-            FILE *log = fopen("MegaTurrican-local-coop-runtime.txt", "a");
-            if (log) {
-                fprintf(log,
-                    "event=body-vram-slot status=invalid address=%04X slots=%u required_bytes=%u\n",
-                    v & 0xFFFFu, (unsigned)MT_COOP_SLOTS,
-                    (unsigned)(MT_COOP_SLOTS * 0x600u));
-                fclose(log);
+#define MD_SLOT_BYTES 0x600u
+static const uint16_t md_known_dma_dests[] = {
+    0x0000,0x0002,0x0020,0x0060,0x1000,0x1200,0x1400,0x1600,0x1C00,0x2000,0x2400,0x2800,0x2C00,0x3000,0x3280,0x3400,
+    0x3402,0x3D20,0x3D40,0x4000,0x6CC0,0x6FC0,0x72C0,0x77C0,0x79C0,0x7BC0,0x7DC0,0x8000,0x8340,0x8800,0x8E40,0x9D20,
+    0x9EA0,0xA280,0xA3E0,0xA5A0,0xA600,0xA780,0xAB60,0xB3E0,0xB5E0,0xC3C0,0xC400,0xC440,0xC5C0,0xC600,0xC640,0xCDE0,
+    0xD080,0xD9A0,0xDB00,0xDC40,0xDCC0,0xE000,0xE100,0xE4C0,0xE500,0xE940,0xE9A0,0xEB40,0xEDC0,0xEFC0,0xF1C0,0xF580,0xFB80
+};
+/* Registered by sdl_main.c; returns 0 if this range overlaps a live VDP table. */
+int (*md_coop_vram_check_cb)(unsigned addr, unsigned len) = NULL;
+
+static int md_coop_tile_block_check(unsigned base, int force, const char **why) {
+    unsigned i;
+    const char *w = NULL;
+    if (base & 0x1Fu) w = "not 32-byte aligned";
+    else if (base < 0x4000u) w = "below 0x4000 (planes/tables region)";
+    else if (base + MD_SLOT_BYTES > 0x10000u) w = "runs past end of VRAM";
+    else if (base < 0x72C0u && base + MD_SLOT_BYTES > 0x6CC0u)
+        w = "overlaps P1 body slot 6CC0-72BF";
+    else {
+        for (i = 0; i < sizeof md_known_dma_dests / sizeof md_known_dma_dests[0]; ++i) {
+            unsigned d = md_known_dma_dests[i];
+            unsigned len = (d == 0x4000u) ? (0x6CC0u - 0x4000u) : MD_SLOT_BYTES;
+            if (!force && d >= 0x4000u && base < d + len && base + MD_SLOT_BYTES > d) {
+                w = "overlaps a known game DMA destination";
+                break;
             }
-            v = 0u;
         }
-        md_p2_tile_cfg = v;
     }
-    return md_p2_tile_cfg;
+    if (!w && md_coop_vram_check_cb && !md_coop_vram_check_cb(base, MD_SLOT_BYTES))
+        w = "overlaps a VDP table (plane/window/SAT/hscroll)";
+    if (why) *why = w;
+    return w == NULL;
+}
+int md_coop_tile_block_ok(unsigned base, const char **why) {
+    return md_coop_tile_block_check(base, 0, why);
+}
+
+static unsigned md_p2_tile_slot[MT_COOP_SLOTS];
+static int md_p2_tile_loaded = 0;
+static void md_p2_tile_status(unsigned slot, unsigned addr, const char *msg) {
+    FILE *sf = fopen("MegaTurrican-coop-p2tile-status.txt", slot == 0u ? "w" : "a");
+    if (!sf) return;
+    fprintf(sf, "extra player %u (P%u): VRAM %04X -> %s\n",
+            slot + 1u, slot + 2u, addr, msg);
+    fclose(sf);
+}
+static void md_p2_tile_load(void) {
+    unsigned s, prev = 0;
+    char b[64];
+    FILE *tf = fopen("MegaTurrican-coop-p2tile.txt", "r");
+    const char *e = getenv("MT_COOP_P2_TILE_VRAM");
+    md_p2_tile_loaded = 1;
+    for (s = 0; s < MT_COOP_SLOTS; ++s) {
+        unsigned v = 0, i;
+        int have = 0, force = 0;
+        const char *why = NULL;
+        if (tf && fgets(b, sizeof b, tf)) {
+            v = (unsigned)strtoul(b, NULL, 16);
+            have = 1;
+            force = strstr(b, "force") != NULL;
+        } else if (s == 0u) {
+            v = (unsigned)MT_COOP_P2_TILE_VRAM;
+            if (e && *e) v = (unsigned)strtoul(e, NULL, 16);
+            have = v != 0u;
+        } else if (prev) {
+            v = prev + MD_SLOT_BYTES;
+            have = 1;
+        }
+        v &= 0xFFFFu;
+        if (!have || !v) {
+            md_p2_tile_slot[s] = 0u;
+            continue;
+        }
+        if (md_coop_tile_block_check(v, force, &why)) {
+            for (i = 0; i < s; ++i) {
+                unsigned other = md_p2_tile_slot[i];
+                if (other && v < other + MD_SLOT_BYTES && v + MD_SLOT_BYTES > other) {
+                    why = "overlaps another configured extra-player slot";
+                    break;
+                }
+            }
+        }
+        if (!why && md_coop_tile_block_check(v, force, NULL)) {
+            md_p2_tile_slot[s] = v;
+            md_p2_tile_status(s, v, force
+                ? "ACCEPTED WITH force: known-upload rule skipped; may corrupt game graphics"
+                : "accepted (no conflict with known uploads/tables; not proven free)");
+        } else {
+            md_p2_tile_slot[s] = 0u;
+            md_p2_tile_status(s, v, why ? why : "rejected");
+        }
+        prev = v;
+    }
+    if (tf) fclose(tf);
+}
+static unsigned md_p2_slot_addr(unsigned slot) {
+    /* Wait for the SDL-side table callback, so the first actor can't bypass it. */
+    if (!md_p2_tile_loaded) {
+        if (!md_coop_vram_check_cb) return 0u;
+        md_p2_tile_load();
+    }
+    return slot < MT_COOP_SLOTS ? md_p2_tile_slot[slot] : 0u;
+}
+static unsigned md_p2_tile_addr(void) {
+    unsigned s, any = 0u;
+    for (s = 0; s < MT_COOP_SLOTS; ++s) any |= md_p2_slot_addr(s);
+    return any;
 }
 static int md_coop_queue_shared(void) {
     return MT_COOP_VDP_QUEUE_SHARED || md_p2_tile_addr() != 0u;
 }
 
-/* Called from the generated f_374E body renderer at the native instruction
-   sites that set the DMA destination and the body sprite's starting tile. */
+/* Called from f_374E at the DMA destination and body-sprite tile-base sites. */
 void md_body_fix_dest(M68K *c) {
-    unsigned base = md_p2_tile_addr();
-    if (c && base && md_coop_p2_active)
-        c->a[1] = base + md_coop_cur * 0x600u;
+    unsigned a = md_p2_slot_addr(md_coop_cur);
+    if (c && a && md_coop_p2_active) c->a[1] = a;
 }
 void md_body_fix_tile(M68K *c) {
-    unsigned base = md_p2_tile_addr();
-    if (c && base && md_coop_p2_active)
-        c->d[4] = (c->d[4] & 0xFFFF0000u) |
-                  (((base + md_coop_cur * 0x600u) >> 5) & 0x7FFu);
+    unsigned a = md_p2_slot_addr(md_coop_cur);
+    if (c && a && md_coop_p2_active)
+        c->d[4] = (c->d[4] & 0xFFFF0000u) | ((a >> 5) & 0x7FFu);
 }
 
 unsigned md_coop_p2_slot_count(void) { return MT_COOP_SLOTS; }
@@ -204,6 +278,131 @@ static unsigned md_obj_context_depth = 0u;
 static unsigned md_obj_context_overflow = 0u;
 unsigned long md_obj_dispatch_count = 0;
 unsigned md_coop_run_stamp = 0u;
+
+/* Instruction-stamped flight recorder. Writes and targeted reads share one
+   sequence ring so camera/Y writes can be matched to values consumed by the
+   native f_224C and f_3368 routines. */
+extern unsigned md_coop_last_pc;
+typedef struct {
+    unsigned seq, stamp, pc;
+    uint16_t addr;
+    uint8_t oldv, newv, act, slot, kind, tag;
+    uint16_t w[10];
+} md_wr_rec_t;
+#define MD_RING 8192u
+static md_wr_rec_t md_ring[MD_RING];
+static unsigned md_ring_n = 0u, md_seq = 0u;
+static uint8_t md_view8(unsigned o) {
+    o &= 0xFFFFu;
+    return (md_coop_p2_active && md_coop_p2_private[o]) ? md_coop_p2_ram[o] : ram[o];
+}
+static uint16_t md_view16(unsigned o) {
+    return (uint16_t)(((unsigned)md_view8(o) << 8) | md_view8(o + 1u));
+}
+void md_watch_write(unsigned a, uint8_t v) {
+#if MT_COOP_DIAG
+    unsigned o = a & 0xFFFFu;
+    uint8_t oldv;
+    md_wr_rec_t *r, *p;
+    if (!((o >= 0xBCBCu && o <= 0xBD26u) || (o >= 0xDFD4u && o <= 0xDFDBu))) return;
+    oldv = md_view8(o);
+    if (oldv == v) return;
+    /* Collapse duplicate observations when long writes delegate to word/byte writes. */
+    if (md_ring_n) {
+        p = &md_ring[(md_ring_n - 1u) & (MD_RING - 1u)];
+        if (p->kind == 0u && p->addr == o && p->oldv == oldv && p->newv == v &&
+            p->pc == md_coop_last_pc && p->stamp == md_coop_run_stamp) return;
+    }
+    r = &md_ring[md_ring_n++ & (MD_RING - 1u)];
+    r->seq = ++md_seq;
+    r->kind = 0u;
+    r->stamp = md_coop_run_stamp;
+    r->pc = md_coop_last_pc;
+    r->addr = (uint16_t)o;
+    r->oldv = oldv;
+    r->newv = v;
+    r->act = (uint8_t)md_coop_p2_active;
+    r->slot = (uint8_t)(md_coop_cur + 2u);
+#else
+    (void)a; (void)v;
+#endif
+}
+/* 1 camera deltas consumed; 2 Y after delta; 3 f_3368 entry;
+   4 X camera done; 5 Y camera compare; 6 f_3368 exit. */
+void md_read_trace(M68K *c, unsigned tag) {
+#if MT_COOP_DIAG
+    md_wr_rec_t *r;
+    if (!c) return;
+    r = &md_ring[md_ring_n++ & (MD_RING - 1u)];
+    r->seq = ++md_seq;
+    r->kind = 1u;
+    r->tag = (uint8_t)tag;
+    r->stamp = md_coop_run_stamp;
+    r->pc = md_coop_last_pc;
+    r->act = (uint8_t)md_coop_p2_active;
+    r->slot = (uint8_t)(md_coop_cur + 2u);
+    r->w[0] = (uint16_t)c->d[0];
+    r->w[1] = (uint16_t)c->d[1];
+    r->w[2] = (uint16_t)c->d[6];
+    r->w[3] = (uint16_t)c->d[7];
+    r->w[4] = md_view16(0xBD1E);
+    r->w[5] = md_view16(0xBD20);
+    r->w[6] = md_view16(0xDFD8);
+    r->w[7] = md_view16(0xDFDA);
+    r->w[8] = (uint16_t)(md_view8(0xBCD7) | ((unsigned)md_view8(0xBCD6) << 8));
+    r->w[9] = md_view16(0xBCD2);
+#else
+    (void)c; (void)tag;
+#endif
+}
+static void md_flight_dump(const char *why) {
+#if MT_COOP_DIAG
+    FILE *f = fopen("MegaTurrican-coop-flight.txt", "a");
+    unsigned total = md_ring_n < MD_RING ? md_ring_n : MD_RING;
+    unsigned take = total < 1800u ? total : 1800u;
+    unsigned i;
+    static const char *tagname[] = {
+        "?", "camdelta-consumed", "Y-after-delta", "f3368-entry",
+        "X-cam-done", "Y-cam-compare", "f3368-exit"
+    };
+    if (!f) return;
+    fprintf(f,
+        "=== %s at run=%u P1y=%02X%02X P1 BCD7=%02X BCD2=%02X%02X%02X%02X | shared DFD8=%02X%02X DFDA=%02X%02X"
+        " | P2 y=%02X%02X BCD7=%02X DFD8=%02X%02X DFDA=%02X%02X ===\n",
+        why ? why : "flight dump", md_coop_run_stamp,
+        ram[0xBD20], ram[0xBD21], ram[0xBCD7],
+        ram[0xBCD2], ram[0xBCD3], ram[0xBCD4], ram[0xBCD5],
+        ram[0xDFD8], ram[0xDFD9], ram[0xDFDA], ram[0xDFDB],
+        md_coop_slots[0].ram[0xBD20], md_coop_slots[0].ram[0xBD21],
+        md_coop_slots[0].ram[0xBCD7], md_coop_slots[0].ram[0xDFD8],
+        md_coop_slots[0].ram[0xDFD9], md_coop_slots[0].ram[0xDFDA],
+        md_coop_slots[0].ram[0xDFDB]);
+    fprintf(f,
+        "# W=write run pc context FFaddr old>new; R=what f_224C/f_3368 actually consumed\n"
+        "# R fields: d0 d1 d6 d7 | BD1E BD20 DFD8 DFDA | BCD6/7 flags | BCD2 hi\n");
+    for (i = 0; i < take; ++i) {
+        const md_wr_rec_t *r = &md_ring[(md_ring_n - take + i) & (MD_RING - 1u)];
+        char who[8];
+        if (r->act) snprintf(who, sizeof who, "P%u", (unsigned)r->slot);
+        else snprintf(who, sizeof who, "P1");
+        if (r->kind == 0u) {
+            fprintf(f, "W %u pc=%06X %-3s FF%04X %02X>%02X\n",
+                r->stamp, r->pc, who, r->addr, r->oldv, r->newv);
+        } else {
+            fprintf(f,
+                "R %u pc=%06X %-3s %-17s d0=%04X d1=%04X d6=%04X d7=%04X | x=%04X y=%04X dx=%04X dy=%04X | fl=%04X spd=%04X\n",
+                r->stamp, r->pc, who,
+                tagname[r->tag <= 6u ? r->tag : 0u],
+                r->w[0], r->w[1], r->w[2], r->w[3], r->w[4],
+                r->w[5], r->w[6], r->w[7], r->w[8], r->w[9]);
+        }
+    }
+    fclose(f);
+#else
+    (void)why;
+#endif
+}
+
 
 void md_obj_note_alloc(M68K *c) {
 #if MT_COOP_OBJ_OWNER
@@ -1007,6 +1206,18 @@ static void md_coop_diag_frame(void) {
     unsigned long frame = md_coop_p2_frame_count;
     unsigned sig;
     int input_changed;
+    /* One bounded pre-crash snapshot per P1 Y-overflow episode. */
+    if (md_coop_cur == 0u) {
+        static int episode = 0, dumps = 0;
+        int py = (int)(int16_t)(((unsigned)ram[0xBD20] << 8) | ram[0xBD21]);
+        if (py < -0x20 || py > 0x140) {
+            if (!episode && dumps < 4) {
+                episode = 1;
+                ++dumps;
+                md_flight_dump("P1 Y out of range");
+            }
+        } else episode = 0;
+    }
     if (bytes > 12000000ul) return;
     if (!df) {
         df = fopen("MegaTurrican-coop-diag.txt", "w");
@@ -1227,6 +1438,7 @@ insert_after_ram_mask(
 insert_after_ram_mask(
     HARNESS,
     r"void\s+bus_wr8\s*\(\s*uint32_t\s+a\s*,\s*uint8_t\s+v\s*\)",
+    "  if((a >= 0xFFBCBCu && a <= 0xFFBD26u) || (a >= 0xFFDFD4u && a <= 0xFFDFDBu)) md_watch_write(a,v);\n"
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ md_coop_p2_stack[a & 0xFFFFu]=v; return; }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u && md_coop_p2_private[a & 0xFFFFu]){ md_coop_p2_ram[a & 0xFFFFu]=v; return; }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u) md_coop_p2_note_shared_write(a,1u);\n",
@@ -1235,6 +1447,7 @@ insert_after_ram_mask(
 insert_after_ram_mask(
     HARNESS,
     r"void\s+bus_wr16\s*\(\s*uint32_t\s+a\s*,\s*uint16_t\s+v\s*\)",
+    "  if((a >= 0xFFBCBBu && a <= 0xFFBD26u) || (a >= 0xFFDFD3u && a <= 0xFFDFDBu)){ md_watch_write(a,(uint8_t)(v>>8)); md_watch_write(a+1u,(uint8_t)v); }\n"
     "  if(md_coop_p2_active && a >= 0xF00000u && a < 0xF10000u){ unsigned o=a&0xFFFFu; md_coop_p2_stack[o]=(uint8_t)(v>>8); md_coop_p2_stack[(o+1u)&0xFFFFu]=(uint8_t)v; return; }\n"
     "  if(md_coop_p2_active && a >= 0xE00000u){ unsigned o=a&0xFFFFu, n=(o+1u)&0xFFFFu; if(md_coop_p2_private[o]) md_coop_p2_ram[o]=(uint8_t)(v>>8); else { ram[o]=(uint8_t)(v>>8); md_coop_p2_note_shared_write(o,1u); } if(md_coop_p2_private[n]) md_coop_p2_ram[n]=(uint8_t)v; else { ram[n]=(uint8_t)v; md_coop_p2_note_shared_write(n,1u); } return; }\n",
     "bus_wr16",
@@ -1601,7 +1814,6 @@ def install_owner_hooks() -> None:
         print("WARNING: object-ownership hooks NOT installed (anchors not found: "
               + missing + "). P2 rope/shot objects may still act on P1.")
 
-install_owner_hooks()
 
 
 # ---- Redirect f_374E's pose DMA and body sprite tile base per player. ----
@@ -1633,7 +1845,6 @@ def install_body_hooks() -> None:
         print("WARNING: independent-sprite hooks NOT installed (anchors not found: "
               + missing + "). Players will share one tile slot.")
 
-install_body_hooks()
 
 gen = GEN.read_text(encoding="utf-8")
 GEN_RUNNER = GEN_RUNNER.replace("__POOL_RESERVE__", str(POOL_RESERVE))
@@ -1969,6 +2180,101 @@ replace_once(
     "L_25AA: { RT_POLL(0x25AA); uint32_t v=(D(0)&0xFFu); uint32_t d=A(2)+(int32_t)11; md_coop_p2_trace_hit_target(\"before-object-hit-write\",c); WR8(d,v); md_coop_p2_trace_hit_target(\"after-object-hit-write\",c); fl_logic(c,v,8); }",
     "P2 native shared-object hit pre-write trace",
 )
+
+
+# ---- Claude-derived diagnostics and safe installer-order helpers. ----
+def install_pc_stamp() -> None:
+    """Stamp every generated instruction PC, supporting single- and multi-line RT_POLL macros."""
+    h = RT_HEADER.read_text(encoding="utf-8")
+    if "md_coop_last_pc=(unsigned)" not in h:
+        lines = h.split("\n")
+        idx = next((i for i, ln in enumerate(lines)
+                    if re.match(r"\s*#\s*define\s+RT_POLL\s*\(", ln)), None)
+        if idx is None:
+            print("WARNING: instruction PC stamping skipped; RT_POLL macro not found.")
+        else:
+            end = idx
+            while end < len(lines) - 1 and lines[end].rstrip().endswith("\\"):
+                end += 1
+            lines[idx] = re.sub(r"(#\s*define\s+)RT_POLL\s*\(",
+                                r"\1RT_POLL_BASE(", lines[idx], count=1)
+            lines.insert(end + 1,
+                "#define RT_POLL(pc) do { md_coop_last_pc=(unsigned)(pc); RT_POLL_BASE(pc); } while (0)")
+            lines.insert(idx, "extern unsigned md_coop_last_pc;")
+            h = "\n".join(lines)
+            RT_HEADER.write_text(h, encoding="utf-8", newline="\n")
+            print("Installed instruction PC stamping around existing RT_POLL logic.")
+    hs = HARNESS.read_text(encoding="utf-8")
+    if not re.search(r"^unsigned\s+md_coop_last_pc\b", hs, re.M):
+        HARNESS.write_text("unsigned md_coop_last_pc = 0;\n" + hs,
+                           encoding="utf-8", newline="\n")
+
+def install_wr32_watch() -> None:
+    """Instrument bus_wr32 only when it does not delegate through watched byte/word writes."""
+    hs = HARNESS.read_text(encoding="utf-8")
+    if "MT_WR32_WATCH" in hs:
+        return
+    m = re.search(
+        r"(?:static\s+)?(?:inline\s+)?void\s+bus_wr32\s*\(\s*uint32_t\s+(\w+)\s*,\s*uint32_t\s+(\w+)\s*\)\s*\{",
+        hs
+    )
+    if not m:
+        rt = RT_HEADER.read_text(encoding="utf-8")
+        if re.search(r"#\s*define\s+WR32\s*\(", rt):
+            print("note: WR32 is a macro; byte/word watch hooks remain active, but macro delegation is not proven.")
+        else:
+            print("note: no bus_wr32/WR32 definition found; 32-bit writes are assumed to delegate.")
+        return
+    depth, i = 1, m.end()
+    while i < len(hs) and depth:
+        depth += {"{": 1, "}": -1}.get(hs[i], 0)
+        i += 1
+    body = hs[m.end():i - 1]
+    if re.search(r"\bbus_wr(16|8)\s*\(", body):
+        print("bus_wr32 delegates to bus_wr16/bus_wr8; byte/word write watch covers it.")
+        return
+    a, v = m.group(1), m.group(2)
+    inject = (
+        f" /*MT_WR32_WATCH*/ {{ uint32_t _wa=({a})&0xFFFFFFu; "
+        f"if((_wa>=0xFFBCB9u&&_wa<=0xFFBD26u)||(_wa>=0xFFDFD1u&&_wa<=0xFFDFDBu)) {{ "
+        f"md_watch_write(_wa,(uint8_t)(({v})>>24)); md_watch_write(_wa+1u,(uint8_t)(({v})>>16)); "
+        f"md_watch_write(_wa+2u,(uint8_t)(({v})>>8)); md_watch_write(_wa+3u,(uint8_t)({v})); }} }}"
+    )
+    HARNESS.write_text(hs[:m.end()] + inject + hs[m.end():],
+                       encoding="utf-8", newline="\n")
+    print("Instrumented non-delegating bus_wr32.")
+
+def install_read_trace_hooks() -> None:
+    """Record values consumed around camera/Y calculations in f_224C and f_3368."""
+    g = GEN.read_text(encoding="utf-8")
+    spots = {0x2256: 1, 0x227E: 2, 0x3368: 3, 0x33CC: 4, 0x33D4: 5, 0x3420: 6}
+    missing = []
+    for pc, tag in spots.items():
+        marker = f"md_read_trace(c,{tag});"
+        if marker in g:
+            continue
+        rx = re.compile(r"(L_%04X:\s*\{\s*RT_POLL\(0x%04X\);)" % (pc, pc), re.I)
+        g, n = rx.subn(r"\1 md_read_trace(c," + str(tag) + ");", g, count=1)
+        if n != 1:
+            missing.append("L_%04X" % pc)
+    GEN.write_text(g, encoding="utf-8", newline="\n")
+    if missing:
+        print("WARNING: targeted camera read trace hooks were not found: " + ", ".join(missing))
+    else:
+        print("Installed six targeted f_224C/f_3368 read traces.")
+
+
+# Run generated-label hooks last so earlier replace_once anchors stay intact.
+ensure_header_decls([
+    "void md_watch_write(unsigned a, uint8_t v);",
+    "void md_read_trace(M68K *c, unsigned tag);",
+])
+install_pc_stamp()
+install_wr32_watch()
+install_owner_hooks()
+install_body_hooks()
+install_read_trace_hooks()
+
 # 5) Static contract checks. These do not prove gameplay; they ensure the
 # patch is installed once, P2 gets a private stack/bus bank, and the old unsafe
 # all-RAM shadow script remains untouched.
