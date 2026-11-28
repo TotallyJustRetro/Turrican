@@ -1102,7 +1102,7 @@ if (!md_coop_queue_shared()) {
         md_coop_p2_mark(0xBF08, 0xBF0D); /* per-player collision descriptor cursor */
         md_coop_p2_mark(0xFE58, 0xFE58); /* P2-private copy of f_3B38's global flag byte */
         md_coop_p2_mark(0xBF1E, 0xBF29); /* per-player stats/lives */
-        md_coop_p2_mark(0xDFD8, 0xDFDA); /* private camera candidate */
+        md_coop_p2_mark(0xDFD8, 0xDFDB); /* private camera X/Y words: DFD8-D9 and DFDA-DB */
         /* f_224C indexes this 2 KiB player work area from F224 in 16-byte
            records (BCE0 is bounded by 0x7C); f_3650/f_36E0 read the same
            frame table. Bank the whole scratch page span, not only F226. */
@@ -2329,6 +2329,7 @@ checks = {
         "md_coop_p2_mark(0xBC44, 0xBC4B)", "md_coop_p2_mark(0xBC4C, 0xBC53)",
         "md_coop_p2_mark(0xBC5A, 0xBC61)")),
     "P2 owns its original respawn/camera position snapshot": "md_coop_p2_mark(0xBF0E, 0xBF17)" in h,
+    "P2 owns the complete camera X/Y words DFD8..DFDB": "md_coop_p2_mark(0xDFD8, 0xDFDB)" in h,
     "P2 owns f_19FA player init state BC8C": "md_coop_p2_mark(0xBC8C, 0xBC8C)" in h,
     "P2 init state is included in runtime trace": "BC8C=%02X BF18=%08X BF1C=%04X" in h,
     "P2 owns f_19FA descriptor state BF18..BF1D": "md_coop_p2_mark(0xBF18, 0xBF1D)" in h,
