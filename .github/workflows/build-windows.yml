@@ -172,6 +172,7 @@ jobs:
         run: |
           $launcherMain = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/main.js') -Raw
           $launcherHtml = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'launcher/index.html') -Raw
+          $runtimeMain = Get-Content (Join-Path $env:MEGATURRICAN_PROJECT 'runtime/sdl_main.c') -Raw
           foreach ($marker in @('const childEnv = {', "childEnv.SDL_RENDER_DRIVER = 'opengl'", "childEnv.SDL_RENDER_DRIVER = 'direct3d11'", 'delete childEnv.SDL_RENDER_DRIVER')) {
             if (-not $launcherMain.Contains($marker)) { throw "Renderer process handoff is missing: $marker" }
           }
@@ -179,6 +180,9 @@ jobs:
             if (-not $launcherHtml.Contains($marker)) { throw "Launcher Video Options UI is missing: $marker" }
           }
           if ($launcherMain.Contains('SDL_RENDER_DRIVER: settings.renderer')) { throw 'Unsafe undefined SDL_RENDER_DRIVER assignment is still present.' }
+          foreach ($marker in @('SDL_GetRendererInfo', 'Renderer: %s', 'MegaTurrican-renderer.txt')) {
+            if (-not $runtimeMain.Contains($marker)) { throw "Actual SDL renderer readout is missing: $marker" }
+          }
 
 
       - name: Embed Reborn intro and persistent title branding
